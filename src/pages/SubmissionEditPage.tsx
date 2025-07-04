@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import { ArrowLeft, AlertTriangle, Clock, Users, Check, X, Share2, ExclamationTriangle, Plus, FilePlus } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Clock, Users, Check, X, Share2, Triangle as ExclamationTriangle, Plus, FilePlus } from 'lucide-react';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Card, { CardHeader, CardContent, CardFooter } from '../components/common/Card';
