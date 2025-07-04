@@ -1,0 +1,369 @@
+/*
+  # Fix Split Petri Observation Creation
+  
+  1. Changes
+    - Update the create_submission_session function to create a main/source record for split petri templates
+    - Create three records for each split petri: main source + left + right linked records
+    - Ensure proper linking between main source record and child records
+    
+  2. Purpose
+    - Fix UI display issue with split petri observations
+    - Enable proper image upload to main record
+    - Support downstream image processing by Python application
+*/
+
+-- Drop the function if it exists (with any parameter signature)
+DO $$ 
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc 
+    WHERE proname = 'create_submission_session' 
+    AND pg_function_is_visible(oid)
+  ) THEN
+    EXECUTE 'DROP FUNCTION IF EXISTS create_submission_session CASCADE';
+  END IF;
+END $$;
+
+-- Create a new version with the 3-record split petri approach
+CREATE OR REPLACE FUNCTION public.create_submission_session(
+  p_program_id UUID,
+  p_site_id UUID, 
+  p_submission_data JSONB,
+  p_gasifier_templates JSONB DEFAULT NULL,
+  p_petri_templates JSONB DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_submission_id UUID;
+  v_session_id UUID;
+  v_petri_observation_id UUID;
+  v_gasifier_observation_id UUID;
+  v_result JSONB;
+  v_petri_template JSONB;
+  v_gasifier_template JSONB;
+  v_user_id UUID;
+  v_pair_id TEXT;
+  v_base_petri_code TEXT;
+  v_left_code TEXT;
+  v_right_code TEXT;
+  -- Variables for petri enums
+  v_plant_type plant_type_enum;
+  v_fungicide_used fungicide_used_enum;
+  v_water_schedule water_schedule_enum;
+  v_placement petri_placement_enum;
+  v_placement_dynamics petri_placement_dynamics_enum;
+  -- Variables for gasifier enums
+  v_chemical_type chemical_type_enum;
+  v_placement_height placement_height_enum;
+  v_directional_placement directional_placement_enum;
+  v_placement_strategy placement_strategy_enum;
+BEGIN
+  -- Get the current user ID
+  v_user_id := auth.uid();
+
+  -- Create the submission
+  INSERT INTO submissions (
+    site_id,
+    program_id,
+    temperature,
+    humidity,
+    airflow,
+    odor_distance,
+    weather,
+    notes,
+    created_by,
+    indoor_temperature,
+    indoor_humidity,
+    submission_timezone
+  )
+  VALUES (
+    p_site_id,
+    p_program_id,
+    (p_submission_data->>'temperature')::NUMERIC,
+    (p_submission_data->>'humidity')::NUMERIC,
+    (p_submission_data->>'airflow')::airflow_enum,
+    (p_submission_data->>'odor_distance')::odor_distance_enum,
+    (p_submission_data->>'weather')::weather_enum,
+    p_submission_data->>'notes',
+    v_user_id,
+    NULLIF((p_submission_data->>'indoor_temperature')::TEXT, '')::NUMERIC,
+    NULLIF((p_submission_data->>'indoor_humidity')::TEXT, '')::NUMERIC,
+    p_submission_data->>'timezone'
+  )
+  RETURNING submission_id INTO v_submission_id;
+
+  -- Create the submission session
+  INSERT INTO submission_sessions (
+    submission_id,
+    site_id,
+    program_id,
+    opened_by_user_id,
+    session_status
+  )
+  VALUES (
+    v_submission_id,
+    p_site_id,
+    p_program_id,
+    v_user_id,
+    'Opened'
+  )
+  RETURNING session_id INTO v_session_id;
+
+  -- Create petri observations from templates if provided
+  IF p_petri_templates IS NOT NULL AND jsonb_array_length(p_petri_templates) > 0 THEN
+    FOR v_petri_template IN SELECT * FROM jsonb_array_elements(p_petri_templates)
+    LOOP
+      -- Set defaults for required enum fields and handle empty strings
+      v_plant_type := COALESCE(NULLIF(v_petri_template->>'plant_type', ''), 'Other Fresh Perishable')::plant_type_enum;
+      v_fungicide_used := COALESCE(NULLIF(v_petri_template->>'fungicide_used', ''), 'No')::fungicide_used_enum;
+      v_water_schedule := COALESCE(NULLIF(v_petri_template->>'surrounding_water_schedule', ''), 'Daily')::water_schedule_enum;
+      
+      -- Handle optional enum fields - explicitly set to NULL if empty string
+      IF v_petri_template->>'placement' IS NOT NULL AND v_petri_template->>'placement' <> '' THEN
+        v_placement := (v_petri_template->>'placement')::petri_placement_enum;
+      ELSE
+        v_placement := NULL;
+      END IF;
+      
+      IF v_petri_template->>'placement_dynamics' IS NOT NULL AND v_petri_template->>'placement_dynamics' <> '' THEN
+        v_placement_dynamics := (v_petri_template->>'placement_dynamics')::petri_placement_dynamics_enum;
+      ELSE
+        v_placement_dynamics := NULL;
+      END IF;
+
+      -- Check if this is a split image template
+      IF (v_petri_template->>'is_split_image_template')::BOOLEAN IS TRUE THEN
+        -- Get the base petri code for the main record
+        v_base_petri_code := v_petri_template->>'petri_code';
+        
+        -- Get the split codes
+        v_left_code := jsonb_array_element_text(v_petri_template->'split_codes', 0);
+        v_right_code := jsonb_array_element_text(v_petri_template->'split_codes', 1);
+        
+        -- If we don't have both codes, use defaults based on the original code
+        IF v_left_code IS NULL OR v_left_code = '' OR v_right_code IS NULL OR v_right_code = '' THEN
+          v_left_code := v_base_petri_code || '_Left';
+          v_right_code := v_base_petri_code || '_Right';
+        END IF;
+        
+        -- First create the MAIN petri record (source record for the combined image)
+        INSERT INTO petri_observations (
+          submission_id,
+          site_id,
+          petri_code,
+          plant_type,
+          fungicide_used,
+          surrounding_water_schedule,
+          placement,
+          placement_dynamics,
+          notes,
+          is_image_split,
+          is_split_source,  -- Mark as source record
+          split_processed,  -- Not processed yet
+          phase_observation_settings
+        )
+        VALUES (
+          v_submission_id,
+          p_site_id,
+          v_base_petri_code,
+          v_plant_type,
+          v_fungicide_used,
+          v_water_schedule,
+          v_placement,
+          v_placement_dynamics,
+          v_petri_template->>'notes',
+          TRUE,
+          TRUE,
+          FALSE,
+          jsonb_build_object(
+            'base_petri_code', v_base_petri_code,
+            'position', 'main',
+            'left_code', v_left_code,
+            'right_code', v_right_code
+          )
+        )
+        RETURNING observation_id INTO v_petri_observation_id;
+        
+        -- Create the LEFT split child record
+        INSERT INTO petri_observations (
+          submission_id,
+          site_id,
+          petri_code,
+          plant_type,
+          fungicide_used,
+          surrounding_water_schedule,
+          placement,
+          placement_dynamics,
+          notes,
+          is_image_split,
+          main_petri_id,  -- Link to the main record
+          phase_observation_settings
+        )
+        VALUES (
+          v_submission_id,
+          p_site_id,
+          v_left_code,
+          v_plant_type,
+          v_fungicide_used,
+          v_water_schedule,
+          v_placement,
+          v_placement_dynamics,
+          v_petri_template->>'notes',
+          TRUE,
+          v_petri_observation_id,  -- This links to the main record
+          jsonb_build_object(
+            'base_petri_code', v_base_petri_code,
+            'position', 'left',
+            'left_code', v_left_code,
+            'right_code', v_right_code
+          )
+        );
+        
+        -- Create the RIGHT split child record
+        INSERT INTO petri_observations (
+          submission_id,
+          site_id,
+          petri_code,
+          plant_type,
+          fungicide_used,
+          surrounding_water_schedule,
+          placement,
+          placement_dynamics,
+          notes,
+          is_image_split,
+          main_petri_id,  -- Link to the main record
+          phase_observation_settings
+        )
+        VALUES (
+          v_submission_id,
+          p_site_id,
+          v_right_code,
+          v_plant_type,
+          v_fungicide_used,
+          v_water_schedule,
+          v_placement,
+          v_placement_dynamics,
+          v_petri_template->>'notes',
+          TRUE,
+          v_petri_observation_id,  -- This links to the main record
+          jsonb_build_object(
+            'base_petri_code', v_base_petri_code,
+            'position', 'right',
+            'left_code', v_left_code,
+            'right_code', v_right_code
+          )
+        );
+      ELSE
+        -- Normal non-split petri observation
+        INSERT INTO petri_observations (
+          submission_id,
+          site_id,
+          petri_code,
+          plant_type,
+          fungicide_used,
+          surrounding_water_schedule,
+          placement,
+          placement_dynamics,
+          notes
+        )
+        VALUES (
+          v_submission_id,
+          p_site_id,
+          v_petri_template->>'petri_code',
+          v_plant_type,
+          v_fungicide_used,
+          v_water_schedule,
+          v_placement,
+          v_placement_dynamics,
+          v_petri_template->>'notes'
+        );
+      END IF;
+    END LOOP;
+  END IF;
+
+  -- Create gasifier observations from templates if provided
+  IF p_gasifier_templates IS NOT NULL AND jsonb_array_length(p_gasifier_templates) > 0 THEN
+    FOR v_gasifier_template IN SELECT * FROM jsonb_array_elements(p_gasifier_templates)
+    LOOP
+      -- Default required enum values if null or empty
+      v_chemical_type := COALESCE(NULLIF(v_gasifier_template->>'chemical_type', ''), 'CLO2')::chemical_type_enum;
+      
+      -- Handle optional enum fields - explicitly set to NULL if empty string
+      IF v_gasifier_template->>'placement_height' IS NOT NULL AND v_gasifier_template->>'placement_height' <> '' THEN
+        v_placement_height := (v_gasifier_template->>'placement_height')::placement_height_enum;
+      ELSE
+        v_placement_height := NULL;
+      END IF;
+      
+      IF v_gasifier_template->>'directional_placement' IS NOT NULL AND v_gasifier_template->>'directional_placement' <> '' THEN
+        v_directional_placement := (v_gasifier_template->>'directional_placement')::directional_placement_enum;
+      ELSE
+        v_directional_placement := NULL;
+      END IF;
+      
+      IF v_gasifier_template->>'placement_strategy' IS NOT NULL AND v_gasifier_template->>'placement_strategy' <> '' THEN
+        v_placement_strategy := (v_gasifier_template->>'placement_strategy')::placement_strategy_enum;
+      ELSE
+        v_placement_strategy := NULL;
+      END IF;
+      
+      INSERT INTO gasifier_observations (
+        submission_id,
+        site_id,
+        gasifier_code,
+        chemical_type,
+        placement_height,
+        directional_placement,
+        placement_strategy,
+        notes,
+        anomaly
+      )
+      VALUES (
+        v_submission_id,
+        p_site_id,
+        v_gasifier_template->>'gasifier_code',
+        v_chemical_type,
+        v_placement_height,
+        v_directional_placement,
+        v_placement_strategy,
+        v_gasifier_template->>'notes',
+        COALESCE((v_gasifier_template->>'anomaly')::BOOLEAN, FALSE)
+      );
+    END LOOP;
+  END IF;
+
+  -- Build the result object
+  v_result := jsonb_build_object(
+    'success', TRUE,
+    'submission_id', v_submission_id,
+    'session_id', v_session_id
+  );
+
+  RETURN v_result;
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+      'success', FALSE,
+      'message', SQLERRM
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute permissions to authenticated users
+GRANT EXECUTE ON FUNCTION public.create_submission_session TO authenticated;
+
+-- Add comment to function
+COMMENT ON FUNCTION public.create_submission_session IS 'Creates a submission and session with optional petri and gasifier observations from templates. For split petri templates, creates three records: one main source record and two child records (left/right) linked to the main record.';
+
+-- Ensure the edge function trigger exists for processing split petri images
+-- This will fire when an image is uploaded to a source petri observation
+DROP TRIGGER IF EXISTS trigger_split_petri_observation ON public.petri_observations;
+
+CREATE TRIGGER trigger_split_petri_observation
+AFTER UPDATE OF image_url ON public.petri_observations
+FOR EACH ROW
+WHEN (NEW.is_split_source = TRUE AND NEW.image_url IS NOT NULL AND NEW.split_processed = FALSE)
+EXECUTE FUNCTION supabase_functions.http_request('split_petri_observation');
+
+-- Add comment to trigger
+COMMENT ON TRIGGER trigger_split_petri_observation ON public.petri_observations IS 'Triggers the split_petri_observation edge function when an image is uploaded to a split source petri observation';

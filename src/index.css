@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold leading-tight;
+  }
+
+  h1 {
+    @apply text-3xl md:text-4xl;
+  }
+
+  h2 {
+    @apply text-2xl md:text-3xl;
+  }
+
+  h3 {
+    @apply text-xl md:text-2xl;
+  }
+
+  h4 {
+    @apply text-lg md:text-xl;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors;
+  }
+
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white focus:ring-primary-500;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary-600 hover:bg-secondary-700 text-white focus:ring-secondary-500;
+  }
+
+  .btn-accent {
+    @apply bg-accent-600 hover:bg-accent-700 text-white focus:ring-accent-500;
+  }
+
+  .btn-outline {
+    @apply border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-primary-500;
+  }
+
+  .btn-danger {
+    @apply bg-error-600 hover:bg-error-700 text-white focus:ring-error-500;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-md overflow-hidden transition-shadow hover:shadow-lg;
+  }
+  
+  .pill {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+}
+
+/* Custom toast container positioning */
+.toast-container-custom {
+  top: 4% !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  max-width: 90% !important;
+  width: auto !important;
+}
+
+/* Custom toast styles */
+.Toastify__toast {
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  min-height: auto;
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive toast sizing */
+@media (max-width: 640px) {
+  .Toastify__toast {
+    max-width: 90vw;
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 0.75rem;
+    padding: 0.5rem;
+  }
+  
+  .Toastify__toast-body {
+    padding: 0.25rem 0;
+  }
+  
+  .Toastify__close-button {
+    padding: 0;
+  }
+}
+
+/* Custom toast colors - ensures visibility on different backgrounds */
+.Toastify__toast--success {
+  background-color: #def7ec;
+  color: #03543e;
+}
+
+.Toastify__toast--info {
+  background-color: #e1effe;
+  color: #1e429f;
+}
+
+.Toastify__toast--warning {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.Toastify__toast--error {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
