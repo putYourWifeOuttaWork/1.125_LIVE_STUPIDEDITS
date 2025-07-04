@@ -1,817 +1,895 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
-import { usePilotProgramStore } from '../stores/pilotProgramStore';
-import { 
-  ArrowLeft, 
-  Save, 
-  CheckCircle, 
-  Share2, 
-  AlertTriangle, 
-  XCircle, 
-  ChevronDown, 
-  ChevronUp, 
-  Thermometer, 
-  Droplets, 
-  Wind, 
-  Ruler, 
-  Sun, 
-  Cloud, 
-  CloudRain, 
-  FileText, 
-  Calendar,
-  User
-} from 'lucide-react';
-import { format, formatDistanceToNow, differenceInSeconds, set } from 'date-fns';
+import { useFormik } from 'formik';
+import * as Yup from 'yup';
+import { ArrowLeft, AlertTriangle, Clock, Users, Check, X, Share2, ExclamationTriangle, Plus, FilePlus } from 'lucide-react';
 import Button from '../components/common/Button';
-import Card, { CardHeader, CardContent } from '../components/common/Card';
-import LoadingScreen from '../components/common/LoadingScreen';
+import Input from '../components/common/Input';
+import Card, { CardHeader, CardContent, CardFooter } from '../components/common/Card';
+import { usePilotProgramStore } from '../stores/pilotProgramStore';
+import { useSites } from '../hooks/useSites';
+import { useSubmissions } from '../hooks/useSubmissions';
 import { useAuthStore } from '../stores/authStore';
-import PetriForm, { PetriFormRef } from '../components/submissions/PetriForm';
-import GasifierForm, { GasifierFormRef } from '../components/submissions/GasifierForm';
-import { toast } from 'react-toastify';
-import { v4 as uuidv4 } from 'uuid';
-import TemplateWarningModal from '../components/submissions/TemplateWarningModal';
-import ConfirmSubmissionModal from '../components/submissions/ConfirmSubmissionModal';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import offlineStorage from '../utils/offlineStorage';
-import useOfflineSession from '../hooks/useOfflineSession';
-import sessionManager from '../lib/sessionManager';
-import { useSessionStore } from '../stores/sessionStore';
-import useUserRole from '../hooks/useUserRole';
+import LoadingScreen from '../components/common/LoadingScreen';
 import PermissionModal from '../components/common/PermissionModal';
+import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
+import ConfirmSubmissionModal from '../components/submissions/ConfirmSubmissionModal';
+import TemplateWarningModal from '../components/submissions/TemplateWarningModal';
 import SessionShareModal from '../components/submissions/SessionShareModal';
 import SubmissionOverviewCard from '../components/submissions/SubmissionOverviewCard';
-import { useSubmissions } from '../hooks/useSubmissions';
+import PetriForm, { PetriFormRef } from '../components/submissions/PetriForm';
+import GasifierForm, { GasifierFormRef } from '../components/submissions/GasifierForm';
+import ObservationListManager, { ObservationFormState } from '../components/forms/ObservationListManager';
+import useUserRole from '../hooks/useUserRole';
+import { v4 as uuidv4 } from 'uuid';
+import { toast } from 'react-toastify';
+import sessionManager from '../lib/sessionManager';
+import { useSessionStore } from '../stores/sessionStore';
+import SyncStatus from '../components/common/SyncStatus';
+import { ChemicalType, DirectionalPlacement, PlacementHeight, PlacementStrategy } from '../lib/types';
+import { PetriFormData, GasifierFormData } from '../utils/submissionUtils';
 import { createLogger } from '../utils/logger';
 
 // Create a component-specific logger
 const logger = createLogger('SubmissionEditPage');
 
+// Validation schema for the submission form
+const SubmissionSchema = Yup.object().shape({
+  temperature: Yup.number()
+    .required('Temperature is required')
+    .min(-30, 'Temperature must be at least -30°F')
+    .max(120, 'Temperature must be at most 120°F'),
+  humidity: Yup.number()
+    .required('Humidity is required')
+    .min(0, 'Humidity cannot be negative')
+    .max(100, 'Humidity cannot exceed 100%'),
+  indoor_temperature: Yup.number()
+    .nullable()
+    .min(32, 'Indoor temperature must be at least 32°F')
+    .max(120, 'Indoor temperature cannot exceed 120°F'),
+  indoor_humidity: Yup.number()
+    .nullable()
+    .min(1, 'Indoor humidity must be at least 1%')
+    .max(100, 'Indoor humidity cannot exceed 100%'),
+  airflow: Yup.string()
+    .oneOf(['Open', 'Closed'], 'Please select a valid airflow option')
+    .required('Airflow is required'),
+  odorDistance: Yup.string()
+    .oneOf(['5-10ft', '10-25ft', '25-50ft', '50-100ft', '>100ft'], 'Please select a valid odor distance')
+    .required('Odor distance is required'),
+  weather: Yup.string()
+    .oneOf(['Clear', 'Cloudy', 'Rain'], 'Please select a valid weather condition')
+    .required('Weather is required'),
+  notes: Yup.string()
+    .max(255, 'Notes must be less than 255 characters')
+});
+
+// Extending the ObservationFormState for petri observations
+interface PetriFormState extends ObservationFormState {
+  petriCode: string;
+  fungicideUsed: 'Yes' | 'No';
+  surroundingWaterSchedule: string;
+  placement?: string | null;
+  is_split_source?: boolean;
+}
+
+// Extending the ObservationFormState for gasifier observations
+interface GasifierFormState extends ObservationFormState {
+  gasifierCode: string;
+  chemicalType: ChemicalType;
+  measure: number | null;
+  anomaly: boolean;
+  placementHeight?: PlacementHeight | null;
+  directionalPlacement?: DirectionalPlacement | null;
+  placementStrategy?: PlacementStrategy | null;
+}
+
 const SubmissionEditPage = () => {
-  const { programId, siteId, submissionId } = useParams<{ programId: string; siteId: string; submissionId: string }>();
   const navigate = useNavigate();
+  const { programId, siteId, submissionId } = useParams<{ programId: string; siteId: string; submissionId: string }>();
   const { user } = useAuthStore();
+  const { selectedProgram, selectedSite, setSelectedProgram, setSelectedSite } = usePilotProgramStore();
   const { 
-    selectedProgram, 
-    selectedSite,
-    setSelectedProgram,
-    setSelectedSite
-  } = usePilotProgramStore();
-  const { setCurrentSessionId } = useSessionStore();
-  
-  // Add the useSubmissions hook to get access to updateSubmission function
-  const { updateSubmission, loading: submissionLoading } = useSubmissions(siteId);
-  
-  const [loading, setLoading] = useState(true);
-  const [submission, setSubmission] = useState<any>(null);
-  const [petriObservations, setPetriObservations] = useState<any[]>([]);
-  const [filteredPetriObservations, setFilteredPetriObservations] = useState<any[]>([]);
-  const [gasifierObservations, setGasifierObservations] = useState<any[]>([]);
-  
-  // Form reference arrays for validating and accessing forms
-  const [petriForms, setPetriForms] = useState<{ id: string; ref: React.RefObject<PetriFormRef>; isValid: boolean; isDirty: boolean; observationId?: string; tempImageKey?: string; }[]>([]);
-  const [gasifierForms, setGasifierForms] = useState<{ id: string; ref: React.RefObject<GasifierFormRef>; isValid: boolean; isDirty: boolean; observationId?: string; tempImageKey?: string; }[]>([]);
-  
-  // Add state variables to store complete form data objects
-  const [petriObservationData, setPetriObservationData] = useState<{[key: string]: any}>({});
-  const [gasifierObservationData, setGasifierObservationData] = useState<{[key: string]: any}>({});
-  
-  const [isPetriAccordionOpen, setIsPetriAccordionOpen] = useState(true);
-  const [isGasifierAccordionOpen, setIsGasifierAccordionOpen] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [showTemplateWarning, setShowTemplateWarning] = useState<'Petri' | 'Gasifier' | null>(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  
-  // Session state
-  const [session, setSession] = useState<any>(null);
-  const [expectedPetriCount, setExpectedPetriCount] = useState(0);
-  const [expectedGasifierCount, setExpectedGasifierCount] = useState(0);
-  const [completedPetriCount, setCompletedPetriCount] = useState(0);
-  const [completedGasifierCount, setCompletedGasifierCount] = useState(0);
-  const [isSessionExpiring, setIsSessionExpiring] = useState(false);
-  const [isSessionExpired, setIsSessionExpired] = useState(false);
-  const [showPermissionModal, setShowPermissionModal] = useState(false);
-  const [permissionMessage, setPermissionMessage] = useState("");
-  const [showShareModal, setShowShareModal] = useState(false);
-  
-  // Add state for creator information
-  const [creatorEmail, setCreatorEmail] = useState<string | undefined>(undefined);
-  const [creatorName, setCreatorName] = useState<string | undefined>(undefined);
-  
-  const { canEditSubmission } = useUserRole({ programId });
+    submissions, 
+    fetchSubmissions, 
+    fetchSubmissionPetriObservations, 
+    fetchSubmissionGasifierObservations,
+    updateSubmission
+  } = useSubmissions(siteId);
+  const { fetchSite, fetchPilotProgram } = useSites(programId);
+  const { canEditSubmission, canCreateSubmission } = useUserRole({ programId });
   const isOnline = useOnlineStatus();
   
-  const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Session management
+  const { setCurrentSessionId } = useSessionStore();
   
-  // Use the offline session hook to load and manage session data
-  const { 
-    session: offlineSession, 
-    saveSession, 
-    isLoading: offlineLoading,
-    error: offlineError,
-    isOnline: isNetworkOnline
-  } = useOfflineSession({
-    sessionId: session?.session_id,
-    submissionId
-  });
-
-  // Look for temp images and assign them to the correct observations
-  const assignTempImagesToForms = async (currentSessionId: string) => {
-    try {
-      logger.debug('Checking for temp images in IndexedDB...');
-      
-      // Get all temp image keys
-      const imageKeys = await offlineStorage.listTempImageKeys();
-      
-      // Filter keys for current session
-      const sessionImageKeys = imageKeys.filter(key => key.startsWith(currentSessionId));
-      
-      if (sessionImageKeys.length > 0) {
-        logger.debug(`Found ${sessionImageKeys.length} temp images for submission ${currentSessionId}: ${JSON.stringify(sessionImageKeys)}`);
-        
-        // Look for matching petri observations
-        for (const form of petriForms) {
-          // Check if any key contains both the session ID and the form ID
-          const matchingKey = sessionImageKeys.find(key => 
-            key.includes(form.id)
-          );
-          
-          if (matchingKey) {
-            logger.debug(`Found matching temp image key for petri observation ${form.id}: ${matchingKey}`);
-            
-            // Update the form to use this temp image key
-            setPetriForms(prevForms => 
-              prevForms.map(f => 
-                f.id === form.id 
-                  ? { ...f, tempImageKey: matchingKey } 
-                  : f
-              )
-            );
-          }
-        }
-        
-        // Look for matching gasifier observations (similar logic)
-        for (const form of gasifierForms) {
-          const matchingKey = sessionImageKeys.find(key => 
-            key.includes(form.id)
-          );
-          
-          if (matchingKey) {
-            logger.debug(`Found matching temp image key for gasifier observation ${form.id}: ${matchingKey}`);
-            
-            // Update the form to use this temp image key
-            setGasifierForms(prevForms => 
-              prevForms.map(f => 
-                f.id === form.id 
-                  ? { ...f, tempImageKey: matchingKey } 
-                  : f
-              )
-            );
-          }
-        }
-      }
-    } catch (error) {
-      logger.error('Error checking for temp images:', error);
+  // State for forms and modals
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submission, setSubmission] = useState<any | null>(null);
+  const [session, setSession] = useState<any | null>(null);
+  const [petriObservations, setPetriObservations] = useState<any[]>([]);
+  const [gasifierObservations, setGasifierObservations] = useState<any[]>([]);
+  const [petriFormStates, setPetriFormStates] = useState<PetriFormState[]>([]);
+  const [gasifierFormStates, setGasifierFormStates] = useState<GasifierFormState[]>([]);
+  const [isPetriAccordionOpen, setIsPetriAccordionOpen] = useState(true);
+  const [isGasifierAccordionOpen, setIsGasifierAccordionOpen] = useState(true);
+  const [showPetriTemplateWarning, setShowPetriTemplateWarning] = useState(false);
+  const [showGasifierTemplateWarning, setShowGasifierTemplateWarning] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error' | 'reconnecting'>('synced');
+  const [isSessionCompleted, setIsSessionCompleted] = useState(false);
+  const [isSessionCancelled, setIsSessionCancelled] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // References to the form components for validation
+  const petriFormRefs = useRef<{ [id: string]: PetriFormRef }>({});
+  const gasifierFormRefs = useRef<{ [id: string]: GasifierFormRef }>({});
+  
+  // Load submission and related data
+  const loadData = useCallback(async () => {
+    if (!programId || !siteId || !submissionId) {
+      navigate('/programs');
+      return;
     }
-  };
-
-  // Filter observations to exclude child split records (those with main_petri_id set but not is_split_source)
-  const filterPetriObservations = useCallback((observations: any[]) => {
-    return observations.filter(obs => 
-      // Include normal observations (not split)
-      !obs.is_image_split ||
-      // Include split source observations (the main record)
-      (obs.is_image_split && obs.is_split_source) ||
-      // Include split child observations only if they don't have a main_petri_id
-      (obs.is_image_split && !obs.main_petri_id)
-    );
-  }, []);
-
-  // Load submission, observations, and session data
-  useEffect(() => {
-    const loadSubmissionData = async () => {
-      if (!programId || !siteId || !submissionId) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      logger.debug(`Loading submission data for ${submissionId}`);
       
-      setLoading(true);
-      
-      try {
-        // Fetch submission with session data
-        const { submission: submissionData, session: sessionData, creator } = 
-          await sessionManager.getSubmissionWithSession(submissionId);
-        
-        if (!submissionData) {
-          toast.error('Submission not found');
-          navigate(`/programs/${programId}/sites/${siteId}`);
+      // Ensure we have the program and site data
+      if (!selectedProgram || selectedProgram.program_id !== programId) {
+        const program = await fetchPilotProgram(programId);
+        if (program) {
+          setSelectedProgram(program);
+        } else {
+          navigate('/programs');
           return;
         }
-        
-        setSubmission(submissionData);
-        setSession(sessionData);
-        
-        // Store creator information if available
-        if (creator) {
-          setCreatorEmail(creator.email);
-          setCreatorName(creator.full_name);
-        }
-        
-        // If we have a session, set it in the session store
-        if (sessionData) {
-          setCurrentSessionId(sessionData.session_id);
-          
-          // Look for temporary images from this session
-          await assignTempImagesToForms(sessionData.session_id);
-        }
-        
-        // Update title in browser
-        document.title = `Submission #${submissionData.global_submission_id || ''} - GRMTek Sporeless`;
-        
-               // Fetch petri observations
-        const { data: petriData, error: petriError } = await supabase
-          .from('petri_observations')
-          .select('*')
-          .eq('submission_id', submissionId)
-          .order('petri_code', { ascending: true }); // Add this line to sort by order_index
-   
-          
-        if (petriError) throw petriError;
-        
-        // Fetch gasifier observations
-        const { data: gasifierData, error: gasifierError } = await supabase
-          .from('gasifier_observations')
-          .select('*')
-          .eq('submission_id', submissionId)
-          .order('order_index', { ascending: true }); // Add this line to sort by order_index
-          
-        if (gasifierError) throw gasifierError;
-        
-        // Set full petri observation data
-        setPetriObservations(petriData || []);
-        
-        // Filter out child split records that have a main_petri_id but aren't split sources
-        const filtered = filterPetriObservations(petriData || []);
-        setFilteredPetriObservations(filtered);
-        
-        // Set gasifier observations
-        setGasifierObservations(gasifierData || []);
-        
-        // Fetch all temporary image keys for this session
-        let tempImageKeys: string[] = [];
-        try {
-          tempImageKeys = await offlineStorage.listTempImageKeys();
-          logger.debug(`Found ${tempImageKeys.length} temp image keys total`);
-        } catch (error) {
-          logger.error('Error fetching temp image keys:', error);
-        }
-        
-        // Get the session ID to use for filtering temp image keys
-        const sessionIdForFiltering = sessionData?.session_id || submissionId;
-        const sessionTempImageKeys = tempImageKeys.filter(key => key.startsWith(sessionIdForFiltering));
-        logger.debug(`Found ${sessionTempImageKeys.length} temp image keys for session ${sessionIdForFiltering}`);
-        
-        // Initialize petri form refs - only for filtered observations
-        const petriFormRefs = filtered.map(obs => {
-          const formRef = React.createRef<PetriFormRef>();
-          
-          // Find matching temp image key for this observation
-          const matchingKey = sessionTempImageKeys.find(key => 
-            key.includes(obs.observation_id)
-          );
-          
-          return { 
-            id: obs.observation_id, 
-            ref: formRef, 
-            isValid: !!obs.image_url,
-            isDirty: false,
-            observationId: obs.observation_id,
-            tempImageKey: matchingKey
-          };
-        });
-        setPetriForms(petriFormRefs);
-        setCompletedPetriCount(filtered.filter(obs => !!obs.image_url).length);
-        
-        // Initialize gasifier form refs
-        const gasifierFormRefs = (gasifierData || []).map(obs => {
-          const formRef = React.createRef<GasifierFormRef>();
-          
-          // Find matching temp image key for this observation
-          const matchingKey = sessionTempImageKeys.find(key => 
-            key.includes(obs.observation_id)
-          );
-          
-          return { 
-            id: obs.observation_id, 
-            ref: formRef, 
-            isValid: !!obs.image_url,
-            isDirty: false,
-            observationId: obs.observation_id,
-            tempImageKey: matchingKey
-          };
-        });
-        setGasifierForms(gasifierFormRefs);
-        setCompletedGasifierCount(gasifierData?.filter(obs => !!obs.image_url).length || 0);
-        
-        // Initialize petriObservationData state - include all split image fields
-        const initialPetriData: {[key: string]: any} = {};
-        filtered.forEach(observation => {
-          // Find matching temp image key for this observation
-          const matchingKey = sessionTempImageKeys.find(key => 
-            key.includes(observation.observation_id)
-          );
-          
-          initialPetriData[observation.observation_id] = {
-            formId: observation.observation_id,
-            petriCode: observation.petri_code,
-            imageFile: null,
-            imageUrl: observation.image_url,
-            tempImageKey: matchingKey,
-            plantType: observation.plant_type,
-            fungicideUsed: observation.fungicide_used,
-            surroundingWaterSchedule: observation.surrounding_water_schedule,
-            notes: observation.notes || '',
-            placement: observation.placement,
-            placement_dynamics: observation.placement_dynamics,
-            observationId: observation.observation_id,
-            isValid: !!observation.image_url,
-            hasData: true,
-            hasImage: !!observation.image_url || !!matchingKey,
-            isDirty: false,
-            outdoor_temperature: observation.outdoor_temperature,
-            outdoor_humidity: observation.outdoor_humidity,
-            // Include all split image fields
-            is_image_split: observation.is_image_split,
-            is_split_source: observation.is_split_source,
-            split_processed: observation.split_processed,
-            phase_observation_settings: observation.phase_observation_settings,
-            main_petri_id: observation.main_petri_id
-          };
-        });
-        setPetriObservationData(initialPetriData);
-        
-        // Initialize gasifierObservationData state
-        const initialGasifierData: {[key: string]: any} = {};
-        gasifierData?.forEach(observation => {
-          // Find matching temp image key for this observation
-          const matchingKey = sessionTempImageKeys.find(key => 
-            key.includes(observation.observation_id)
-          );
-          
-          initialGasifierData[observation.observation_id] = {
-            formId: observation.observation_id,
-            gasifierCode: observation.gasifier_code,
-            imageFile: null,
-            imageUrl: observation.image_url,
-            tempImageKey: matchingKey,
-            chemicalType: observation.chemical_type,
-            measure: observation.measure,
-            anomaly: observation.anomaly,
-            placementHeight: observation.placement_height,
-            directionalPlacement: observation.directional_placement,
-            placementStrategy: observation.placement_strategy,
-            notes: observation.notes || '',
-            observationId: observation.observation_id,
-            isValid: !!observation.image_url,
-            hasData: true,
-            hasImage: !!observation.image_url || !!matchingKey,
-            isDirty: false,
-            outdoor_temperature: observation.outdoor_temperature,
-            outdoor_humidity: observation.outdoor_humidity
-          };
-        });
-        setGasifierObservationData(initialGasifierData);
-        
-        // Get expected counts from site defaults
-        if (!selectedSite) {
-          // Load site data
-          const { data: siteData, error: siteError } = await supabase
-            .from('sites')
-            .select('*')
-            .eq('site_id', siteId)
-            .single();
-            
-          if (siteError) throw siteError;
-          
-          setSelectedSite(siteData);
-          
-          setExpectedPetriCount(
-            siteData?.petri_defaults 
-              ? (Array.isArray(siteData.petri_defaults) ? siteData.petri_defaults.length : 0) 
-              : 0
-          );
-          
-          setExpectedGasifierCount(
-            siteData?.gasifier_defaults 
-              ? (Array.isArray(siteData.gasifier_defaults) ? siteData.gasifier_defaults.length : 0) 
-              : 0
-          );
-        } else {
-          setExpectedPetriCount(
-            selectedSite.petri_defaults 
-              ? (Array.isArray(selectedSite.petri_defaults) ? selectedSite.petri_defaults.length : 0) 
-              : 0
-          );
-          
-          setExpectedGasifierCount(
-            selectedSite.gasifier_defaults 
-              ? (Array.isArray(selectedSite.gasifier_defaults) ? selectedSite.gasifier_defaults.length : 0) 
-              : 0
-          );
-        }
-      } catch (error) {
-        logger.error('Error loading submission data:', error);
-        toast.error('Failed to load submission data');
-      } finally {
-        setLoading(false);
       }
-    };
-
-    loadSubmissionData();
-  }, [programId, siteId, submissionId, selectedSite, navigate, setCurrentSessionId, filterPetriObservations]);
-  
-  // Add a petri form
-  const addPetriForm = () => {
-    const newFormId = uuidv4();
-    const formRef = React.createRef<PetriFormRef>();
-    setPetriForms([...petriForms, { id: newFormId, ref: formRef, isValid: false, isDirty: true }]);
-    
-    // If there are petri defaults in the site, show a warning
-    if (selectedSite?.petri_defaults && Array.isArray(selectedSite.petri_defaults) && selectedSite.petri_defaults.length > 0) {
-      setShowTemplateWarning('Petri');
+      
+      if (!selectedSite || selectedSite.site_id !== siteId) {
+        const site = await fetchSite(siteId);
+        if (site) {
+          setSelectedSite(site);
+        } else {
+          navigate(`/programs/${programId}/sites`);
+          return;
+        }
+      }
+      
+      // Get the submission and session data using the sessionManager utility
+      const { submission: submissionData, session: sessionData } = await sessionManager.getSubmissionWithSession(submissionId);
+      
+      if (!submissionData) {
+        logger.error(`Submission ${submissionId} not found`);
+        toast.error('Submission not found');
+        navigate(`/programs/${programId}/sites/${siteId}`);
+        return;
+      }
+      
+      logger.debug(`Submission loaded:`, {
+        id: submissionData.submission_id, 
+        site: submissionData.site_id, 
+        program: submissionData.program_id,
+        hasSession: !!sessionData
+      });
+      
+      setSubmission(submissionData);
+      setSession(sessionData);
+      
+      // Update the current session ID in the session store
+      if (sessionData) {
+        setCurrentSessionId(sessionData.session_id);
+        
+        // Check if the session is already completed or cancelled
+        if (sessionData.session_status === 'Completed') {
+          setIsSessionCompleted(true);
+        } else if (sessionData.session_status === 'Cancelled') {
+          setIsSessionCancelled(true);
+        }
+      }
+      
+      // Fetch petri observations
+      const petriData = await fetchSubmissionPetriObservations(submissionId);
+      logger.debug(`Loaded ${petriData.length} petri observations`);
+      setPetriObservations(petriData);
+      
+      // Fetch gasifier observations
+      const gasifierData = await fetchSubmissionGasifierObservations(submissionId);
+      logger.debug(`Loaded ${gasifierData.length} gasifier observations`);
+      setGasifierObservations(gasifierData);
+      
+      // Check if the user can edit the submission
+      if (!canEditSubmission) {
+        logger.debug('User does not have permission to edit this submission');
+      }
+      
+      // Initialize form states for existing observations
+      initializeFormStates(petriData, gasifierData);
+    } catch (err) {
+      logger.error('Error loading submission data:', err);
+      setError('Failed to load submission data. Please try again later.');
+      toast.error('Error loading submission data');
+    } finally {
+      setIsLoading(false);
     }
+  }, [
+    programId, 
+    siteId, 
+    submissionId, 
+    navigate, 
+    fetchPilotProgram, 
+    fetchSite, 
+    setSelectedProgram, 
+    setSelectedSite, 
+    selectedProgram, 
+    selectedSite,
+    fetchSubmissionPetriObservations,
+    fetchSubmissionGasifierObservations,
+    canEditSubmission,
+    setCurrentSessionId
+  ]);
+  
+  // Initialize form states from fetched observations
+  const initializeFormStates = (petriData: any[], gasifierData: any[]) => {
+    // Initialize petri form states
+    const petriStates = petriData.filter(p => !p.main_petri_id).map(petri => {
+      // Only include petri observations that aren't children of a split image
+      return {
+        id: uuidv4(),
+        observationId: petri.observation_id,
+        petriCode: petri.petri_code,
+        fungicideUsed: petri.fungicide_used,
+        surroundingWaterSchedule: petri.surrounding_water_schedule,
+        placement: petri.placement,
+        is_split_source: petri.is_split_source,
+        isValid: true, // Assume existing records are valid
+        isDirty: false, // Not modified yet
+        hasImage: !!petri.image_url,
+        hasData: true, // Existing record has data
+      } as PetriFormState;
+    });
+    
+    setPetriFormStates(petriStates);
+    
+    // Initialize gasifier form states
+    const gasifierStates = gasifierData.map(gasifier => ({
+      id: uuidv4(),
+      observationId: gasifier.observation_id,
+      gasifierCode: gasifier.gasifier_code,
+      chemicalType: gasifier.chemical_type as ChemicalType,
+      measure: gasifier.measure,
+      anomaly: gasifier.anomaly,
+      placementHeight: gasifier.placement_height as PlacementHeight,
+      directionalPlacement: gasifier.directional_placement as DirectionalPlacement,
+      placementStrategy: gasifier.placement_strategy as PlacementStrategy,
+      isValid: true, // Assume existing records are valid
+      isDirty: false, // Not modified yet
+      hasImage: !!gasifier.image_url,
+      hasData: true, // Existing record has data
+    } as GasifierFormState));
+    
+    setGasifierFormStates(gasifierStates);
   };
   
-  // Remove a petri form
-  const removePetriForm = (id: string) => {
-    setPetriForms(petriForms.filter(form => form.id !== id));
-    
-    // Remove the form data from petriObservationData
-    const updatedData = { ...petriObservationData };
-    delete updatedData[id];
-    setPetriObservationData(updatedData);
-  };
+  // Load data when component mounts
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
   
-  // Add a gasifier form
-  const addGasifierForm = () => {
-    const newFormId = uuidv4();
-    const formRef = React.createRef<GasifierFormRef>();
-    setGasifierForms([...gasifierForms, { id: newFormId, ref: formRef, isValid: false, isDirty: true }]);
-    
-    // If there are gasifier defaults in the site, show a warning
-    if (selectedSite?.gasifier_defaults && Array.isArray(selectedSite.gasifier_defaults) && selectedSite.gasifier_defaults.length > 0) {
-      setShowTemplateWarning('Gasifier');
+  // Configure formik for the main submission form
+  const formik = useFormik({
+    initialValues: {
+      temperature: submission?.temperature || 70,
+      humidity: submission?.humidity || 50,
+      indoor_temperature: submission?.indoor_temperature || '',
+      indoor_humidity: submission?.indoor_humidity || '',
+      airflow: submission?.airflow || 'Open',
+      odorDistance: submission?.odor_distance || '5-10ft',
+      weather: submission?.weather || 'Clear',
+      notes: submission?.notes || '',
+    },
+    validationSchema: SubmissionSchema,
+    enableReinitialize: true,
+    onSubmit: async (values) => {
+      if (!siteId || !submissionId) return;
+      
+      // Validate petri and gasifier forms
+      const petriFormsValid = await validatePetriForms();
+      const gasifierFormsValid = await validateGasifierForms();
+      
+      if (!petriFormsValid || !gasifierFormsValid) {
+        toast.error('Please fix the errors in the forms before submitting');
+        return;
+      }
+      
+      // Process forms to extract observation data
+      const petriObservationForms = await processPetriForms();
+      const gasifierObservationForms = await processGasifierForms();
+      
+      // Check if expected number of forms match
+      const hasAllExpectedForms = checkFormCompleteness();
+      
+      if (!hasAllExpectedForms) {
+        // Show confirmation if not all expected forms are present
+        setShowCompleteConfirm(true);
+        return;
+      }
+      
+      await submitForm(values, petriObservationForms, gasifierObservationForms, true);
     }
+  });
+  
+  // Process and validate petri forms
+  const validatePetriForms = async (): Promise<boolean> => {
+    logger.debug(`Validating ${petriFormStates.length} petri forms`);
+    
+    let allValid = true;
+    
+    for (const formState of petriFormStates) {
+      const ref = petriFormRefs.current[formState.id];
+      
+      if (ref) {
+        const isValid = await ref.validate();
+        if (!isValid) {
+          allValid = false;
+        }
+      }
+    }
+    
+    return allValid;
   };
   
-  // Remove a gasifier form
-  const removeGasifierForm = (id: string) => {
-    setGasifierForms(gasifierForms.filter(form => form.id !== id));
+  // Process and validate gasifier forms
+  const validateGasifierForms = async (): Promise<boolean> => {
+    logger.debug(`Validating ${gasifierFormStates.length} gasifier forms`);
     
-    // Remove the form data from gasifierObservationData
-    const updatedData = { ...gasifierObservationData };
-    delete updatedData[id];
-    setGasifierObservationData(updatedData);
+    let allValid = true;
+    
+    for (const formState of gasifierFormStates) {
+      const ref = gasifierFormRefs.current[formState.id];
+      
+      if (ref) {
+        const isValid = await ref.validate();
+        if (!isValid) {
+          allValid = false;
+        }
+      }
+    }
+    
+    return allValid;
+  };
+  
+  // Process petri forms to get data for submission
+  const processPetriForms = async (): Promise<PetriFormData[]> => {
+    const result: PetriFormData[] = [];
+    
+    for (const formState of petriFormStates) {
+      // Get the ref for this form
+      const ref = petriFormRefs.current[formState.id];
+      
+      if (!ref) continue;
+      
+      // Find the corresponding observation in the form states
+      const observationFormState = petriFormStates.find(fs => fs.id === formState.id);
+      if (!observationFormState) continue;
+      
+      // Add to result
+      result.push({
+        formId: formState.id,
+        petriCode: ref.petriCode,
+        imageFile: null, // Will be populated by the individual form components
+        imageUrl: undefined, // Will be populated by the individual form components
+        plantType: 'Other Fresh Perishable',
+        fungicideUsed: observationFormState.fungicideUsed || 'No',
+        surroundingWaterSchedule: observationFormState.surroundingWaterSchedule || 'Daily',
+        notes: '',
+        placement: observationFormState.placement || null,
+        placement_dynamics: null,
+        isValid: observationFormState.isValid,
+        hasData: observationFormState.hasData,
+        hasImage: observationFormState.hasImage,
+        observationId: observationFormState.observationId,
+        isDirty: observationFormState.isDirty
+      });
+    }
+    
+    return result;
+  };
+  
+  // Process gasifier forms to get data for submission
+  const processGasifierForms = async (): Promise<GasifierFormData[]> => {
+    const result: GasifierFormData[] = [];
+    
+    for (const formState of gasifierFormStates) {
+      // Get the ref for this form
+      const ref = gasifierFormRefs.current[formState.id];
+      
+      if (!ref) continue;
+      
+      // Find the corresponding observation in the form states
+      const observationFormState = gasifierFormStates.find(fs => fs.id === formState.id);
+      if (!observationFormState) continue;
+      
+      // Add to result
+      result.push({
+        formId: formState.id,
+        gasifierCode: ref.gasifierCode,
+        imageFile: null, // Will be populated by the individual form components
+        imageUrl: undefined, // Will be populated by the individual form components
+        chemicalType: observationFormState.chemicalType,
+        measure: observationFormState.measure,
+        anomaly: observationFormState.anomaly,
+        placementHeight: observationFormState.placementHeight || null,
+        directionalPlacement: observationFormState.directionalPlacement || null,
+        placementStrategy: observationFormState.placementStrategy || null,
+        notes: '',
+        isValid: observationFormState.isValid,
+        hasData: observationFormState.hasData,
+        hasImage: observationFormState.hasImage,
+        observationId: observationFormState.observationId,
+        isDirty: observationFormState.isDirty
+      });
+    }
+    
+    return result;
+  };
+  
+  // Check if all expected forms are present and valid
+  const checkFormCompleteness = (): boolean => {
+    if (!selectedSite) return true;
+    
+    // Check number of petri observations
+    const expectedPetris = selectedSite.total_petris || 0;
+    const actualPetris = petriFormStates.filter(form => form.isValid).length;
+    
+    // Check number of gasifier observations
+    const expectedGasifiers = selectedSite.total_gasifiers || 0;
+    const actualGasifiers = gasifierFormStates.filter(form => form.isValid).length;
+    
+    logger.debug(`Form completeness check:`, {
+      expectedPetris,
+      actualPetris,
+      expectedGasifiers,
+      actualGasifiers
+    });
+    
+    // Return true if all expected forms are present and valid
+    return actualPetris >= expectedPetris && actualGasifiers >= expectedGasifiers;
   };
   
   // Handle form submission
-  const handleSave = async () => {
+  const submitForm = async (
+    formValues: typeof formik.values, 
+    petriObservationForms: PetriFormData[], 
+    gasifierObservationForms: GasifierFormData[],
+    completeSession: boolean = false
+  ) => {
     if (!programId || !siteId || !submissionId) return;
     
-    setIsSaving(true);
+    setIsSubmitting(true);
     
     try {
-      // Use the observation data from the state variables
-      // Get data from petri forms
-      const validPetriData = Object.values(petriObservationData)
-        .filter(data => data.hasData || data.observationId) // Only include forms with data or existing observations
-        .map(data => ({
-          petriCode: data.petriCode,
-          imageFile: data.imageFile,
-          imageUrl: data.imageUrl,
-          plantType: data.plantType || 'Other Fresh Perishable',
-          fungicideUsed: data.fungicideUsed,
-          surroundingWaterSchedule: data.surroundingWaterSchedule,
-          notes: data.notes,
-          placement: data.placement,
-          placement_dynamics: data.placement_dynamics,
-          observationId: data.observationId,
-          isValid: data.isValid,
-          outdoor_temperature: data.outdoor_temperature,
-          outdoor_humidity: data.outdoor_humidity,
-          formId: data.formId,
-          tempImageKey: data.tempImageKey,
-          // Include all split image fields
-          is_image_split: data.is_image_split,
-          is_split_source: data.is_split_source,
-          split_processed: data.split_processed,
-          phase_observation_settings: data.phase_observation_settings,
-          main_petri_id: data.main_petri_id
-        }));
+      // Update the submission
+      const result = await updateSubmission(
+        submissionId,
+        Number(formValues.temperature),
+        Number(formValues.humidity),
+        formValues.airflow as 'Open' | 'Closed',
+        formValues.odorDistance as '5-10ft' | '10-25ft' | '25-50ft' | '50-100ft' | '>100ft',
+        formValues.weather as 'Clear' | 'Cloudy' | 'Rain',
+        formValues.notes || null,
+        petriObservationForms,
+        gasifierObservationForms,
+        formValues.indoor_temperature ? Number(formValues.indoor_temperature) : null,
+        formValues.indoor_humidity ? Number(formValues.indoor_humidity) : null
+      );
       
-      // Get data from gasifier forms
-      const validGasifierData = Object.values(gasifierObservationData)
-        .filter(data => data.hasData || data.observationId) // Only include forms with data or existing observations
-        .map(data => ({
-          gasifierCode: data.gasifierCode,
-          imageFile: data.imageFile,
-          imageUrl: data.imageUrl,
-          chemicalType: data.chemicalType,
-          measure: data.measure,
-          anomaly: data.anomaly,
-          notes: data.notes,
-          placementHeight: data.placementHeight,
-          directionalPlacement: data.directionalPlacement,
-          placementStrategy: data.placementStrategy,
-          observationId: data.observationId,
-          isValid: data.isValid,
-          outdoor_temperature: data.outdoor_temperature,
-          outdoor_humidity: data.outdoor_humidity,
-          formId: data.formId,
-          tempImageKey: data.tempImageKey,
-        }));
-      
-      // If online, update the submission using the hook function
-      if (isOnline) {
-        const result = await updateSubmission(
-          submissionId,
-          submission.temperature,
-          submission.humidity,
-          submission.airflow,
-          submission.odor_distance,
-          submission.weather,
-          submission.notes,
-          validPetriData,
-          validGasifierData,
-          undefined,
-          submission.indoor_temperature,
-          submission.indoor_humidity
-        );
-        
-        if (!result) {
-          throw new Error("Failed to update submission");
-        }
-        
-        // Update the session activity time
-        if (session?.session_id) {
-          await sessionManager.updateSessionActivity(session.session_id);
-        }
-        
-        // Update observation IDs if they were created/changed during save
-        if (result.updatedPetriObservations) {
-          const petriIdMap = new Map(result.updatedPetriObservations.map(p => [p.clientId, p.observationId]));
+      if (result) {
+        if (completeSession && session) {
+          // Complete the session
+          const completionResult = await sessionManager.completeSubmissionSession(session.session_id);
           
-          // Update the observation IDs in petriObservationData
-          const updatedPetriData = { ...petriObservationData };
-          for (const [clientId, observationId] of petriIdMap.entries()) {
-            if (updatedPetriData[clientId]) {
-              updatedPetriData[clientId] = {
-                ...updatedPetriData[clientId],
-                observationId,
-                isDirty: false
-              };
-            }
+          if (completionResult.success) {
+            setIsSessionCompleted(true);
+            toast.success('Submission completed successfully');
+            
+            // Navigate back to the submissions list
+            navigate(`/programs/${programId}/sites/${siteId}`);
+          } else {
+            toast.error('Failed to complete submission: ' + (completionResult.message || 'Unknown error'));
           }
-          setPetriObservationData(updatedPetriData);
-        }
-        
-        if (result.updatedGasifierObservations) {
-          const gasifierIdMap = new Map(result.updatedGasifierObservations.map(g => [g.clientId, g.observationId]));
+        } else {
+          toast.success('Submission saved successfully');
           
-          // Update the observation IDs in gasifierObservationData
-          const updatedGasifierData = { ...gasifierObservationData };
-          for (const [clientId, observationId] of gasifierIdMap.entries()) {
-            if (updatedGasifierData[clientId]) {
-              updatedGasifierData[clientId] = {
-                ...updatedGasifierData[clientId],
-                observationId,
-                isDirty: false
-              };
-            }
-          }
-          setGasifierObservationData(updatedGasifierData);
+          // Refresh the data
+          loadData();
+          
+          // Reset dirty flags on all forms
+          resetFormDirtyFlags();
         }
-        
-        // Reset dirty flags for all forms
-        petriForms.forEach(form => {
-          if (form.ref.current?.resetDirty) {
-            form.ref.current.resetDirty();
-          }
-        });
-        
-        gasifierForms.forEach(form => {
-          if (form.ref.current?.resetDirty) {
-            form.ref.current.resetDirty();
-          }
-        });
-        
-        // Update form state to reflect dirty flag reset
-        setPetriForms(forms => forms.map(form => ({...form, isDirty: false})));
-        setGasifierForms(forms => forms.map(form => ({...form, isDirty: false})));
-        
-        toast.success('Submission saved successfully');
       } else {
-        // If offline, store the changes locally
-        await offlineStorage.saveSubmissionOffline(
-          submission,
-          validPetriData,
-          validGasifierData
-        );
-        
-        toast.info('Changes saved locally and will sync when online');
+        toast.error('Failed to save submission');
       }
     } catch (error) {
-      logger.error('Error saving submission:', error);
-      toast.error('Failed to save submission');
+      logger.error('Error submitting form:', error);
+      toast.error('Error saving submission');
     } finally {
-      setIsSaving(false);
+      setIsSubmitting(false);
+      setShowCompleteConfirm(false);
     }
   };
   
-  // Handle form completion (marking as done)
-  const handleComplete = async () => {
-    // First, check if any forms are dirty and save if needed
-    const hasDirtyForms = 
-      petriForms.some(form => form.isDirty) ||
-      gasifierForms.some(form => form.isDirty);
+  // Handle saving without completing
+  const handleSaveDraft = async () => {
+    // Process forms to extract observation data
+    const petriObservationForms = await processPetriForms();
+    const gasifierObservationForms = await processGasifierForms();
     
-    if (hasDirtyForms) {
-      const confirmed = window.confirm('You have unsaved changes. Save them before completing?');
-      if (confirmed) {
-        await handleSave();
-      }
-    }
-    
-    // Now check if we have the expected number of observations
-    const validPetriCount = petriForms.filter(f => f.isValid).length;
-    const validGasifierCount = gasifierForms.filter(f => f.isValid).length;
-    
-    const hasMissingObservations = 
-      (expectedPetriCount > 0 && validPetriCount < expectedPetriCount) ||
-      (expectedGasifierCount > 0 && validGasifierCount < expectedGasifierCount);
-    
-    if (hasMissingObservations) {
-      // Show confirmation modal
-      setShowConfirmModal(true);
-      return;
-    }
-    
-    // If all observations are present or confirmed, complete the session
-    await completeSession();
+    // Submit without completing the session
+    await submitForm(formik.values, petriObservationForms, gasifierObservationForms, false);
   };
   
-  // Complete the session
-  const completeSession = async () => {
-    if (!session?.session_id) {
-      toast.error('No active session to complete');
-      return;
-    }
+  // Handle completing the submission after confirmation
+  const handleCompleteConfirmed = async () => {
+    // Process forms to extract observation data
+    const petriObservationForms = await processPetriForms();
+    const gasifierObservationForms = await processGasifierForms();
     
-    setIsSaving(true);
+    // Submit and complete the session
+    await submitForm(formik.values, petriObservationForms, gasifierObservationForms, true);
+  };
+  
+  // Handle cancelling the session
+  const handleCancelSession = async () => {
+    if (!session) return;
     
     try {
-      const result = await sessionManager.completeSubmissionSession(session.session_id);
+      const result = await sessionManager.cancelSubmissionSession(session.session_id);
       
-      if (result.success) {
-        toast.success('Submission completed successfully!');
-        // Update session data
-        setSession(result.session);
-        // Navigate back to submissions list
+      if (result) {
+        setIsSessionCancelled(true);
+        toast.success('Session cancelled successfully');
+        
+        // Navigate back to the submissions list
         navigate(`/programs/${programId}/sites/${siteId}`);
       } else {
-        throw new Error(result.message || 'Failed to complete session');
-      }
-    } catch (error) {
-      logger.error('Error completing session:', error);
-      toast.error('Failed to complete submission');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-  
-  // Handle cancelling the submission
-  const handleCancel = async () => {
-    if (!session?.session_id) {
-      navigate(`/programs/${programId}/sites/${siteId}`);
-      return;
-    }
-    
-    const confirmed = window.confirm(
-      'Are you sure you want to cancel this submission? All changes will be lost and the submission will be deleted.'
-    );
-    
-    if (!confirmed) return;
-    
-    setIsSaving(true);
-    
-    try {
-      const { success, message } = await sessionManager.cancelSubmissionSession(session.session_id);
-      
-      if (success) {
-        toast.success('Submission cancelled');
-        // Navigate back to submissions list
-        navigate(`/programs/${programId}/sites/${siteId}`);
-      } else {
-        throw new Error(message || 'Failed to cancel session');
+        toast.error('Failed to cancel session');
       }
     } catch (error) {
       logger.error('Error cancelling session:', error);
-      toast.error('Failed to cancel submission');
+      toast.error('Error cancelling session');
     } finally {
-      setIsSaving(false);
+      setShowCancelConfirm(false);
     }
   };
   
-  // Handle sharing the submission
-  const handleShare = async () => {
-    if (!canEditSubmission) {
-      setPermissionMessage("You don't have permission to share this submission with others.");
-      setShowPermissionModal(true);
-      return;
-    }
+  // Handle sharing the session
+  const handleShareSession = () => {
+    if (!session) return;
     
-    // Show sharing modal
     setShowShareModal(true);
   };
   
-  // Update completed petri count
-  useEffect(() => {
-    const completedCount = petriForms.filter(form => form.isValid).length;
-    setCompletedPetriCount(completedCount);
-  }, [petriForms]);
+  // Handle escalating the session
+  const handleEscalateSession = async () => {
+    if (!session || !programId) return;
+    
+    try {
+      const result = await sessionManager.escalateSubmissionSession(session.session_id, programId);
+      
+      if (result.success) {
+        toast.success('Session escalated to program admin successfully');
+        
+        // Reload data to reflect the new session status
+        loadData();
+      } else {
+        toast.error('Failed to escalate session: ' + (result.message || 'Unknown error'));
+      }
+    } catch (error) {
+      logger.error('Error escalating session:', error);
+      toast.error('Error escalating session');
+    }
+  };
   
-  // Update completed gasifier count
-  useEffect(() => {
-    const completedCount = gasifierForms.filter(form => form.isValid).length;
-    setCompletedGasifierCount(completedCount);
-  }, [gasifierForms]);
-
-  // Handle session expiration checking
-  useEffect(() => {
-    const checkSessionExpiration = () => {
-      if (!session?.session_start_time) return;
-      
-      const sessionStart = new Date(session.session_start_time);
-      const expirationTime = new Date(sessionStart);
-      expirationTime.setHours(23, 59, 59, 999);
-      
-      const now = new Date();
-      const hoursRemaining = (expirationTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-      
-      setIsSessionExpiring(hoursRemaining <= 1 && hoursRemaining > 0);
-      setIsSessionExpired(now > expirationTime);
+  // Create a new petri observation form
+  const createEmptyPetriObservation = (): PetriFormState => {
+    return {
+      id: uuidv4(),
+      petriCode: `P${(petriFormStates.length + 1).toString().padStart(2, '0')}`,
+      fungicideUsed: 'No' as 'Yes' | 'No',
+      surroundingWaterSchedule: 'Daily',
+      placement: null,
+      isValid: false,
+      isDirty: true,
+      hasImage: false,
+      hasData: true
     };
+  };
+  
+  // Create a new gasifier observation form
+  const createEmptyGasifierObservation = (): GasifierFormState => {
+    return {
+      id: uuidv4(),
+      gasifierCode: `G${(gasifierFormStates.length + 1).toString().padStart(2, '0')}`,
+      chemicalType: 'CLO2',
+      measure: null,
+      anomaly: false,
+      placementHeight: null,
+      directionalPlacement: null,
+      placementStrategy: null,
+      isValid: false,
+      isDirty: true,
+      hasImage: false,
+      hasData: true
+    };
+  };
+  
+  // Update a petri form's state
+  const handleUpdatePetriForm = (formId: string, data: any) => {
+    setPetriFormStates(prev => 
+      prev.map(form => 
+        form.id === formId 
+          ? { 
+              ...form, 
+              ...data,
+              // Only override these specific properties if they're in the data
+              petriCode: data.petriCode !== undefined ? data.petriCode : form.petriCode,
+              fungicideUsed: data.fungicideUsed !== undefined ? data.fungicideUsed : form.fungicideUsed,
+              surroundingWaterSchedule: data.surroundingWaterSchedule !== undefined ? data.surroundingWaterSchedule : form.surroundingWaterSchedule,
+              placement: data.placement !== undefined ? data.placement : form.placement,
+              is_split_source: data.is_split_source !== undefined ? data.is_split_source : form.is_split_source,
+              isValid: data.isValid !== undefined ? data.isValid : form.isValid,
+              isDirty: data.isDirty !== undefined ? data.isDirty : form.isDirty,
+              hasImage: data.hasImage !== undefined ? data.hasImage : form.hasImage,
+              observationId: data.observationId || form.observationId
+            } 
+          : form
+      )
+    );
+  };
+  
+  // Update a gasifier form's state
+  const handleUpdateGasifierForm = (formId: string, data: any) => {
+    setGasifierFormStates(prev => 
+      prev.map(form => 
+        form.id === formId 
+          ? { 
+              ...form, 
+              ...data,
+              // Only override these specific properties if they're in the data
+              gasifierCode: data.gasifierCode !== undefined ? data.gasifierCode : form.gasifierCode,
+              chemicalType: data.chemicalType !== undefined ? data.chemicalType : form.chemicalType,
+              measure: data.measure !== undefined ? data.measure : form.measure,
+              anomaly: data.anomaly !== undefined ? data.anomaly : form.anomaly,
+              placementHeight: data.placementHeight !== undefined ? data.placementHeight : form.placementHeight,
+              directionalPlacement: data.directionalPlacement !== undefined ? data.directionalPlacement : form.directionalPlacement,
+              placementStrategy: data.placementStrategy !== undefined ? data.placementStrategy : form.placementStrategy,
+              isValid: data.isValid !== undefined ? data.isValid : form.isValid,
+              isDirty: data.isDirty !== undefined ? data.isDirty : form.isDirty,
+              hasImage: data.hasImage !== undefined ? data.hasImage : form.hasImage,
+              observationId: data.observationId || form.observationId
+            } 
+          : form
+      )
+    );
+  };
+  
+  // Reset dirty flags on all forms after successful save
+  const resetFormDirtyFlags = () => {
+    // Reset petri forms
+    petriFormStates.forEach(form => {
+      const ref = petriFormRefs.current[form.id];
+      if (ref) {
+        ref.resetDirty();
+      }
+    });
     
-    // Check immediately
-    checkSessionExpiration();
+    // Reset gasifier forms
+    gasifierFormStates.forEach(form => {
+      const ref = gasifierFormRefs.current[form.id];
+      if (ref) {
+        ref.resetDirty();
+      }
+    });
     
-    // Set up timer to check every minute
-    sessionTimerRef.current = setInterval(checkSessionExpiration, 60 * 1000);
+    // Update form states
+    setPetriFormStates(prev => prev.map(form => ({ ...form, isDirty: false })));
+    setGasifierFormStates(prev => prev.map(form => ({ ...form, isDirty: false })));
+  };
+  
+  // Check if any forms are dirty (modified)
+  const hasUnsavedChanges = (): boolean => {
+    const formikDirty = formik.dirty;
+    const petriDirty = petriFormStates.some(form => form.isDirty);
+    const gasifierDirty = gasifierFormStates.some(form => form.isDirty);
     
-    return () => {
-      if (sessionTimerRef.current) {
-        clearInterval(sessionTimerRef.current);
+    return formikDirty || petriDirty || gasifierDirty;
+  };
+  
+  // Warn about unsaved changes before navigating away
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges()) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
       }
     };
-  }, [session]);
-
-  if (loading) {
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [formik.dirty, petriFormStates, gasifierFormStates]);
+  
+  // Count valid observations
+  const countValidObservations = () => {
+    const validPetris = petriFormStates.filter(form => form.isValid).length;
+    const validGasifiers = gasifierFormStates.filter(form => form.isValid).length;
+    
+    return {
+      petrisComplete: validPetris,
+      petrisTotal: selectedSite?.total_petris || 0,
+      gasifiersComplete: validGasifiers,
+      gasifiersTotal: selectedSite?.total_gasifiers || 0
+    };
+  };
+  
+  // Render a petri form component
+  const renderPetriForm = (
+    observation: PetriFormState, 
+    index: number, 
+    onUpdate: (data: any) => void,
+    onRemove: () => void,
+    showRemoveButton: boolean,
+    disabled: boolean
+  ) => {
+    // Find the matching petri observation from the fetched data
+    const observationData = observation.observationId
+      ? petriObservations.find(p => p.observation_id === observation.observationId)
+      : null;
+      
+    return (
+      <PetriForm
+        key={observation.id}
+        id={`petri-form-${observation.id}`}
+        formId={observation.id}
+        index={index}
+        siteId={siteId || ''}
+        submissionSessionId={session?.session_id || submissionId || ''}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+        showRemoveButton={showRemoveButton}
+        initialData={observationData ? {
+          petriCode: observationData.petri_code,
+          imageUrl: observationData.image_url,
+          plantType: observationData.plant_type,
+          fungicideUsed: observationData.fungicide_used,
+          surroundingWaterSchedule: observationData.surrounding_water_schedule,
+          notes: observationData.notes || '',
+          placement: observationData.placement,
+          placement_dynamics: observationData.placement_dynamics,
+          observationId: observationData.observation_id,
+          outdoor_temperature: observationData.outdoor_temperature,
+          outdoor_humidity: observationData.outdoor_humidity,
+          is_image_split: observationData.is_image_split,
+          is_split_source: observationData.is_split_source,
+          split_processed: observationData.split_processed,
+          phase_observation_settings: observationData.phase_observation_settings,
+          main_petri_id: observationData.main_petri_id
+        } : undefined}
+        disabled={disabled}
+        ref={ref => {
+          if (ref) {
+            petriFormRefs.current[observation.id] = ref;
+          }
+        }}
+        submissionOutdoorTemperature={submission?.temperature}
+        submissionOutdoorHumidity={submission?.humidity}
+      />
+    );
+  };
+  
+  // Render a gasifier form component
+  const renderGasifierForm = (
+    observation: GasifierFormState, 
+    index: number, 
+    onUpdate: (data: any) => void,
+    onRemove: () => void,
+    showRemoveButton: boolean,
+    disabled: boolean
+  ) => {
+    // Find the matching gasifier observation from the fetched data
+    const observationData = observation.observationId
+      ? gasifierObservations.find(g => g.observation_id === observation.observationId)
+      : null;
+      
+    return (
+      <GasifierForm
+        key={observation.id}
+        id={`gasifier-form-${observation.id}`}
+        formId={observation.id}
+        index={index}
+        siteId={siteId || ''}
+        submissionSessionId={session?.session_id || submissionId || ''}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+        showRemoveButton={showRemoveButton}
+        initialData={observationData ? {
+          gasifierCode: observationData.gasifier_code,
+          imageUrl: observationData.image_url,
+          chemicalType: observationData.chemical_type,
+          measure: observationData.measure,
+          anomaly: observationData.anomaly,
+          placementHeight: observationData.placement_height,
+          directionalPlacement: observationData.directional_placement,
+          placementStrategy: observationData.placement_strategy,
+          notes: observationData.notes || '',
+          observationId: observationData.observation_id,
+          outdoor_temperature: observationData.outdoor_temperature,
+          outdoor_humidity: observationData.outdoor_humidity
+        } : undefined}
+        disabled={disabled}
+        ref={ref => {
+          if (ref) {
+            gasifierFormRefs.current[observation.id] = ref;
+          }
+        }}
+        submissionOutdoorTemperature={submission?.temperature}
+        submissionOutdoorHumidity={submission?.humidity}
+      />
+    );
+  };
+  
+  // Get form properties for read-only rendering
+  const formsDisabled = !canEditSubmission || isSessionCompleted || isSessionCancelled;
+  
+  if (isLoading) {
     return <LoadingScreen />;
   }
-
+  
+  if (error) {
+    return (
+      <div className="bg-error-50 border border-error-200 text-error-700 px-4 py-3 rounded relative">
+        <strong className="font-bold">Error!</strong>
+        <span className="block sm:inline"> {error}</span>
+      </div>
+    );
+  }
+  
   if (!submission) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-600">Submission not found</p>
+        <p className="text-gray-600">Submission not found. Please select a submission first.</p>
         <Button
           variant="primary"
           className="mt-4"
           onClick={() => navigate(`/programs/${programId}/sites/${siteId}`)}
         >
-          Go Back
+          Go to Submissions
         </Button>
       </div>
     );
   }
-
-  // Check if session is in a state where editing is not allowed
-  const isSessionReadOnly = 
-    session && ['Completed', 'Cancelled', 'Expired', 'Expired-Complete', 'Expired-Incomplete'].includes(session.session_status);
-
-  // Helper function to render the weather icon based on the weather value
-  const renderWeatherIcon = (weather: string) => {
-    switch(weather.toLowerCase()) {
-      case 'clear':
-        return <Sun className="text-yellow-500 mr-2" size={18} />;
-      case 'cloudy':
-        return <Cloud className="text-gray-500 mr-2" size={18} />;
-      case 'rain':
-        return <CloudRain className="text-blue-500 mr-2" size={18} />;
-      default:
-        return <Sun className="text-yellow-500 mr-2" size={18} />;
-    }
-  };
+  
+  // Calculate observation counts
+  const { petrisComplete, petrisTotal, gasifiersComplete, gasifiersTotal } = countValidObservations();
 
   return (
     <div className="animate-fade-in">
+      {/* Header with back button */}
       <div className="flex items-center mb-6">
         <button
           onClick={() => navigate(`/programs/${programId}/sites/${siteId}`)}
@@ -820,535 +898,395 @@ const SubmissionEditPage = () => {
         >
           <ArrowLeft size={20} className="text-gray-500" />
         </button>
-        <div className="flex-grow">
-          <h1 className="text-2xl font-bold text-gray-900">
-            {submission.global_submission_id 
-              ? `Submission #${submission.global_submission_id}` 
-              : 'Edit Submission'}
-          </h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Edit Submission</h1>
           <p className="text-gray-600 mt-1">
-            {selectedSite?.name} - {format(new Date(submission.created_at), 'PPp')}
+            {selectedSite?.name} - {submission.global_submission_id ? `Submission #${submission.global_submission_id}` : 'New Submission'}
           </p>
         </div>
-        
-        <div className="hidden md:flex space-x-2">
-          {!isSessionReadOnly && (
-            <>
-              <Button
-                variant="danger"
-                onClick={handleCancel}
-                isLoading={isSaving}
-                disabled={!canEditSubmission}
-                icon={<XCircle size={16} />}
-                testId="cancel-submission-button"
-              >
-                Cancel
-              </Button>
-
-              <Button
-                variant="outline"
-                onClick={handleShare}
-                icon={<Share2 size={16} />}
-                testId="share-submission-button"
-              >
-                Share
-              </Button>
-              
-              <Button
-                variant="outline"
-                onClick={handleSave}
-                isLoading={isSaving}
-                disabled={!canEditSubmission}
-                icon={<Save size={16} />}
-                testId="save-submission-button"
-              >
-                Save
-              </Button>
-              
-              <Button
-                variant="primary"
-                onClick={handleComplete}
-                isLoading={isSaving}
-                disabled={
-                  !canEditSubmission ||
-                  completedPetriCount < filteredPetriObservations.length ||
-                  completedGasifierCount < gasifierObservations.length
-                }
-                icon={<CheckCircle size={16} />}
-                testId="complete-submission-button"
-              >
-                Complete
-              </Button>
-            </>
-          )}
-          
-          {isSessionReadOnly && (
-            <Button
-              variant="outline"
-              onClick={() => navigate(`/programs/${programId}/sites/${siteId}`)}
-              icon={<ArrowLeft size={16} />}
-            >
-              Back to Submissions
-            </Button>
-          )}
-        </div>
       </div>
-      
-      {isSessionExpired && !isSessionReadOnly && (
-        <div className="bg-error-50 border-l-4 border-error-500 p-4 mb-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertTriangle className="h-5 w-5 text-error-500" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-error-800">Session Expired</h3>
-              <div className="mt-2 text-sm text-error-700">
-                <p>
-                  This session has expired. You must complete your submission before midnight on the day it was started.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {isSessionExpiring && !isSessionReadOnly && (
-        <div className="bg-warning-50 border-l-4 border-warning-500 p-4 mb-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertTriangle className="h-5 w-5 text-warning-500" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-warning-800">Session Expiring Soon</h3>
-              <div className="mt-2 text-sm text-warning-700">
-                <p>
-                  This session will expire at midnight tonight. Please complete your submission before then.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Combined Submission Overview Card - Session details & progress */}
+      {/* Session information card */}
       <SubmissionOverviewCard
         session={session}
-        submissionCreatedAt={submission?.created_at}
-        openedByUserEmail={creatorEmail}
-        openedByUserName={creatorName}
-        onShare={handleShare}
-        canShare={canEditSubmission && !isSessionReadOnly}
-        petrisComplete={completedPetriCount}
-        petrisTotal={filteredPetriObservations.length}
-        gasifiersComplete={completedGasifierCount}
-        gasifiersTotal={gasifierObservations.length}
+        submissionCreatedAt={submission.created_at}
+        openedByUserEmail={session?.opened_by_user_email}
+        openedByUserName={session?.opened_by_user_name}
+        onShare={canEditSubmission ? handleShareSession : undefined}
+        canShare={canEditSubmission && !isSessionCompleted && !isSessionCancelled}
+        petrisComplete={petrisComplete}
+        petrisTotal={petrisTotal}
+        gasifiersComplete={gasifiersComplete}
+        gasifiersTotal={gasifiersTotal}
       />
 
-      {/* Two-column layout for Petri and Gasifier observations */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Petri Observations */}
-        <Card>
-          <CardHeader className="flex justify-between items-center cursor-pointer" onClick={() => setIsPetriAccordionOpen(!isPetriAccordionOpen)}>
-            <h2 className="font-medium">Petri Observations</h2>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-500">{completedPetriCount}/{filteredPetriObservations.length} Complete</span>
-              {isPetriAccordionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </div>
-          </CardHeader>
-          {isPetriAccordionOpen && (
-            <CardContent>
-              <div className="space-y-4">
-                {petriForms.map((form, index) => {
-                  // Find the corresponding observation data
-                  const observation = petriObservations.find(obs => obs.observation_id === form.id);
-                  
-                  // Skip rendering if this is a child split record
-                  if (observation?.is_image_split && !observation?.is_split_source && observation?.main_petri_id) {
-                    return null;
-                  }
-                  
-                  logger.debug(`Rendering PetriForm ${form.id}`, { 
-                    tempImageKey: form.tempImageKey || 'undefined',
-                    is_image_split: observation?.is_image_split,
-                    is_split_source: observation?.is_split_source,
-                    main_petri_id: observation?.main_petri_id
-                  });
-                  
-                  return (
-                    <PetriForm
-                      key={form.id}
-                      id={`petri-form-${form.id}`}
-                      formId={form.id}
-                      index={index + 1}
-                      siteId={siteId!}
-                      submissionSessionId={session?.session_id || submissionId!}
-                      ref={form.ref}
-                      onUpdate={(formId, data) => {
-                        // Store complete data in petriObservationData
-                        setPetriObservationData(prevData => ({
-                          ...prevData,
-                          [form.id]: {
-                            ...data,
-                            formId: form.id
-                          }
-                        }));
-                        
-                        // Update form validation state
-                        setPetriForms(prevForms => 
-                          prevForms.map(f => 
-                            f.id === form.id 
-                              ? { ...f, isValid: data.isValid, isDirty: data.isDirty || f.isDirty } 
-                              : f
-                          )
-                        );
-                        
-                        logger.debug(`Petri form ${form.id} updated with data:`, { 
-                          petriCode: data.petriCode,
-                          hasImageFile: !!data.imageFile,
-                          tempImageKey: data.tempImageKey,
-                          isValid: data.isValid,
-                          isDirty: data.isDirty,
-                          hasImage: data.hasImage,
-                          is_image_split: data.is_image_split,
-                          is_split_source: data.is_split_source,
-                          main_petri_id: data.main_petri_id
-                        });
-                      }}
-                      onRemove={() => removePetriForm(form.id)}
-                      showRemoveButton={petriForms.length > 1}
-                      initialData={observation ? {
-                        petriCode: observation.petri_code,
-                        imageUrl: observation.image_url,
-                        tempImageKey: form.tempImageKey, // Pass the tempImageKey from form state
-                        plantType: observation.plant_type,
-                        fungicideUsed: observation.fungicide_used,
-                        surroundingWaterSchedule: observation.surrounding_water_schedule,
-                        notes: observation.notes || '',
-                        placement: observation.placement,
-                        placement_dynamics: observation.placement_dynamics,
-                        observationId: observation.observation_id,
-                        outdoor_temperature: observation.outdoor_temperature,
-                        outdoor_humidity: observation.outdoor_humidity,
-                        // Include all split image fields
-                        is_image_split: observation.is_image_split,
-                        is_split_source: observation.is_split_source,
-                        split_processed: observation.split_processed,
-                        phase_observation_settings: observation.phase_observation_settings,
-                        main_petri_id: observation.main_petri_id
-                      } : undefined}
-                      disabled={isSessionReadOnly}
-                      observationId={form.observationId}
-                      submissionOutdoorTemperature={submission.temperature}
-                      submissionOutdoorHumidity={submission.humidity}
-                    />
-                  );
-                })}
-                
-                {!isSessionReadOnly && (
-                  <div className="flex justify-center mt-4">
-                    <Button
-                      variant="outline"
-                      onClick={addPetriForm}
-                      disabled={isSaving}
-                      testId="add-petri-form-button"
-                    >
-                      Add Petri Sample
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-        
-        {/* Gasifier Observations */}
-        <Card>
-          <CardHeader className="flex justify-between items-center cursor-pointer" onClick={() => setIsGasifierAccordionOpen(!isGasifierAccordionOpen)}>
-            <h2 className="font-medium">Gasifier Observations</h2>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-500">{completedGasifierCount}/{gasifierObservations.length} Complete</span>
-              {isGasifierAccordionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </div>
-          </CardHeader>
-          {isGasifierAccordionOpen && (
-            <CardContent>
-              <div className="space-y-4">
-                {gasifierForms.map((form, index) => (
-                  <GasifierForm
-                    key={form.id}
-                    id={`gasifier-form-${form.id}`}
-                    formId={form.id}
-                    index={index + 1}
-                    siteId={siteId!}
-                    submissionSessionId={session?.session_id || submissionId!}
-                    ref={form.ref}
-                    onUpdate={(formId, data) => {
-                      // Store complete data in gasifierObservationData
-                      setGasifierObservationData(prevData => ({
-                        ...prevData,
-                        [form.id]: {
-                          ...data,
-                          formId: form.id
-                        }
-                      }));
-                      
-                      // Update form validation state
-                      setGasifierForms(prevForms => 
-                        prevForms.map(f => 
-                          f.id === form.id 
-                            ? { ...f, isValid: data.isValid, isDirty: data.isDirty || f.isDirty } 
-                            : f
-                        )
-                      );
-                      
-                      logger.debug(`Gasifier form ${form.id} updated with data:`, { 
-                        gasifierCode: data.gasifierCode,
-                        hasImageFile: !!data.imageFile,
-                        tempImageKey: data.tempImageKey,
-                        isValid: data.isValid,
-                        isDirty: data.isDirty,
-                        hasImage: data.hasImage
-                      });
-                    }}
-                    onRemove={() => removeGasifierForm(form.id)}
-                    showRemoveButton={gasifierForms.length > 1}
-                    initialData={gasifierObservations.find(obs => obs.observation_id === form.id) ? {
-                      gasifierCode: gasifierObservations.find(obs => obs.observation_id === form.id).gasifier_code,
-                      imageUrl: gasifierObservations.find(obs => obs.observation_id === form.id).image_url,
-                      tempImageKey: form.tempImageKey, // Pass the tempImageKey from form state
-                      chemicalType: gasifierObservations.find(obs => obs.observation_id === form.id).chemical_type,
-                      measure: gasifierObservations.find(obs => obs.observation_id === form.id).measure,
-                      anomaly: gasifierObservations.find(obs => obs.observation_id === form.id).anomaly,
-                      placementHeight: gasifierObservations.find(obs => obs.observation_id === form.id).placement_height,
-                      directionalPlacement: gasifierObservations.find(obs => obs.observation_id === form.id).directional_placement,
-                      placementStrategy: gasifierObservations.find(obs => obs.observation_id === form.id).placement_strategy,
-                      notes: gasifierObservations.find(obs => obs.observation_id === form.id).notes || '',
-                      observationId: gasifierObservations.find(obs => obs.observation_id === form.id).observation_id,
-                      outdoor_temperature: gasifierObservations.find(obs => obs.observation_id === form.id).outdoor_temperature,
-                      outdoor_humidity: gasifierObservations.find(obs => obs.observation_id === form.id).outdoor_humidity
-                    } : undefined}
-                    disabled={isSessionReadOnly}
-                    observationId={form.observationId}
-                    submissionOutdoorTemperature={submission.temperature}
-                    submissionOutdoorHumidity={submission.humidity}
-                  />
-                ))}
-                
-                {!isSessionReadOnly && (
-                  <div className="flex justify-center mt-4">
-                    <Button
-                      variant="outline"
-                      onClick={addGasifierForm}
-                      disabled={isSaving}
-                      testId="add-gasifier-form-button"
-                    >
-                      Add Gasifier Sample
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-      </div>
-
-      {/* Submission details - Now moved below the observations with icons */}
+      {/* Main Submission Form */}
       <Card className="mb-6">
         <CardHeader>
-          <h2 className="font-medium">Submission Details</h2>
+          <h2 className="text-lg font-semibold">Submission Details</h2>
+        </CardHeader>
+        <form onSubmit={formik.handleSubmit}>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+              <div>
+                <h3 className="text-md font-medium mb-3 text-gray-700">Outdoor Environment</h3>
+                
+                <div className="space-y-4">
+                  <Input
+                    label="Temperature (°F)"
+                    id="temperature"
+                    name="temperature"
+                    type="number"
+                    value={formik.values.temperature}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={formik.touched.temperature && formik.errors.temperature ? formik.errors.temperature : undefined}
+                    disabled={formsDisabled}
+                    testId="temperature-input"
+                  />
+                  
+                  <Input
+                    label="Humidity (%)"
+                    id="humidity"
+                    name="humidity"
+                    type="number"
+                    value={formik.values.humidity}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={formik.touched.humidity && formik.errors.humidity ? formik.errors.humidity : undefined}
+                    disabled={formsDisabled}
+                    testId="humidity-input"
+                  />
+                  
+                  <div className="mb-4">
+                    <label htmlFor="airflow" className="block text-sm font-medium text-gray-700 mb-1">
+                      Airflow
+                    </label>
+                    <select
+                      id="airflow"
+                      name="airflow"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      value={formik.values.airflow}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      disabled={formsDisabled}
+                    >
+                      <option value="Open">Open</option>
+                      <option value="Closed">Closed</option>
+                    </select>
+                    {formik.touched.airflow && formik.errors.airflow && (
+                      <p className="mt-1 text-sm text-error-600">{formik.errors.airflow}</p>
+                    )}
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label htmlFor="odorDistance" className="block text-sm font-medium text-gray-700 mb-1">
+                      Odor Distance
+                    </label>
+                    <select
+                      id="odorDistance"
+                      name="odorDistance"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      value={formik.values.odorDistance}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      disabled={formsDisabled}
+                    >
+                      <option value="5-10ft">5-10 ft</option>
+                      <option value="10-25ft">10-25 ft</option>
+                      <option value="25-50ft">25-50 ft</option>
+                      <option value="50-100ft">50-100 ft</option>
+                      <option value=">100ft">More than 100 ft</option>
+                    </select>
+                    {formik.touched.odorDistance && formik.errors.odorDistance && (
+                      <p className="mt-1 text-sm text-error-600">{formik.errors.odorDistance}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-md font-medium mb-3 text-gray-700">Indoor Environment</h3>
+                
+                <div className="space-y-4">
+                  <Input
+                    label="Indoor Temperature (°F) - Optional"
+                    id="indoor_temperature"
+                    name="indoor_temperature"
+                    type="number"
+                    value={formik.values.indoor_temperature}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={formik.touched.indoor_temperature && formik.errors.indoor_temperature ? formik.errors.indoor_temperature : undefined}
+                    disabled={formsDisabled}
+                    helperText="Valid range: 32-120°F"
+                    testId="indoor-temperature-input"
+                  />
+                  
+                  <Input
+                    label="Indoor Humidity (%) - Optional"
+                    id="indoor_humidity"
+                    name="indoor_humidity"
+                    type="number"
+                    value={formik.values.indoor_humidity}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={formik.touched.indoor_humidity && formik.errors.indoor_humidity ? formik.errors.indoor_humidity : undefined}
+                    disabled={formsDisabled}
+                    helperText="Valid range: 1-100%"
+                    testId="indoor-humidity-input"
+                  />
+                  
+                  <div className="mb-4">
+                    <label htmlFor="weather" className="block text-sm font-medium text-gray-700 mb-1">
+                      Weather
+                    </label>
+                    <select
+                      id="weather"
+                      name="weather"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      value={formik.values.weather}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      disabled={formsDisabled}
+                    >
+                      <option value="Clear">Clear</option>
+                      <option value="Cloudy">Cloudy</option>
+                      <option value="Rain">Rain</option>
+                    </select>
+                    {formik.touched.weather && formik.errors.weather && (
+                      <p className="mt-1 text-sm text-error-600">{formik.errors.weather}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
+                Notes (Optional)
+              </label>
+              <textarea
+                id="notes"
+                name="notes"
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                placeholder="Enter any additional notes about this submission"
+                value={formik.values.notes}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                disabled={formsDisabled}
+              ></textarea>
+              {formik.touched.notes && formik.errors.notes && (
+                <p className="mt-1 text-sm text-error-600">{formik.errors.notes}</p>
+              )}
+            </div>
+          </CardContent>
+          
+          {!formsDisabled && (
+            <CardFooter className="flex justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowCancelConfirm(true)}
+                disabled={isSubmitting}
+                icon={<X size={16} />}
+                testId="cancel-submission-button"
+              >
+                Cancel Submission
+              </Button>
+              
+              <div className="flex space-x-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSaveDraft}
+                  disabled={isSubmitting || !hasUnsavedChanges()}
+                  testId="save-draft-button"
+                >
+                  Save Draft
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isLoading={isSubmitting}
+                  icon={<Check size={16} />}
+                  testId="complete-submission-button"
+                >
+                  Complete Submission
+                </Button>
+              </div>
+            </CardFooter>
+          )}
+        </form>
+      </Card>
+
+      {/* Petri Observations Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold">
+              Petri Samples ({petriFormStates.filter(form => form.isValid).length}/{petrisTotal || '0'})
+            </h2>
+            <div className="flex space-x-2">
+              {!formsDisabled && (
+                <Button
+                  type="button"
+                  variant={isPetriAccordionOpen ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => setIsPetriAccordionOpen(!isPetriAccordionOpen)}
+                  icon={<FilePlus size={16} />}
+                >
+                  {isPetriAccordionOpen ? 'Hide Petri Samples' : 'Show Petri Samples'}
+                </Button>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Outdoor Environment</h3>
-              <div className="space-y-2">
-                <div className="flex items-center">
-                  <Thermometer className="text-error-500 mr-2" size={18} />
-                  <div className="text-sm">
-                    <span className="text-gray-500">Outdoor:</span> 
-                    <span className="ml-1 font-medium">{submission.temperature}°F</span>
-                    <span className="mx-1 text-gray-400">|</span>
-                    <span className="text-gray-500">Indoor:</span> 
-                    <span className="ml-1 font-medium">
-                      {submission.indoor_temperature ? `${submission.indoor_temperature}°F` : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <Droplets className="text-secondary-500 mr-2" size={18} />
-                  <div className="text-sm">
-                    <span className="text-gray-500">Outdoor:</span> 
-                    <span className="ml-1 font-medium">{submission.humidity}%</span>
-                    <span className="mx-1 text-gray-400">|</span>
-                    <span className="text-gray-500">Indoor:</span> 
-                    <span className="ml-1 font-medium">
-                      {submission.indoor_humidity ? `${submission.indoor_humidity}%` : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  {renderWeatherIcon(submission.weather)}
-                  <div className="text-sm">
-                    <span className="text-gray-500">Weather:</span> 
-                    <span className="ml-1 font-medium">{submission.weather}</span>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <Wind className="text-primary-500 mr-2" size={18} />
-                  <div className="text-sm">
-                    <span className="text-gray-500">Airflow:</span> 
-                    <span className="ml-1 font-medium">{submission.airflow}</span>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <Ruler className="text-primary-500 mr-2" size={18} />
-                  <div className="text-sm">
-                    <span className="text-gray-500">Odor Distance:</span> 
-                    <span className="ml-1 font-medium">{submission.odor_distance}</span>
-                  </div>
-                </div>
-              </div>
+          <ObservationListManager
+            observations={petriFormStates}
+            setObservations={setPetriFormStates}
+            isAccordionOpen={isPetriAccordionOpen}
+            setIsAccordionOpen={setIsPetriAccordionOpen}
+            addButtonText="Add Petri Sample"
+            templateWarningEntityType="Petri"
+            onShowTemplateWarning={(entityType) => setShowPetriTemplateWarning(true)}
+            disabled={formsDisabled}
+            createEmptyObservation={createEmptyPetriObservation}
+            renderFormComponent={renderPetriForm}
+            testId="petri-observation-manager"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Gasifier Observations Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold">
+              Gasifier Samples ({gasifierFormStates.filter(form => form.isValid).length}/{gasifiersTotal || '0'})
+            </h2>
+            <div className="flex space-x-2">
+              {!formsDisabled && (
+                <Button
+                  type="button"
+                  variant={isGasifierAccordionOpen ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => setIsGasifierAccordionOpen(!isGasifierAccordionOpen)}
+                  icon={<FilePlus size={16} />}
+                >
+                  {isGasifierAccordionOpen ? 'Hide Gasifier Samples' : 'Show Gasifier Samples'}
+                </Button>
+              )}
             </div>
-            
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Details</h3>
-              <div className="space-y-2">
-                <div className="flex items-center">
-                  <Calendar className="text-primary-500 mr-2" size={18} />
-                  <span className="text-sm">
-                    {format(new Date(submission.created_at), 'PPp')}
-                  </span>
-                </div>
-                {submission.created_by && (
-                  <div className="flex items-center">
-                    <User className="text-primary-500 mr-2" size={18} />
-                    <span className="text-sm">
-                      {submission.created_by_name || 'User'}
-                    </span>
-                  </div>
-                )}
-                {session?.last_activity_time && (
-                  <div className="flex items-center">
-                    <Calendar className="text-primary-500 mr-2" size={18} />
-                    <div className="text-sm">
-                      <span className="text-gray-500">Last activity:</span>
-                      <span className="ml-1 font-medium">
-                        {format(new Date(session.last_activity_time), 'Pp')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            {/* Observations Summary */}
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Observations</h3>
-              <div className="space-y-2">
-                <div className="p-2 bg-primary-50 rounded-md border border-primary-100">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-primary-800">Petri Samples:</span>
-                    <span className="font-medium">{filteredPetriObservations.length}</span>
-                  </div>
-                </div>
-                <div className="p-2 bg-accent-50 rounded-md border border-accent-100">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-accent-800">Gasifier Samples:</span>
-                    <span className="font-medium">{gasifierObservations.length}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {submission.notes && (
-              <div className="md:col-span-3">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Notes</h3>
-                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-md border border-gray-100">
-                  {submission.notes}
-                </p>
-              </div>
-            )}
           </div>
+        </CardHeader>
+        <CardContent>
+          <ObservationListManager
+            observations={gasifierFormStates}
+            setObservations={setGasifierFormStates}
+            isAccordionOpen={isGasifierAccordionOpen}
+            setIsAccordionOpen={setIsGasifierAccordionOpen}
+            addButtonText="Add Gasifier Sample"
+            templateWarningEntityType="Gasifier"
+            onShowTemplateWarning={(entityType) => setShowGasifierTemplateWarning(true)}
+            disabled={formsDisabled}
+            createEmptyObservation={createEmptyGasifierObservation}
+            renderFormComponent={renderGasifierForm}
+            testId="gasifier-observation-manager"
+          />
         </CardContent>
       </Card>
       
-      {/* Action buttons for mobile (fixed at bottom) */}
-      {!isSessionReadOnly && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 flex space-x-2 z-10">
-          <Button
-            variant="outline"
-            onClick={() => navigate(`/programs/${programId}/sites/${siteId}`)}
-            className="flex-1"
-          >
-            Back
-          </Button>
-          <Button
-            variant="danger"
-            onClick={handleCancel}
-            className="flex-1"
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleSave}
-            isLoading={isSaving}
-            className="flex-1"
-            disabled={!canEditSubmission}
-          >
-            Save
-          </Button>
-          <Button
-            variant="primary"
-            onClick={handleComplete}
-            isLoading={isSaving}
-            className="flex-1"
-            disabled={
-              !canEditSubmission ||
-              completedPetriCount < filteredPetriObservations.length ||
-              completedGasifierCount < gasifierObservations.length
-            }
-          >
-            Complete
-          </Button>
+      {/* Display completed/cancelled session message */}
+      {(isSessionCompleted || isSessionCancelled) && (
+        <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg mb-6">
+          <p className="text-gray-700 flex items-center">
+            <AlertTriangle className="text-warning-500 mr-2" size={20} />
+            <span>
+              This submission is {isSessionCompleted ? 'complete' : 'cancelled'} and cannot be edited.
+            </span>
+          </p>
+          <div className="flex justify-end mt-3">
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/programs/${programId}/sites/${siteId}`)}
+            >
+              Back to Submissions
+            </Button>
+          </div>
         </div>
       )}
       
-      {/* Template warning modal */}
-      <TemplateWarningModal
-        isOpen={!!showTemplateWarning}
-        onClose={() => setShowTemplateWarning(null)}
-        onConfirm={() => {}}
-        entityType={showTemplateWarning || 'Petri'}
+      {/* Warning for offline users */}
+      {!isOnline && !isSessionCompleted && !isSessionCancelled && (
+        <div className="bg-warning-50 border border-warning-200 p-4 rounded-lg mb-6">
+          <p className="text-warning-700 flex items-center">
+            <AlertTriangle className="text-warning-500 mr-2" size={20} />
+            <span>
+              You are currently offline. Changes will be saved locally and synced when you reconnect.
+            </span>
+          </p>
+        </div>
+      )}
+      
+      {/* Session Share Modal */}
+      <SessionShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        sessionId={session?.session_id || ''}
+        programId={programId || ''}
       />
       
-      {/* Confirmation modal for incomplete submissions */}
+      {/* Petri Template Warning Modal */}
+      <TemplateWarningModal
+        isOpen={showPetriTemplateWarning}
+        onClose={() => setShowPetriTemplateWarning(false)}
+        onConfirm={() => setShowPetriTemplateWarning(false)}
+        entityType="Petri"
+      />
+      
+      {/* Gasifier Template Warning Modal */}
+      <TemplateWarningModal
+        isOpen={showGasifierTemplateWarning}
+        onClose={() => setShowGasifierTemplateWarning(false)}
+        onConfirm={() => setShowGasifierTemplateWarning(false)}
+        entityType="Gasifier"
+      />
+      
+      {/* Complete Confirmation Modal */}
       <ConfirmSubmissionModal
-        isOpen={showConfirmModal}
-        onClose={() => setShowConfirmModal(false)}
-        onConfirm={completeSession}
-        currentPetriCount={petriForms.filter(f => f.isValid).length}
-        currentGasifierCount={gasifierForms.filter(f => f.isValid).length}
-        expectedPetriCount={expectedPetriCount}
-        expectedGasifierCount={expectedGasifierCount}
+        isOpen={showCompleteConfirm}
+        onClose={() => setShowCompleteConfirm(false)}
+        onConfirm={handleCompleteConfirmed}
+        currentPetriCount={petriFormStates.filter(form => form.isValid).length}
+        currentGasifierCount={gasifierFormStates.filter(form => form.isValid).length}
+        expectedPetriCount={petrisTotal}
+        expectedGasifierCount={gasifiersTotal}
         siteName={selectedSite?.name || ''}
       />
       
-      {/* Permission modal */}
+      {/* Cancel Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={showCancelConfirm}
+        onClose={() => setShowCancelConfirm(false)}
+        onConfirm={handleCancelSession}
+        title="Cancel Submission"
+        message="Are you sure you want to cancel this submission? This will discard all progress and the submission will be incomplete."
+        confirmText="Cancel Submission"
+      />
+      
+      {/* Permission Modal */}
       <PermissionModal
         isOpen={showPermissionModal}
         onClose={() => setShowPermissionModal(false)}
-        message={permissionMessage}
+        message="You don't have permission to edit this submission. Please contact your program administrator for access."
       />
       
-      {/* Share modal */}
-      {showShareModal && session && (
-        <SessionShareModal
-          isOpen={showShareModal}
-          onClose={() => setShowShareModal(false)}
-          sessionId={session.session_id}
-          programId={programId!}
-        />
+      {/* Sync Status */}
+      {syncStatus !== 'synced' && (
+        <SyncStatus status={syncStatus} />
       )}
     </div>
   );
