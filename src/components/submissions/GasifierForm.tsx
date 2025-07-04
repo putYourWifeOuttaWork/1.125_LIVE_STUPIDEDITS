@@ -293,7 +293,7 @@ const GasifierForm = forwardRef<GasifierFormRef, GasifierFormProps>(({
         outdoor_temperature: formik.values.outdoor_temperature,
         initialOutdoor_temperature: formik.initialValues.outdoor_temperature,
         outdoor_humidity: formik.values.outdoor_humidity
-        initialOutdoor_humidity: formik.initialValues.outdoor_humidity
+        initialOutdoor_humidity: formik.initialValues.outdoor_humidity,
       });
 
       onUpdate(formId, {
