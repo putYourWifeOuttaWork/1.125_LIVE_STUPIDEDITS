@@ -280,7 +280,7 @@ const HomePage = () => {
           <p className="text-gray-600 mt-1">Your Field Observations Platform</p>
         </div>
         
-        <div className="flex flex-wrap gap-2">
+        <div className="hidden md:flex flex-wrap gap-2">
           <Button
             variant="contained"
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 animate-pulse"
@@ -315,6 +315,39 @@ const HomePage = () => {
       
       {/* Unclaimed Sessions Card - NEW COMPONENT */}
       <UnclaimedSessionsCard />
+      
+      {/* Mobile action buttons - Only visible on mobile */}
+      <div className="md:hidden flex flex-wrap gap-2 justify-center mt-4 mb-4">
+        <Button
+          variant="contained"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 animate-pulse"
+          onClick={() => setIsSessionsDrawerOpen(true)}
+          icon={<ClipboardList size={16} />}
+          testId="manage-sessions-button"
+        >
+          Manage Sessions
+        </Button>
+        
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate('/programs')}
+          testId="view-programs-button"
+        >
+          View Programs
+        </Button>
+        
+        {selectedProgramId && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/programs/${selectedProgramId}/sites`)}
+            testId="view-all-sites-button"
+          >
+            View All Sites
+          </Button>
+        )}
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         {/* Program/Site Selection Card */}
