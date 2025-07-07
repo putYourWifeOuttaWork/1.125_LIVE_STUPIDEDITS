@@ -508,13 +508,18 @@ const ReportBuilderPage = () => {
                       value={selectedMetric ? `${selectedMetric.function}_${selectedMetric.field}` : ''}
                       onChange={(e) => {
                         const [fn, field] = e.target.value.split('_');
-                        const metric = selectedEntityMetadata.aggregations.find(
-                          a => a.function === fn && a.field === field
+                        // Handle the case where field might be '*' for COUNT aggregations
+                        const fieldValue = field === '*' ? undefined : field;
+                        
+                        // Find the matching aggregation in the metadata
+                        const metric = selectedEntityMetadata.aggregations.find(agg => 
+                          agg.function === fn && (agg.field === fieldValue || (!agg.field && fieldValue === undefined))
                         );
+                        
                         if (metric) {
                           setSelectedMetric({
                             function: metric.function,
-                            field: metric.field || '*',
+                            field: metric.field || '*', // Use '*' for undefined fields
                             label: metric.label
                           });
                         }
@@ -679,7 +684,7 @@ const ReportBuilderPage = () => {
               >
                 Reset
               </Button>
-              <div className="space-x-2">
+              <div className="flex flex-col space-y-2">
                 <Button
                   variant="primary"
                   icon={<Play size={16} />}
