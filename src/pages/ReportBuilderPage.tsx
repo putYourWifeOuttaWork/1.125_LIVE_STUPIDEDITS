@@ -155,11 +155,6 @@ const ReportBuilderPage = () => {
       
       if (results && results.success) {
         setReportResults(results);
-        
-        // If we have a chart element and data, render the visualization
-        if (chartRef.current && results.data && results.data.length > 0) {
-          renderVisualization(results.data, visualizationType);
-        }
       } else {
         toast.error(results?.message || 'Failed to execute report query');
       }
@@ -208,7 +203,7 @@ const ReportBuilderPage = () => {
   const renderVisualization = (data: any[], type: 'bar' | 'line' | 'table') => {
     if (!chartRef.current) return;
     
-    // Clear previous chart
+    // Clear previous chart before rendering
     d3.select(chartRef.current).selectAll('*').remove();
     
     // Skip visualization if using table view
@@ -216,7 +211,7 @@ const ReportBuilderPage = () => {
     
     // Set up dimensions
     const margin = { top: 20, right: 30, bottom: 40, left: 40 };
-    const width = chartRef.current.clientWidth - margin.left - margin.right;
+    const width = Math.max(0, chartRef.current.clientWidth - margin.left - margin.right);
     const height = 400 - margin.top - margin.bottom;
     
     // Create SVG
@@ -298,6 +293,16 @@ const ReportBuilderPage = () => {
         .attr('fill', '#4ade80');
     }
   };
+  
+  // Add a useEffect hook to re-render the chart when reportResults or visualizationType changes
+  useEffect(() => {
+    if (chartRef.current && reportResults && reportResults.data && reportResults.data.length > 0) {
+      renderVisualization(reportResults.data, visualizationType);
+    } else if (chartRef.current) {
+      // Clear the chart if there are no results
+      d3.select(chartRef.current).selectAll('*').remove();
+    }
+  }, [reportResults, visualizationType]);
   
   // Function to add a new filter
   const addFilter = () => {
@@ -673,13 +678,24 @@ const ReportBuilderPage = () => {
               <Button
                 variant="outline"
                 onClick={() => {
-                  // Reset form
+                  // Reset all form states to initial values
                   setReportName('New Report');
                   setReportDescription('');
                   setSelectedEntity(null);
                   setSelectedDimension(null);
                   setSelectedMetric(null);
+                  setSelectedTimeField(null);
+                  setSelectedTimeGranularity('week');
+                  setUseTimeFilter(false);
+                  setStartDate(subDays(new Date(), 30));
+                  setEndDate(new Date());
                   setFilters([]);
+                  setReportResults(null);
+                  
+                  // Also clear the chart
+                  if (chartRef.current) {
+                    d3.select(chartRef.current).selectAll('*').remove();
+                  }
                 }}
               >
                 Reset
