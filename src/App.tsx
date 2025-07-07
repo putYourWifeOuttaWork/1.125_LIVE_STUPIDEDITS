@@ -29,6 +29,8 @@ const SubmissionsPage = lazy(() => import('./pages/SubmissionsPage'));
 const SubmissionEditPage = lazy(() => import('./pages/SubmissionEditPage')); // Add this line
 const NewSubmissionPage = lazy(() => import('./pages/NewSubmissionPage')); // Add this line
 const SiteTemplateManagementPage = lazy(() => import('./pages/SiteTemplateManagementPage'));
+const ReportBuilderPage = lazy(() => import('./pages/ReportBuilderPage'));
+const ReportsListPage = lazy(() => import('./pages/ReportsListPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const CompanyManagementPage = lazy(() => import('./pages/CompanyManagementPage'));
@@ -357,6 +359,16 @@ function App() {
               <Route path="/programs/:programId/sites/:siteId/template" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <SiteTemplateManagementPage />
+                </Suspense>
+              } />
+              <Route path="/reports" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <ReportsListPage />
+                </Suspense>
+              } />
+              <Route path="/reports/builder" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <ReportBuilderPage />
                 </Suspense>
               } />
               <Route path="/programs/:programId/audit-log" element={

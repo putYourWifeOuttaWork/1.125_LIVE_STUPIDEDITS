@@ -13,7 +13,8 @@ import {
   History,
   Building,
   Leaf,
-  ClipboardList
+  ClipboardList,
+  BarChart
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -216,6 +217,15 @@ const AppLayout = () => {
             </Link>
             
             <Link 
+              to="/reports" 
+              className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
+              data-testid="reports-link"
+            >
+              <BarChart size={18} />
+              <span className="hidden lg:inline">Reports</span>
+            </Link>
+            
+            <Link 
               to="/programs" 
               className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
               onClick={() => setIsMobileMenuOpen(false)}
@@ -226,6 +236,19 @@ const AppLayout = () => {
                 <span>Programs</span>
               </div>
             </Link>
+
+            <Link 
+              to="/reports" 
+              className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+              onClick={() => setIsMobileMenuOpen(false)}
+              data-testid="mobile-reports-link"
+            >
+              <div className="flex items-center space-x-2">
+                <BarChart size={18} />
+                <span>Reports</span>
+              </div>
+            </Link>
+            
             {selectedProgram && (
               <>
                 <Link 
