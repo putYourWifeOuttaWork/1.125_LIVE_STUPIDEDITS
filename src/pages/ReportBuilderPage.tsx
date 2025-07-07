@@ -210,7 +210,7 @@ const ReportBuilderPage = () => {
     if (type === 'table') return;
     
     // Set up dimensions
-    const margin = { top: 20, right: 30, bottom: 40, left: 40 };
+    const margin = { top: 20, right: 30, bottom: 100, left: 60 };
     const width = Math.max(0, chartRef.current.clientWidth - margin.left - margin.right);
     const height = 400 - margin.top - margin.bottom;
     
@@ -239,7 +239,24 @@ const ReportBuilderPage = () => {
     // Add X axis
     svg.append('g')
       .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x))
+      .call(d3.axisBottom(x).tickFormat(d => {
+        // If this looks like a date, format it nicely
+        if (typeof d === 'string' && (d.includes('-') || d.includes('+'))) {
+          try {
+            // Try to parse it as a date
+            const date = new Date(d);
+            // Check if it's a valid date
+            if (!isNaN(date.getTime())) {
+              // Format to "Jun 1", "Jun 8", etc.
+              return format(date, 'MMM d');
+            }
+          } catch (error) {
+            // If parsing fails, return original value
+            return d;
+          }
+        }
+        return d;
+      }))
       .selectAll('text')
       .style('text-anchor', 'end')
       .attr('dx', '-.8em')
