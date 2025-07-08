@@ -71,6 +71,7 @@ export function useReports() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
 
+
   // Query for fetching all reports
   const reportsQuery = useQuery({
     queryKey: ['reports', user?.id],
@@ -79,11 +80,9 @@ export function useReports() {
         .from('custom_reports')
         .select('*')
         .order('name');
-        
       if (error) {
         throw error;
       }
-      
       return data || [];
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -94,12 +93,13 @@ export function useReports() {
     queryKey: ['reportMetadata'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_available_report_metadata');
-      
       if (error) {
         throw error;
       }
-      
-      return data as ReportEntityMetadata[];
+      if (!data) {
+        return []; // Return empty array instead of null if no data
+      }
+      return Array.isArray(data) ? data : []; // Ensure we always return an array
     },
     staleTime: 24 * 60 * 60 * 1000, // 24 hours - metadata doesn't change often
   });
@@ -264,37 +264,34 @@ export function useReports() {
   const fetchReport = useCallback(async (reportId: string): Promise<CustomReport | null> => {
     try {
       console.log(`Fetching report with ID: ${reportId}`);
-      
       // Check cache first
       const cachedReport = queryClient.getQueryData<CustomReport>(['report', reportId]);
       if (cachedReport) {
         console.log('Using cached report data');
         return cachedReport;
       }
-      
       const { data, error } = await supabase
         .from('custom_reports')
         .select('*')
         .eq('report_id', reportId)
         .single();
-      
       if (error) throw error;
       
       // Cache the result
       queryClient.setQueryData(['report', reportId], data);
-      
       console.log('Successfully fetched report');
       return data as CustomReport;
     } catch (err) {
       console.error('Error in fetchReport:', err);
-      return null;
+      toast.error('Failed to load report');
+      return null; // Return null on error
     }
   }, [queryClient]);
 
   return {
     reports: reportsQuery.data || [],
     reportMetadata: reportMetadataQuery.data || [], // Now returns the array directly
-    isLoading: reportsQuery.isLoading || reportMetadataQuery.isLoading,
+    isLoading: reportsQuery.isLoading || reportMetadataQuery.isLoading || reportsQuery.isRefetching || reportMetadataQuery.isRefetching,
     isError: reportsQuery.isError || reportMetadataQuery.isError,
     error: reportsQuery.error || reportMetadataQuery.error,
     createReport,
