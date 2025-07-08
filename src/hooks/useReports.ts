@@ -1,432 +1,732 @@
-import { useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Leaf,
+  Plus,
+  BarChart4,
+  CloudRain,
+  Sun,
+  Cloud,
+  Clock,
+  Building,
+  ArrowRight,
+  MapPin,
+  Home,
+  Hash,
+  ClipboardList,
+} from 'lucide-react';
+import Button from '../components/common/Button';
+import Card, { CardHeader, CardContent, CardFooter } from '../components/common/Card';
+import usePilotPrograms from '../hooks/usePilotPrograms';
+import { useSites } from '../hooks/useSites';
+import useCompanies from '../hooks/useCompanies';
+import LoadingScreen from '../components/common/LoadingScreen';
+import { format } from 'date-fns';
 import { supabase } from '../lib/supabaseClient';
-import { useAuthStore } from '../stores/authStore';
+import { PilotProgram, Site } from '../lib/types';
 import { toast } from 'react-toastify';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { withRetry } from '../utils/helpers';
-import { createLogger } from '../utils/logger';
-import useCompanies from './useCompanies';
+import useWeather from '../hooks/useWeather';
+import AnalyticsChart from '../components/dashboard/AnalyticsChart';
+import UnclaimedSessionsCard from '../components/submissions/UnclaimedSessionsCard';
+import { useSessionStore } from '../stores/sessionStore';
 
-// Create a logger for report operations
-const logger = createLogger('useReports');
-
-// Define types for reports
-export interface ReportConfiguration {
-  entity: string;
-  dimensions?: string[];
-  metrics?: {
-    function: string;
-    field: string;
-  }[];
-  time_dimension?: {
-    field: string;
-    granularity: 'day' | 'week' | 'month' | 'quarter' | 'year';
-  };
-  filters?: {
-    field: string;
-    operator: '=' | '!=' | '>' | '>=' | '<' | '<=' | 'LIKE' | 'IN';
-    value: string | string[] | number | boolean;
-  }[];
-  program_id?: string;
-  company_id?: string;
-  visualization?: {
-    type: 'bar' | 'line' | 'pie' | 'table';
-    options?: Record<string, any>;
-  };
-}
-
-export interface CustomReport {
-  report_id: string;
-  name: string;
-  description?: string;
-  created_by_user_id: string;
-  company_id: string;
-  program_id?: string;
-  configuration: ReportConfiguration;
+// Type for recent submission from the get_recent_submissions RPC
+interface RecentSubmission {
+  submission_id: string;
+  site_id: string;
+  site_name: string;
+  program_id: string;
+  program_name: string;
+  temperature: number;
+  humidity: number;
   created_at: string;
-  updated_at: string;
+  petri_count: number;
+  gasifier_count?: number;
+  global_submission_id?: number;
 }
 
-export interface ReportMetadata {
-  entity: string;
-  label: string;
-  fields: {
-    name: string;
-    label: string;
-    type: string;
-    roles: ('dimension' | 'metric' | 'filter')[];
-    enum_values?: string[];
-  }[];
-  aggregations: {
-    name: string;
-    label: string;
-    function: string;
-    field?: string;
-  }[];
-  join_keys: Record<string, { local: string; foreign: string }>;
-}
-
-export interface ReportResult {
-  success: boolean;
-  query?: string;
-  count?: number;
-  data?: any[];
-  message?: string;
-  metadata?: {
-    entity: string;
-    dimension: string;
-    metric: {
-      function: string;
-      field: string;
-    };
-  };
-}
-
-export function useReports() {
-  const { user } = useAuthStore();
-  const queryClient = useQueryClient();
-  const { userCompany } = useCompanies();
-
-  // Query for fetching all reports
-  const reportsQuery = useQuery({
-    queryKey: ['reports', user?.id],
-    queryFn: async () => {
-      if (!user) return [];
+const HomePage = () => {
+  const navigate = useNavigate();
+  const { programs, isLoading: programsLoading } = usePilotPrograms();
+  const { userCompany, isAdmin: isCompanyAdmin, updateCompanyDefaultWeather, loading: companyLoading } = useCompanies();
+  
+  // Weather hook moved here for clarity
+  const { 
+    locationData, 
+    currentConditions, 
+    hourlyForecast,
+    isLoading: weatherLoading, 
+    error: weatherError,
+    locationPermission,
+    suggestedWeatherType
+  } = useWeather();
+  
+  // Refs to track if initial selection has been done
+  const isInitialProgramSelectionDone = useRef(false);
+  const isInitialSiteSelectionDone = useRef(false);
+  const initialWeatherUpdateAttemptedRef = useRef(false);
+  
+  const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
+  const [selectedProgram, setSelectedProgram] = useState<PilotProgram | null>(null);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [selectedSite, setSelectedSite] = useState<Site | null>(null);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [sitesLoading, setSitesLoading] = useState(false);
+  const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [weatherType, setWeatherType] = useState<'Clear' | 'Cloudy' | 'Rain'>(
+    userCompany?.default_weather || 'Clear'
+  );
+  const [hasUserManuallySetWeather, setHasUserManuallySetWeather] = useState(false);
+  
+  // Get session store for sessions drawer
+  const { 
+    setIsSessionsDrawerOpen,
+    unclaimedSessions, 
+    isLoading: sessionsLoading 
+  } = useSessionStore();
+  
+  // Pre-select the first active program when the page loads, but only once
+  useEffect(() => {
+    if (!programsLoading && programs.length > 0 && !selectedProgramId && !isInitialProgramSelectionDone.current) {
+      // Find the first active program
+      const firstActiveProgram = programs.find(program => program.status === 'active');
       
-      logger.debug('Fetching reports for user:', user.id);
-      const { data, error } = await withRetry(() => 
-        supabase
-          .from('custom_reports')
-          .select('*')
-          .order('name')
-      , 'fetchReports');
+      if (firstActiveProgram) {
+        // Select the first active program
+        setSelectedProgramId(firstActiveProgram.program_id);
+        setSelectedProgram(firstActiveProgram);
+      }
+      
+      isInitialProgramSelectionDone.current = true;
+    }
+  }, [programs, programsLoading, selectedProgramId]);
+  
+  // Handle program selection
+  const handleProgramSelect = useCallback((programId: string) => {
+    if (selectedProgramId === programId) {
+      setSelectedProgramId(null);
+      setSelectedProgram(null);
+      setSelectedSiteId(null);
+      setSelectedSite(null);
+    } else {
+      setSelectedProgramId(programId);
+    }
+  }, [selectedProgramId]);
+  
+  // Handle site selection
+  const handleSiteSelect = useCallback((siteId: string) => {
+    if (selectedSiteId === siteId) {
+      setSelectedSiteId(null);
+      setSelectedSite(null);
+    } else {
+      setSelectedSiteId(siteId);
+    }
+  }, [selectedSiteId]);
+  
+  // Update selected program when program ID changes
+  useEffect(() => {
+    if (selectedProgramId && programs.length > 0) {
+      const program = programs.find(p => p.program_id === selectedProgramId);
+      setSelectedProgram(program || null);
+      
+      // Reset site selection when program changes
+      setSelectedSiteId(null);
+      setSelectedSite(null);
+      isInitialSiteSelectionDone.current = false;
+    } else {
+      setSelectedProgram(null);
+    }
+  }, [selectedProgramId, programs]);
+  
+  // Fetch sites when program is selected - memoized with useCallback
+  const loadSites = useCallback(async () => {
+    if (!selectedProgramId) {
+      setSites([]);
+      return;
+    }
+    
+    setSitesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('sites')
+        .select('*')
+        .eq('program_id', selectedProgramId)
+        .order('name');
         
-      if (error) {
-        logger.error('Error fetching reports:', error);
-        throw error;
+      if (error) throw error;
+      setSites(data || []);
+      
+      // Pre-select the first site if available, but only once
+      if (data && data.length > 0 && !selectedSiteId && !isInitialSiteSelectionDone.current) {
+        setSelectedSiteId(data[0].site_id);
+        setSelectedSite(data[0]);
+        isInitialSiteSelectionDone.current = true;
       }
-      
-      logger.debug(`Successfully fetched ${data?.length || 0} reports`);
-      return data || [];
-    },
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: 2,
-  });
-
-  // Query for fetching report metadata
-  const reportMetadataQuery = useQuery({
-    queryKey: ['reportMetadata'],
-    queryFn: async () => {
-      logger.debug('Fetching report metadata');
-      
-      const { data, error } = await withRetry(() => 
-        supabase.rpc('get_available_report_metadata')
-      , 'getReportMetadata');
-      
-      if (error) {
-        logger.error('Error fetching report metadata:', error);
-        throw error;
-      }
-      
-      logger.debug('Successfully fetched report metadata');
-      return data as ReportMetadata[];
-    },
-    staleTime: 24 * 60 * 60 * 1000, // 24 hours - metadata doesn't change often
-    retry: 2,
-  });
-
-  // Mutation for creating a new report
-  const createReportMutation = useMutation({
-    mutationFn: async (reportData: {
-      name: string;
-      description?: string;
-      program_id?: string;
-      configuration: ReportConfiguration;
-    }) => {
-      logger.debug('Creating new report:', reportData.name);
-      
-      const { data, error } = await withRetry(() => 
-        supabase
-          .from('custom_reports')
-          .insert({
-            name: reportData.name,
-            description: reportData.description,
-            created_by_user_id: user!.id,
-            company_id: user!.user_metadata?.company_id || '', // This assumes company_id is stored in user metadata
-            program_id: reportData.program_id,
-            configuration: reportData.configuration
-          })
-          .select()
-          .single()
-      , 'createReport');
-      
-      if (error) {
-        logger.error('Error creating report:', error);
-        throw error;
-      }
-      
-      logger.debug('Report created successfully:', data.report_id);
-      return data as CustomReport;
-    },
-    onSuccess: (data) => {
-      // Invalidate and refetch reports query
-      queryClient.invalidateQueries({queryKey: ['reports']});
-      
-      toast.success('Report created successfully');
-    },
-    onError: (error) => {
-      logger.error('Error in createReportMutation:', error);
-      toast.error(`Failed to create report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (error) {
+      console.error('Error loading sites:', error);
+      toast.error('Failed to load sites');
+    } finally {
+      setSitesLoading(false);
     }
-  });
-
-  // Mutation for updating an existing report
-  const updateReportMutation = useMutation({
-    mutationFn: async ({
-      reportId,
-      updates
-    }: {
-      reportId: string;
-      updates: Partial<Omit<CustomReport, 'report_id' | 'created_by_user_id' | 'created_at' | 'updated_at'>>;
-    }) => {
-      logger.debug(`Updating report ${reportId}:`, updates);
-      
-      const { data, error } = await withRetry(() => 
-        supabase
-          .from('custom_reports')
-          .update(updates)
-          .eq('report_id', reportId)
-          .select()
-          .single()
-      , `updateReport(${reportId})`);
-      
-      if (error) {
-        logger.error('Error updating report:', error);
-        throw error;
-      }
-      
-      logger.debug('Report updated successfully:', data.report_id);
-      return data as CustomReport;
-    },
-    onSuccess: (data) => {
-      // Update the cache for this report
-      queryClient.setQueryData(['report', data.report_id], data);
-      
-      // Update the report in the reports list
-      queryClient.setQueryData<CustomReport[]>(['reports', user?.id], (oldData) => {
-        if (!oldData) return [data];
-        return oldData.map(r => 
-          r.report_id === data.report_id ? data : r
-        );
-      });
-      
-      toast.success('Report updated successfully');
-    },
-    onError: (error) => {
-      logger.error('Error in updateReportMutation:', error);
-      toast.error(`Failed to update report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }, [selectedProgramId, selectedSiteId]);
+  
+  // Call loadSites when selectedProgramId changes
+  useEffect(() => {
+    loadSites();
+  }, [loadSites]);
+  
+  // Update selected site when site ID changes
+  useEffect(() => {
+    if (selectedSiteId && sites.length > 0) {
+      const site = sites.find(s => s.site_id === selectedSiteId);
+      setSelectedSite(site || null);
+    } else {
+      setSelectedSite(null);
     }
-  });
-
-  // Mutation for deleting a report
-  const deleteReportMutation = useMutation({
-    mutationFn: async (reportId: string) => {
-      logger.debug(`Deleting report ${reportId}`);
-      
-      const { error } = await withRetry(() => 
-        supabase
-          .from('custom_reports')
-          .delete()
-          .eq('report_id', reportId)
-      , `deleteReport(${reportId})`);
-      
-      if (error) {
-        logger.error('Error deleting report:', error);
-        throw error;
-      }
-      
-      logger.debug('Report deleted successfully');
-      return reportId;
-    },
-    onSuccess: (reportId) => {
-      // Remove the report from the cache
-      queryClient.removeQueries({queryKey: ['report', reportId]});
-      
-      // Remove the report from the reports list
-      queryClient.setQueryData<CustomReport[]>(['reports', user?.id], (oldData) => {
-        if (!oldData) return [];
-        return oldData.filter(r => r.report_id !== reportId);
-      });
-      
-      toast.success('Report deleted successfully');
-    },
-    onError: (error) => {
-      logger.error('Error in deleteReportMutation:', error);
-      toast.error(`Failed to delete report: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  });
-
-  // Mutation for executing a report query
-  const executeReportQueryMutation = useMutation({
-    mutationFn: async ({
-      configuration,
-      limit = 1000,
-      offset = 0
-    }: {
-      configuration: ReportConfiguration;
-      limit?: number;
-      offset?: number;
-    }) => {
-      logger.debug('Executing report query:', {
-        entity: configuration.entity,
-        dimensions: configuration.dimensions,
-        metrics: configuration.metrics,
-        limit,
-        offset
-      });
-
-      // Validate company association
-      if (!userCompany?.company_id) {
-        throw new Error('You must be associated with a company to create reports');
-      }
-      
-      const { data, error } = await withRetry(() => 
-        supabase.rpc('execute_custom_report_query', {
-          p_report_configuration: {
-            ...configuration,
-            company_id: userCompany.company_id // Add company_id to the configuration
-          },
-          p_limit: limit,
-          p_offset: offset
-        })
-      , 'executeReportQuery');
-      
-      if (error) {
-        logger.error('Error executing report query:', error);
-        throw error;
-      }
-      
-      logger.debug('Report query executed successfully:', {
-        success: data.success,
-        count: data.count,
-        dataLength: data.data?.length
-      });
-      
-      return data as ReportResult;
-    },
-    onError: (error) => {
-      logger.error('Error in executeReportQueryMutation:', error);
-      toast.error(`Failed to execute report: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  });
-
-  // Function to fetch a single report by ID
-  const fetchReport = useCallback(async (reportId: string): Promise<CustomReport | null> => {
+  }, [selectedSiteId, sites]);
+  
+  // Fetch recent submissions - memoized with useCallback
+  const fetchRecentSubmissions = useCallback(async () => {
+    setSubmissionsLoading(true);
     try {
-      logger.debug(`Fetching report with ID: ${reportId}`);
+      // Use the RPC function to get recent submissions
+      const { data, error } = await supabase
+        .rpc('get_recent_submissions_v3', { 
+          limit_param: 10,
+          program_id_param: selectedProgramId,
+          site_id_param: selectedSiteId
+        });
       
-      // Check cache first
-      const cachedReport = queryClient.getQueryData<CustomReport>(['report', reportId]);
-      if (cachedReport) {
-        logger.debug('Using cached report data');
-        return cachedReport;
+      if (error) throw error;
+      setRecentSubmissions(data || []);
+    } catch (error) {
+      console.error('Error fetching recent submissions:', error);
+      toast.error('Error fetching recent submissions');
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  }, [selectedProgramId, selectedSiteId]);
+  
+  // Fetch recent submissions when program or site selection changes
+  useEffect(() => {
+    // Only fetch when site is selected
+    if (selectedSiteId) {
+      fetchRecentSubmissions();
+    } else {
+      setRecentSubmissions([]);
+    }
+  }, [selectedSiteId, fetchRecentSubmissions]);
+  
+  // Set weather type based on Visual Crossing API data when it loads
+  useEffect(() => {
+    if (suggestedWeatherType && !hasUserManuallySetWeather) {
+      setWeatherType(suggestedWeatherType);
+      
+      // If company admin, update the default weather
+      if (isCompanyAdmin && userCompany && !initialWeatherUpdateAttemptedRef.current) {
+        if (suggestedWeatherType !== userCompany.default_weather) {
+          const updateResult = updateCompanyDefaultWeather(userCompany.company_id, suggestedWeatherType);
+          updateResult.then(success => {
+            if (success) {
+              toast.success('Company default weather updated automatically based on your location');
+            }
+          });
+        }
+        initialWeatherUpdateAttemptedRef.current = true;
       }
-      
-      const { data, error } = await withRetry(() => 
-        supabase
-          .from('custom_reports')
-          .select('*')
-          .eq('report_id', reportId)
-          .single()
-      , `fetchReport(${reportId})`);
+    }
+  }, [suggestedWeatherType, isCompanyAdmin, userCompany, updateCompanyDefaultWeather, hasUserManuallySetWeather]);
+  
+  // Handle weather selection and update for company
+  const handleWeatherChange = async (weather: 'Clear' | 'Cloudy' | 'Rain') => {
+    // Mark that user has manually set the weather
+    setHasUserManuallySetWeather(true);
+    
+    // Update the local state for the selected weather
+    setWeatherType(weather);
+    
+    // Only update the company default if user is a company admin
+    if (isCompanyAdmin && userCompany) {
+      const success = await updateCompanyDefaultWeather(userCompany.company_id, weather);
+      if (success) {
+        toast.success('Company default weather updated successfully');
+      }
+    }
+  };
+  
+  // Handle quick log button - navigate to new submission page
+  const handleQuickLog = useCallback(() => {
+    if (!selectedSite || !selectedProgram) {
+      toast.warning('Please select a site first');
+      return;
+    }
+    
+    // Navigate directly to the new submission page with the selected program and site
+    navigate(`/programs/${selectedProgram.program_id}/sites/${selectedSite.site_id}/new-submission`);
+  }, [selectedSite, selectedProgram, navigate]);
+  
+  if (programsLoading || companyLoading) {
+    return <LoadingScreen />;
+  }
+  
+  // Filter active programs
+  const activePrograms = programs.filter(program => program.status === 'active');
+  
+  return (
+     <div className="animate-fade-in">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+        <div className="flex-grow">
+          <h1 className="text-2xl font-bold text-gray-900">Welcome to InVivo!</h1>
+          <p className="text-gray-600 mt-1">Your Field Observations Platform</p>
+        </div>
         
-      if (error) {
-        logger.error('Error fetching report:', error);
-        return null;
-      }
+        <div className="hidden md:flex flex-wrap gap-2">
+          <Button
+            variant="contained"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 animate-pulse"
+            onClick={() => setIsSessionsDrawerOpen(true)}
+            icon={<ClipboardList size={16} />}
+            testId="manage-sessions-button"
+          >
+            Manage Sessions
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/programs')}
+            testId="view-programs-button"
+          >
+            View Programs
+          </Button>
+          
+          {selectedProgramId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/programs/${selectedProgramId}/sites`)}
+              testId="view-all-sites-button"
+            >
+              View All Sites
+            </Button>
+          )}
+          
+          {/* Add Reports Button */}
+          <Button 
+            variant="outline"
+            onClick={() => navigate('/reports')}
+            icon={<BarChart4 size={16} />}
+            testId="go-to-reports-button"
+          >
+            Go To Reports
+          </Button>
+        </div>
+      </div>
       
-      // Cache the result
-      queryClient.setQueryData(['report', reportId], data);
+      {/* Unclaimed Sessions Card - NEW COMPONENT */}
+      <UnclaimedSessionsCard />
       
-      logger.debug('Successfully fetched report');
-      return data as CustomReport;
-    } catch (err) {
-      logger.error('Error in fetchReport:', err);
-      return null;
-    }
-  }, [queryClient]);
+      {/* Mobile action buttons - Only visible on mobile */}
+      <div className="md:hidden flex flex-wrap gap-2 justify-center mt-4 mb-4">
+        <Button
+          variant="contained"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 animate-pulse"
+          onClick={() => setIsSessionsDrawerOpen(true)}
+          icon={<ClipboardList size={16} />}
+          testId="manage-sessions-button"
+        >
+          Manage Sessions
+        </Button>
+        
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate('/programs')}
+          testId="view-programs-button"
+        >
+          View Programs
+        </Button>
+        
+        {selectedProgramId && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/programs/${selectedProgramId}/sites`)}
+            testId="view-all-sites-button"
+          >
+            View All Sites
+          </Button>
+        )}
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        {/* Program/Site Selection Card */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <h2 className="text-lg font-semibold">Select Program & Site</h2>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {/* Program Selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1" id="program-selector-label">
+                  Select Program
+                </label>
+                <div 
+                  className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" 
+                  role="radiogroup" 
+                  aria-labelledby="program-selector-label"
+                >
+                  {activePrograms.length === 0 ? (
+                    <p className="col-span-full text-gray-500 text-center">
+                      No active programs available. <a href="/programs\" className="text-primary-600 hover:text-primary-800">Create one</a>
+                    </p>
+                  ) : (
+                    activePrograms.map(program => (
+                      <button
+                        key={program.program_id}
+                        onClick={() => handleProgramSelect(program.program_id)}
+                        className={`p-3 rounded-md text-left transition-colors ${
+                          selectedProgramId === program.program_id
+                            ? 'bg-primary-100 border-primary-200 border text-primary-800'
+                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                        }`}
+                        role="radio"
+                        aria-checked={selectedProgramId === program.program_id}
+                        id={`program-${program.program_id}`}
+                      >
+                        <p className="font-medium truncate">{program.name}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {program.total_sites} Sites
+                        </p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+              
+              {/* Site Selector - Only show if a program is selected */}
+              {selectedProgramId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" id="site-selector-label">
+                    Select Site
+                  </label>
+                  {sitesLoading ? (
+                    <div className="flex justify-center p-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                    </div>
+                  ) : sites.length === 0 ? (
+                    <p className="text-gray-500 text-center p-4 bg-gray-50 rounded-md">
+                      No sites in this program. <button onClick={() => navigate(`/programs/${selectedProgramId}/sites`)} className="text-primary-600 hover:text-primary-800">Add one</button>
+                    </p>
+                  ) : (
+                    <div 
+                      className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2"
+                      role="radiogroup" 
+                      aria-labelledby="site-selector-label"
+                    >
+                      {sites.map(site => (
+                        <button
+                          key={site.site_id}
+                          onClick={() => handleSiteSelect(site.site_id)}
+                          className={`p-3 rounded-md text-left transition-colors ${
+                            selectedSiteId === site.site_id
+                              ? 'bg-secondary-100 border-secondary-200 border text-secondary-800'
+                              : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                          }`}
+                          role="radio"
+                          aria-checked={selectedSiteId === site.site_id}
+                          id={`site-${site.site_id}`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <p className="font-medium truncate" title={site.name}>
+                              {site.name}
+                            </p>
+                            <span className="text-xs bg-gray-100 text-gray-800 px-1 rounded">
+                              {site.type}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {site.total_petris} petri samples
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
-  // Wrapper functions to expose the functionality with simpler interfaces
+              {/* Create New Submission Button - Only show if site is selected */}
+              {selectedSite && (
+                <div className="flex justify-center mt-4">
+                  <Button
+                    variant="primary"
+                    onClick={handleQuickLog}
+                    icon={<Plus size={16} />}
+                    disabled={weatherLoading}
+                    testId="create-new-submission-button"
+                  >
+                    Create New Submission
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Today's Weather Card */}
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold">Today's Weather</h2>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-500 mb-4">
+              Select the weather for your current submission. 
+              {isCompanyAdmin && userCompany ? " As a company admin, your selection will also update the company-wide default." : ""}
+            </p>
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="weather-selector-label">
+              <button
+                onClick={() => handleWeatherChange('Clear')}
+                className={`flex flex-col items-center p-3 rounded-md transition-colors ${
+                  weatherType === 'Clear'
+                    ? 'bg-yellow-100 border-yellow-200 border text-yellow-800'
+                    : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                }`}
+                role="radio"
+                aria-checked={weatherType === 'Clear'}
+                id="weather-clear"
+              >
+                <Sun className={`h-8 w-8 ${weatherType === 'Clear' ? 'text-yellow-600' : 'text-gray-400'}`} />
+                <span className="mt-1 text-sm font-medium">Clear</span>
+              </button>
+              
+              <button
+                onClick={() => handleWeatherChange('Cloudy')}
+                className={`flex flex-col items-center p-3 rounded-md transition-colors ${
+                  weatherType === 'Cloudy'
+                    ? 'bg-gray-800 border-gray-900 border text-white'
+                    : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                }`}
+                role="radio"
+                aria-checked={weatherType === 'Cloudy'}
+                id="weather-cloudy"
+              >
+                <Cloud className={`h-8 w-8 ${weatherType === 'Cloudy' ? 'text-white' : 'text-gray-400'}`} />
+                <span className="mt-1 text-sm font-medium">Cloudy</span>
+              </button>
+              
+              <button
+                onClick={() => handleWeatherChange('Rain')}
+                className={`flex flex-col items-center p-3 rounded-md transition-colors ${
+                  weatherType === 'Rain'
+                    ? 'bg-blue-100 border-blue-200 border text-blue-800'
+                    : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                }`}
+                role="radio"
+                aria-checked={weatherType === 'Rain'}
+                id="weather-rain"
+              >
+                <CloudRain className={`h-8 w-8 ${weatherType === 'Rain' ? 'text-blue-600' : 'text-gray-400'}`} />
+                <span className="mt-1 text-sm font-medium">Rain</span>
+              </button>
+            </div>
+            
+            {/* Show weather data if available */}
+            {locationPermission === 'denied' ? (
+              <div className="mt-4 border-t pt-4 text-center">
+                <p className="text-sm text-gray-600">
+                  Location access denied. Enable location services to see current weather.
+                </p>
+              </div>
+            ) : weatherLoading ? (
+              <div className="mt-4 flex justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+              </div>
+            ) : weatherError ? (
+              <p className="text-xs text-gray-500 mt-4">
+                Unable to load local weather data: {weatherError}
+              </p>
+            ) : currentConditions && locationData ? (
+              <div className="mt-4 border-t pt-4">
+                <p className="text-sm font-medium">Current conditions in your location:</p>
+                <div className="flex items-center mt-2">
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
+                    {suggestedWeatherType === 'Clear' ? (
+                      <Sun className="h-8 w-8 text-yellow-500" />
+                    ) : suggestedWeatherType === 'Cloudy' ? (
+                      <Cloud className="h-8 w-8 text-gray-500" />
+                    ) : suggestedWeatherType === 'Rain' ? (
+                      <CloudRain className="h-8 w-8 text-blue-500" />
+                    ) : (
+                      <Sun className="h-8 w-8 text-yellow-500" />
+                    )}
+                  </div>
+                  <div className="ml-2">
+                    <p className="font-medium">
+                      {currentConditions.conditions || suggestedWeatherType || "Unknown"}
+                    </p>
+                    <p className="text-sm">{currentConditions.temp}°F, {currentConditions.RelativeHumidity || currentConditions.humidity}% humidity</p>
+                  </div>
+                </div>
+                
+                {hourlyForecast && hourlyForecast.length > 0 && (
+                  <div className="mt-2 text-xs text-gray-600">
+                    <p>Next hour: {hourlyForecast[0].conditions}, {hourlyForecast[0].temp}°F</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Recent Submissions Card - Only shown if there are submissions or a site is selected */}
+      {(recentSubmissions.length > 0 || selectedSite) && (
+        <Card className="mb-6">
+          <CardHeader className="flex justify-between items-center">
+            <div className="flex items-center">
+              <Clock className="mr-2 h-5 w-5 text-primary-500" />
+              <h2 className="text-lg font-semibold">Recent Submissions</h2>
+            </div>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchRecentSubmissions}
+              >
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {submissionsLoading ? (
+              <div className="flex justify-center p-6">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+              </div>
+            ) : recentSubmissions.length === 0 ? (
+              <div className="text-center py-8">
+                <Leaf className="mx-auto h-12 w-12 text-gray-300" />
+                <p className="text-gray-600 mt-2">No recent submissions found</p>
+                {selectedSite && (
+                  <Button
+                    variant="primary"
+                    className="mt-4"
+                    icon={<Plus size={16} />}
+                    onClick={handleQuickLog}
+                    disabled={weatherLoading}
+                  >
+                    Create New Submission
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Submission ID
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Program
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Site
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Temperature
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Humidity
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Samples
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {recentSubmissions.map((submission) => (
+                      <tr key={submission.submission_id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {submission.global_submission_id ? (
+                            <span className="inline-flex items-center">
+                              <Hash size={14} className="mr-1 text-primary-500" />
+                              {submission.global_submission_id}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {format(new Date(submission.created_at), 'MMM d, yyyy HH:mm')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {submission.program_name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {submission.site_name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {submission.temperature}°F
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {submission.humidity}%
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex space-x-2">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-800">
+                              {submission.petri_count} Petri
+                            </span>
+                            {submission.gasifier_count !== undefined && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-accent-100 text-accent-800">
+                                {submission.gasifier_count} Gasifier
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button 
+                            onClick={() => navigate(`/programs/${submission.program_id}/sites/${submission.site_id}`)}
+                            className="text-primary-600 hover:text-primary-900 flex items-center justify-end"
+                            aria-label={`View submission details for ${submission.site_name} on ${format(new Date(submission.created_at), 'MMM d, yyyy')}`}
+                          >
+                            View 
+                            <ArrowRight className="ml-1 h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Analytics Chart - Only shown if a program or site is selected */}
+      {(selectedProgramId || selectedSiteId) && (
+        <Card>
+          <CardHeader className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold">Analytics</h2>
+          </CardHeader>
+          <CardContent>
+            <AnalyticsChart 
+              programId={selectedProgramId}
+              siteId={selectedSiteId}
+            />
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+};
 
-  const createReport = async (
-    name: string,
-    configuration: ReportConfiguration,
-    description?: string,
-    programId?: string
-  ): Promise<CustomReport | null> => {
-    try {
-      return await createReportMutation.mutateAsync({
-        name,
-        description,
-        program_id: programId,
-        configuration
-      });
-    } catch (error) {
-      return null;
-    }
-  };
-
-  const updateReport = async (
-    reportId: string,
-    updates: {
-      name?: string;
-      description?: string;
-      program_id?: string;
-      configuration?: ReportConfiguration;
-    }
-  ): Promise<CustomReport | null> => {
-    try {
-      return await updateReportMutation.mutateAsync({ reportId, updates });
-    } catch (error) {
-      return null;
-    }
-  };
-
-  const deleteReport = async (reportId: string): Promise<boolean> => {
-    try {
-      await deleteReportMutation.mutateAsync(reportId);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  };
-
-  const executeReportQuery = async (
-    configuration: ReportConfiguration,
-    limit?: number,
-    offset?: number
-  ): Promise<ReportResult | null> => {
-    try {
-      return await executeReportQueryMutation.mutateAsync({ configuration, limit, offset });
-    } catch (error) {
-      return null;
-    }
-  };
-
-  // Return all queries and mutations for use in components
-  return {
-    reports: reportsQuery.data || [],
-    reportMetadata: reportMetadataQuery.data || [],
-    isLoading: reportsQuery.isLoading || reportMetadataQuery.isLoading,
-    isError: reportsQuery.isError || reportMetadataQuery.isError,
-    error: reportsQuery.error || reportMetadataQuery.error,
-    createReport,
-    updateReport,
-    deleteReport,
-    fetchReport,
-    executeReportQuery
-  };
-}
-
-export default useReports;
+export default HomePage;
