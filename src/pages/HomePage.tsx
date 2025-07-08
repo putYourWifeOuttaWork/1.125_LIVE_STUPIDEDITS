@@ -310,6 +310,18 @@ const HomePage = () => {
               View All Sites
             </Button>
           )}
+          
+          {/* Add Reports Button */}
+          <div className="mt-4">
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/reports')}
+              icon={<BarChart size={16} />}
+              testId="go-to-reports-button"
+            >
+              Go To Reports
+            </Button>
+          </div>
         </div>
       </div>
       

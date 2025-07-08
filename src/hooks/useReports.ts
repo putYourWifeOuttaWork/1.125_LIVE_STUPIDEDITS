@@ -279,20 +279,23 @@ export function useReports() {
       logger.debug('Executing report query:', {
         entity: configuration.entity,
         dimensions: configuration.dimensions,
-    // Check if user has a company ID
-    const companyId = user!.user_metadata?.company_id;
-    if (!companyId) {
-      throw new Error('You must be associated with a company to create reports');
-    }
-    
         metrics: configuration.metrics,
         limit,
         offset
       });
       
+      // Check if user has a company ID
+      const companyId = user!.user_metadata?.company_id;
+      if (!companyId) {
+        throw new Error('You must be associated with a company to create reports');
+      }
+      
       const { data, error } = await withRetry(() => 
         supabase.rpc('execute_custom_report_query', {
-          company_id: companyId, // Use the validated company_id
+          p_report_configuration: {
+            ...configuration,
+            company_id: companyId // Add company_id to the configuration
+          },
           p_limit: limit,
           p_offset: offset
         })
