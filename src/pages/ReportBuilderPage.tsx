@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart4, PlusCircle, Save, Play, Filter, Calendar, RefreshCw, AlertTriangle, FileText, Download } from 'lucide-react';
+import { BarChart4, PlusCircle, Save, Play, Filter, Calendar, RefreshCw, AlertTriangle, FileText, Download, X } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent, CardFooter } from '../components/common/Card';
 import Input from '../components/common/Input';
@@ -31,7 +31,7 @@ const ReportBuilderPage = () => {
   // State for report configuration
   const [reportName, setReportName] = useState('New Report');
   const [reportDescription, setReportDescription] = useState('');
-  const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [selectedEntityMetadata, setSelectedEntityMetadata] = useState<ReportMetadata | null>(null);
   const [selectedDimension, setSelectedDimension] = useState<string | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<{ function: string; field: string; label: string } | null>(null);
@@ -761,7 +761,7 @@ const ReportBuilderPage = () => {
                   // Reset all form states to initial values
                   setReportName('New Report');
                   setReportDescription('');
-                  setSelectedEntity(null);
+                  setSelectedEntity('');
                   setSelectedDimension(null);
                   setSelectedMetric(null);
                   setSelectedTimeField(null);
@@ -950,13 +950,5 @@ const ReportBuilderPage = () => {
     </div>
   );
 };
-
-// Helper components
-const X = ({ size = 16 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18"></line>
-    <line x1="6" y1="6" x2="18" y2="18"></line>
-  </svg>
-);
 
 export default ReportBuilderPage;

@@ -224,7 +224,8 @@ const useReports = () => {
     } catch (error) {
       console.error('Error deleting report:', error);
       return false;
-  };
+      };
+  }
 
   // Update report
   const updateReport = async (reportId: string, updates: Partial<CustomReport>): Promise<boolean> => {
