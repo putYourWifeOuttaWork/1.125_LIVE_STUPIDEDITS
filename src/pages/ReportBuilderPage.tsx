@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { BarChart4, PlusCircle, Save, Play, Filter, Calendar, RefreshCw, AlertTriangle, FileText, Download, X } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent, CardFooter } from '../components/common/Card';
@@ -15,9 +15,11 @@ import FilterValueInput from '../components/reports/FilterValueInput';
 
 // D3 imports for visualization
 import * as d3 from 'd3';
+import { useRef } from 'react';
 
 const ReportBuilderPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { reportId } = useParams<{ reportId: string }>();
   const [searchParams] = useSearchParams();
   const shouldRunOnLoad = searchParams.get('run') === 'true';
@@ -40,9 +42,9 @@ const ReportBuilderPage = () => {
   const [reportDescription, setReportDescription] = useState('');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [selectedEntityMetadata, setSelectedEntityMetadata] = useState<ReportMetadata | null>(null);
-  const [selectedDimension, setSelectedDimension] = useState<string | null>(null);
-  const [selectedMetric, setSelectedMetric] = useState<{ function: string; field: string; label: string } | null>(null);
-  const [selectedTimeField, setSelectedTimeField] = useState<string | null>(null);
+  const [selectedDimension, setSelectedDimension] = useState<string>('');
+  const [selectedMetric, setSelectedMetric] = useState<{ function: string; field: string; label: string } | null>(null);  
+  const [selectedTimeField, setSelectedTimeField] = useState<string>('');
   const [selectedTimeGranularity, setSelectedTimeGranularity] = useState<'day' | 'week' | 'month' | 'quarter' | 'year'>('week');
   const [filters, setFilters] = useState<{
     field: string;
@@ -68,7 +70,10 @@ const ReportBuilderPage = () => {
   
   // State for validation
   const [canRunReport, setCanRunReport] = useState(false);
-  const [canSaveReport, setCanSaveReport] = useState(false);
+  const [canSaveReport, setCanSaveReport] = useState(false);  
+  
+  // Ref to track if report has been loaded
+  const reportLoadedRef = useRef(false);
   
   const chartRef = useRef<SVGSVGElement | null>(null);
   
@@ -76,6 +81,7 @@ const ReportBuilderPage = () => {
   useEffect(() => {
     const loadReport = async () => {
       if (!reportId) return;
+      if (reportLoadedRef.current) return; // Prevent duplicate loads
       
       setIsLoadingReport(true);
       try {
@@ -87,76 +93,12 @@ const ReportBuilderPage = () => {
           // Set basic report info
           setReportName(report.name);
           setReportDescription(report.description || '');
-          setSelectedEntity(report.configuration.entity);
           
-          // Wait for entity to load before setting other fields
-          setTimeout(() => {
-            // Set dimensions
-            if (report.configuration.dimensions && report.configuration.dimensions.length > 0) {
-              setSelectedDimension(report.configuration.dimensions[0]);
-            }
-            
-            // Set time dimension
-            if (report.configuration.time_dimension) {
-              setUseTimeFilter(true);
-              setSelectedTimeField(report.configuration.time_dimension.field);
-              setSelectedTimeGranularity(report.configuration.time_dimension.granularity);
-              
-              // Look for date range filters
-              const dateFilters = (report.configuration.filters || []).filter(
-                f => f.field === report.configuration.time_dimension!.field && 
-                    (f.operator === '>=' || f.operator === '<=')
-              );
-              
-              // Extract date range values if found
-              if (dateFilters.length >= 2) {
-                const startFilter = dateFilters.find(f => f.operator === '>=');
-                const endFilter = dateFilters.find(f => f.operator === '<=');
-                
-                if (startFilter && startFilter.value) {
-                  setStartDate(new Date(startFilter.value));
-                }
-                if (endFilter && endFilter.value) {
-                  setEndDate(new Date(endFilter.value));
-                }
-              }
-            }
-            
-            // Set metrics
-            if (report.configuration.metrics && report.configuration.metrics.length > 0) {
-              const metric = report.configuration.metrics[0];
-              setSelectedMetric({
-                function: metric.function,
-                field: metric.field,
-                label: `${metric.function} of ${metric.field}`
-              });
-            }
-            
-            // Set other filters (excluding date range filters for time dimension)
-            if (report.configuration.filters) {
-              const normalFilters = report.configuration.time_dimension
-                ? report.configuration.filters.filter(
-                    f => f.field !== report.configuration.time_dimension.field || 
-                        (f.operator !== '>=' && f.operator !== '<=')
-                  )
-                : report.configuration.filters;
-              
-              setFilters(normalFilters);
-            }
-            
-            // Set visualization type
-            if (report.configuration.visualization?.type) {
-              setVisualizationType(report.configuration.visualization.type);
-            }
-            
-            // Run the report if requested
-            if (shouldRunOnLoad) {
-              runReport();
-            }
-          }, 300); // Short delay to ensure entity metadata has loaded
-        } else {
-          toast.error('Report not found');
-          navigate('/reports');
+          // First set the entity so the metadata can load
+          setSelectedEntity(report.configuration.entity || '');
+          
+          // Mark the report as loaded
+          reportLoadedRef.current = true;
         }
       } catch (error) {
         console.error('Error loading report:', error);
@@ -169,7 +111,107 @@ const ReportBuilderPage = () => {
     if (reportId) {
       loadReport();
     }
-  }, [reportId, fetchReport, navigate, shouldRunOnLoad]);
+  }, [reportId, fetchReport, navigate]);
+  
+  // Set the rest of the form values after entity metadata is loaded
+  useEffect(() => {
+    const configureReportAfterMetadataLoaded = async () => {
+      // Only proceed if we have a report ID and metadata is loaded
+      if (!reportId || !selectedEntityMetadata || !reportLoadedRef.current) return;
+      
+      try {
+        const report = await fetchReport(reportId);
+        if (report) {
+          console.log('Configuring report with loaded metadata');
+          
+          // Set dimensions
+          if (report.configuration.dimensions && report.configuration.dimensions.length > 0) {
+            setSelectedDimension(report.configuration.dimensions[0]);
+          }
+          
+          // Set time dimension
+          if (report.configuration.time_dimension) {
+            setUseTimeFilter(true);
+            setSelectedTimeField(report.configuration.time_dimension.field);
+            setSelectedTimeGranularity(report.configuration.time_dimension.granularity as any);
+            
+            // Look for date range filters
+            const dateFilters = (report.configuration.filters || []).filter(
+              f => f.field === report.configuration.time_dimension!.field && 
+                  (f.operator === '>=' || f.operator === '<=')
+            );
+            
+            // Extract date range values if found
+            if (dateFilters.length >= 2) {
+              const startFilter = dateFilters.find(f => f.operator === '>=');
+              const endFilter = dateFilters.find(f => f.operator === '<=');
+              
+              if (startFilter && startFilter.value) {
+                setStartDate(new Date(startFilter.value));
+              }
+              if (endFilter && endFilter.value) {
+                setEndDate(new Date(endFilter.value));
+              }
+            }
+          }
+          
+          // Set metrics
+          if (report.configuration.metrics && report.configuration.metrics.length > 0) {
+            const metric = report.configuration.metrics[0];
+            setSelectedMetric({
+              function: metric.function,
+              field: metric.field,
+              label: `${metric.function} of ${metric.field}`
+            });
+          }
+          
+          // Set other filters (excluding date range filters for time dimension)
+          if (report.configuration.filters) {
+            const normalFilters = report.configuration.time_dimension
+              ? report.configuration.filters.filter(
+                  f => f.field !== report.configuration.time_dimension.field || 
+                      (f.operator !== '>=' && f.operator !== '<=')
+                )
+              : report.configuration.filters;
+            
+            setFilters(normalFilters);
+          }
+          
+          // Set visualization type
+          if (report.configuration.visualization?.type) {
+            setVisualizationType(report.configuration.visualization.type as any);
+          }
+        } else {
+          toast.error('Report not found');
+          navigate('/reports');
+        }
+        }
+      } catch (err) {
+        console.error('Error configuring report after metadata load:', err);
+      }
+    };
+    
+    configureReportAfterMetadataLoaded();
+  }, [reportId, selectedEntityMetadata, fetchReport]);
+  
+  // Run report when all data is loaded and run parameter is true
+  useEffect(() => {
+    if (shouldRunOnLoad && canRunReport && reportLoadedRef.current && selectedEntityMetadata) {
+      // Add a small delay to ensure all form fields are populated
+      const timer = setTimeout(() => {
+        runReport();
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [shouldRunOnLoad, canRunReport, selectedEntityMetadata]);
+  
+  // Reset form when navigating away
+  useEffect(() => {
+    return () => {
+      reportLoadedRef.current = false;
+    };
+  }, [location.pathname]);
   
   // When entity changes, update available fields
   useEffect(() => {
@@ -179,18 +221,20 @@ const ReportBuilderPage = () => {
         setSelectedEntityMetadata(entityMeta);
         
         // Reset selections
-        setSelectedDimension(null);
-        setSelectedMetric(null);
-        setSelectedTimeField(null);
-        setFilters([]);
+        if (!reportLoadedRef.current) {
+          setSelectedDimension('');
+          setSelectedMetric(null);
+          setSelectedTimeField('');
+          setFilters([]);
+        }
         
         // Find the first timestamp field for time dimension
         const timeField = entityMeta.fields.find(f => f.type === 'timestamp' && f.roles.includes('dimension'));
-        if (timeField) {
+        if (timeField && !reportLoadedRef.current) {
           setSelectedTimeField(timeField.name);
         }
       }
-    }
+    };
   }, [selectedEntity, reportMetadata]);
   
   // Determine if report can be run based on required fields
@@ -219,10 +263,10 @@ const ReportBuilderPage = () => {
   // Function to build report configuration
   const buildReportConfiguration = (): ReportConfiguration => {
     let config: ReportConfiguration = {
-      entity: selectedEntity || 'submissions' // Default to submissions if nothing selected
+      entity: selectedEntity
     };
 
-    // If using time filter, use time dimension, otherwise use selected dimension
+    // Handle dimensions correctly
     if (useTimeFilter && selectedTimeField) {
       config.time_dimension = {
         field: selectedTimeField,
@@ -878,25 +922,25 @@ const ReportBuilderPage = () => {
                 onClick={isEditingExistingReport 
                   ? () => navigate('/reports')
                   : () => {
-                      // Reset all form states to initial values
-                      setReportName('New Report');
-                      setReportDescription('');
-                      setSelectedEntity('');
-                      setSelectedDimension(null);
-                      setSelectedMetric(null);
-                      setSelectedTimeField(null);
-                      setSelectedTimeGranularity('week');
-                      setUseTimeFilter(false);
-                      setStartDate(subDays(new Date(), 30));
-                      setEndDate(new Date());
-                      setFilters([]);
-                      setReportResults(null);
-                      
-                      // Also clear the chart
-                      if (chartRef.current) {
-                        d3.select(chartRef.current).selectAll('*').remove();
-                      }
-                    }
+                     // Reset all form states to initial values
+                     setReportName('New Report');
+                     setReportDescription('');
+                     setSelectedEntity('');
+                     setSelectedDimension('');
+                     setSelectedMetric(null);
+                     setSelectedTimeField('');
+                     setSelectedTimeGranularity('week');
+                     setUseTimeFilter(false);
+                     setStartDate(subDays(new Date(), 30));
+                     setEndDate(new Date());
+                     setFilters([]);
+                     setReportResults(null);
+                     
+                     // Also clear the chart
+                     if (chartRef.current) {
+                       d3.select(chartRef.current).selectAll('*').remove();
+                     }
+                   }
                 }
               >
                 {isEditingExistingReport ? 'Cancel' : 'Reset'}
