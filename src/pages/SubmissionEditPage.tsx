@@ -122,7 +122,7 @@ const SubmissionEditPage = () => {
         // Fetch the session with the submission
         const { data, error } = await sessionManager.getSubmissionWithSession(submissionId);
         
-        if (error) {
+        if (error || !data) {
           console.error('Error fetching submission session:', error);
           toast.error('Failed to load submission data');
           navigate(`/programs/${programId}/sites/${siteId}`);
@@ -138,9 +138,9 @@ const SubmissionEditPage = () => {
           return;
         }
         
-        // Set the submission and session data
-        setInitialSubmission(data.submission);
-        setSubmissionSession(data.session);
+        // Set the submission and session data with null checks
+        setInitialSubmission(data.submission || null);
+        setSubmissionSession(data.session || null);
         
         // Set the current session ID in the store
         if (data.session) {
