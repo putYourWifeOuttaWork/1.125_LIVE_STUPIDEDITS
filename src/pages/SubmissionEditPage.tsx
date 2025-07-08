@@ -129,35 +129,21 @@ const SubmissionEditPage = () => {
           return;
         }
         
-        // Check if data and submission are defined
-        if (!data || !data.submission) {
-          console.error('No submission data returned');
-          toast.error('Submission data not found');
-          navigate(`/programs/${programId}/sites/${siteId}`);
-          return;
-        }
-        
-        if (!data || !data.submission) {
-          console.error('Error: No submission data returned');
-          toast.error('Failed to load submission data');
-          navigate(`/programs/${programId}/sites/${siteId}`);
-          return;
-        }
-        
         // If session is cancelled or expired, show a message and redirect
-        if (data.session?.session_status === 'Cancelled' || 
-            data.session?.session_status?.startsWith('Expired')) {
-          toast.warning(`This submission session is ${data.session?.session_status?.toLowerCase()} and cannot be edited.`);
+        if (data.session && 
+            (data.session.session_status === 'Cancelled' || 
+             data.session.session_status.startsWith('Expired'))) {
+          toast.warning(`This submission session is ${data.session.session_status.toLowerCase()} and cannot be edited.`);
           navigate(`/programs/${programId}/sites/${siteId}`);
           return;
         }
         
-        // Set the submission and session data with null checks
+        // Set the submission and session data
         setInitialSubmission(data.submission);
         setSubmissionSession(data.session);
         
         // Set the current session ID in the store
-        if (data.session?.session_id) {
+        if (data.session) {
           setCurrentSessionId(data.session.session_id);
         }
         
@@ -893,7 +879,7 @@ const SubmissionEditPage = () => {
             Edit Submission
           </h1>
           <p className="text-gray-600 mt-1">
-            {selectedSite?.name} - {initialSubmission?.global_submission_id ? `#${initialSubmission.global_submission_id}` : 'New Submission'}
+            {selectedSite?.name} - {initialSubmission.global_submission_id ? `#${initialSubmission.global_submission_id}` : 'New Submission'}
           </p>
         </div>
         
@@ -940,7 +926,7 @@ const SubmissionEditPage = () => {
       {/* Session overview card */}
       <SubmissionOverviewCard 
         session={submissionSession}
-        submissionCreatedAt={initialSubmission?.created_at}
+        submissionCreatedAt={initialSubmission.created_at}
         openedByUserEmail={openedByUserEmail}
         openedByUserName={openedByUserName}
         onShare={canEditSubmission ? () => handleShareSession() : undefined}

@@ -272,42 +272,55 @@ const GasifierForm = forwardRef<GasifierFormRef, GasifierFormProps>(({
   useEffect(() => {
     // Only update if there's data to report or this is a form with initial data
     if (hasData || initialData) {
-      logger.debug(`useEffect updating parent with:`, {
+      logger.debug(`useEffect updating parent with:`, { 
         gasifierCode: formik.values.gasifierCode,
+        initialGasifierCode: formik.initialValues.gasifierCode,
         hasImageFile: !!imageFile,
         hasInitialImageUrl: !!(initialData?.observationId && initialData?.imageUrl),
+        hasTempImageKey: !!tempImageKey,
+        initialImageUrl: initialData?.imageUrl,
         tempImageKey,
         imageFile: imageFile ? {
           name: imageFile.name,
           size: imageFile.size,
           type: imageFile.type
         } : null,
-        chemicalType: formik.values.chemicalType,
-        measure: formik.values.measure,
-        anomaly: formik.values.anomaly,
-        placementHeight: formik.values.placementHeight,
-        directionalPlacement: formik.values.directionalPlacement,
-        notes: formik.values.notes,
-        outdoor_temperature: formik.values.outdoor_temperature,
-        observationId: observationId || initialData?.observationId,
         isValid,
+        hasData,
         hasImage,
+        observationId: observationId || initialData?.observationId,
+        isDirty,
+        outdoor_temperature: formik.values.outdoor_temperature,
+        initialOutdoor_temperature: formik.initialValues.outdoor_temperature,
+        outdoor_humidity: formik.values.outdoor_humidity
+        initialOutdoor_humidity: formik.initialValues.outdoor_humidity,
       });
-      
+
       onUpdate(formId, {
         gasifierCode: formik.values.gasifierCode,
+        initialGasifierCode: formik.initialValues.gasifierCode,
         imageFile,
-        imageUrl,
+        imageUrl: initialData?.observationId ? initialData?.imageUrl : undefined,
+        initialImageUrl: initialData?.imageUrl,
         tempImageKey,
         chemicalType: formik.values.chemicalType,
+        initialChemicalType: formik.initialValues.chemicalType,
         measure: formik.values.measure,
+        initialMeasure: formik.initialValues.measure,
         anomaly: formik.values.anomaly,
+        initialAnomaly: formik.initialValues.anomaly,
         placementHeight: formik.values.placementHeight as PlacementHeight,
+        initialPlacementHeight: formik.initialValues.placementHeight as PlacementHeight,
         directionalPlacement: formik.values.directionalPlacement as DirectionalPlacement,
+        initialDirectionalPlacement: formik.initialValues.directionalPlacement as DirectionalPlacement,
         placementStrategy: formik.values.placementStrategy as PlacementStrategy,
+        initialPlacementStrategy: formik.initialValues.placementStrategy as PlacementStrategy,
         notes: formik.values.notes,
+        initialNotes: formik.initialValues.notes,
         outdoor_temperature: formik.values.outdoor_temperature || undefined,
+        initialOutdoor_temperature: formik.initialValues.outdoor_temperature,
         outdoor_humidity: formik.values.outdoor_humidity || undefined,
+        initialOutdoor_humidity: formik.initialValues.outdoor_humidity,
         isValid,
         hasData,
         hasImage,
@@ -412,8 +425,7 @@ const GasifierForm = forwardRef<GasifierFormRef, GasifierFormProps>(({
               <p className="mt-1 text-sm text-error-600">{formik.errors.gasifierCode}</p>
             )}
           </div>
-
-          <div>
+<div>
             <label htmlFor={`directionalPlacement-${formId}`} className="block text-sm font-medium text-gray-700 mb-1">
               Where This Bag Is Placed
             </label>

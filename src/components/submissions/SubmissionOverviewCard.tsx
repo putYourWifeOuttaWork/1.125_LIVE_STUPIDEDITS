@@ -103,7 +103,7 @@ const SubmissionOverviewCard: React.FC<SubmissionOverviewCardProps> = ({
 
   // Calculate expiration time (11:59:59 PM of the session start day)
   const calculateExpirationTime = () => {
-    const startDate = session?.session_start_time 
+    const startDate = session 
       ? new Date(session.session_start_time) 
       : submissionCreatedAt 
         ? new Date(submissionCreatedAt) 
@@ -195,12 +195,12 @@ const SubmissionOverviewCard: React.FC<SubmissionOverviewCardProps> = ({
   };
 
   const sessionOwner = openedByUserName || openedByUserEmail || 'Unknown User';
-  const displayStatus = getDisplayStatus() || 'View Only';
+  const displayStatus = getDisplayStatus();
 
   // Format the session start time
-  const sessionStartTime = session?.session_start_time 
+  const sessionStartTime = session 
     ? format(new Date(session.session_start_time), 'PPp') 
-    : submissionCreatedAt
+    : submissionCreatedAt 
       ? format(new Date(submissionCreatedAt), 'PPp')
       : 'Unknown';
   
@@ -208,7 +208,7 @@ const SubmissionOverviewCard: React.FC<SubmissionOverviewCardProps> = ({
   const expirationTimeString = format(expirationTime, 'PPp');
 
   // Determine if session is active
-  const isActive = session && !['Completed', 'Cancelled', 'Expired', 'Expired-Complete', 'Expired-Incomplete'].includes(session?.session_status);
+  const isActive = session && !['Completed', 'Cancelled', 'Expired', 'Expired-Complete', 'Expired-Incomplete'].includes(session.session_status);
 
   return (
     <Card className="mb-4">
