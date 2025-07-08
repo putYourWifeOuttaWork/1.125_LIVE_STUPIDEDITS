@@ -13,6 +13,7 @@ import {
   Home,
   Hash,
   ClipboardList,
+  BarChart4,
 } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent, CardFooter } from '../components/common/Card';
@@ -316,7 +317,7 @@ const HomePage = () => {
             <Button 
               variant="outline"
               onClick={() => navigate('/reports')}
-              icon={<BarChart size={16} />}
+              icon={<BarChart4 size={16} />}
               testId="go-to-reports-button"
             >
               Go To Reports
