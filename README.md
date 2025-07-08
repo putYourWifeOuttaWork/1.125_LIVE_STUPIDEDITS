@@ -19,7 +19,7 @@ A field operations platform for capturing, analyzing, and managing petri dish an
 - **Frontend**: React, TypeScript, Tailwind CSS, Vite
 - **State Management**: Zustand, React Query
 - **Backend**: Supabase (PostgreSQL, Auth, Storage, Edge Functions)
-- **Data Visualization**: Chart.js
+- **Data Visualization**: Chart.js (WILL CHANGE TO D3)
 - **Form Handling**: Formik, Yup
 - **Offline Support**: IndexedDB
 
