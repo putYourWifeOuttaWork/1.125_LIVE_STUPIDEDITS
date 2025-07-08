@@ -292,13 +292,22 @@ const GasifierForm = forwardRef<GasifierFormRef, GasifierFormProps>(({
         observationId: observationId || initialData?.observationId,
         isValid,
         hasImage,
+      });
+      
       onUpdate(formId, {
+        gasifierCode: formik.values.gasifierCode,
         imageFile,
+        imageUrl,
         tempImageKey,
+        chemicalType: formik.values.chemicalType,
         measure: formik.values.measure,
+        anomaly: formik.values.anomaly,
         placementHeight: formik.values.placementHeight as PlacementHeight,
+        directionalPlacement: formik.values.directionalPlacement as DirectionalPlacement,
         placementStrategy: formik.values.placementStrategy as PlacementStrategy,
+        notes: formik.values.notes,
         outdoor_temperature: formik.values.outdoor_temperature || undefined,
+        outdoor_humidity: formik.values.outdoor_humidity || undefined,
         isValid,
         hasData,
         hasImage,
@@ -403,7 +412,8 @@ const GasifierForm = forwardRef<GasifierFormRef, GasifierFormProps>(({
               <p className="mt-1 text-sm text-error-600">{formik.errors.gasifierCode}</p>
             )}
           </div>
-<div>
+
+          <div>
             <label htmlFor={`directionalPlacement-${formId}`} className="block text-sm font-medium text-gray-700 mb-1">
               Where This Bag Is Placed
             </label>
