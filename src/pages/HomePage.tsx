@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Leaf,
   Plus,
+  BarChart4,
   CloudRain,
   Sun,
   Cloud,

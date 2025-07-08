@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { withRetry } from '../utils/helpers';
 import { createLogger } from '../utils/logger';
+import useCompanies from './useCompanies';
 
 // Create a logger for report operations
 const logger = createLogger('useReports');
@@ -84,6 +85,7 @@ export interface ReportResult {
 export function useReports() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const { userCompany } = useCompanies();
 
   // Query for fetching all reports
   const reportsQuery = useQuery({
@@ -283,10 +285,9 @@ export function useReports() {
         limit,
         offset
       });
-      
-      // Check if user has a company ID
-      const companyId = user!.user_metadata?.company_id;
-      if (!companyId) {
+
+      // Validate company association
+      if (!userCompany?.company_id) {
         throw new Error('You must be associated with a company to create reports');
       }
       
@@ -294,7 +295,7 @@ export function useReports() {
         supabase.rpc('execute_custom_report_query', {
           p_report_configuration: {
             ...configuration,
-            company_id: companyId // Add company_id to the configuration
+            company_id: userCompany.company_id // Add company_id to the configuration
           },
           p_limit: limit,
           p_offset: offset
