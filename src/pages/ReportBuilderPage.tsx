@@ -688,7 +688,6 @@ const ReportBuilderPage = () => {
                                 );
                               })()}
                             </div>
-                            </input>
                             
                             {/* Remove button */}
                             <button
