@@ -11,7 +11,6 @@ import LoadingScreen from '../components/common/LoadingScreen';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { format, parse, subDays } from 'date-fns';
-import FilterValueInput from '../components/reports/FilterValueInput';
 
 // D3 imports for visualization
 import * as d3 from 'd3';
@@ -638,56 +637,43 @@ const ReportBuilderPage = () => {
                         {filters.map((filter, index) => (
                           <div key={index} className="flex items-center space-x-2">
                             {/* Field selector */}
-                            <div className="w-full">
-                              <select
-                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md"
-                                value={filter.field}
-                                onChange={(e) => updateFilter(index, 'field', e.target.value)}
-                              >
-                                {selectedEntityMetadata.fields
-                                  .filter(f => f.roles.includes('filter'))
-                                  .map(field => (
-                                    <option key={field.name} value={field.name}>
-                                      {field.label}
-                                    </option>
-                                  ))}
-                              </select>
-                            </div>
+                            <select
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md"
+                              value={filter.field}
+                              onChange={(e) => updateFilter(index, 'field', e.target.value)}
+                            >
+                              {selectedEntityMetadata.fields
+                                .filter(f => f.roles.includes('filter'))
+                                .map(field => (
+                                  <option key={field.name} value={field.name}>
+                                    {field.label}
+                                  </option>
+                                ))}
+                            </select>
                             
                             {/* Operator selector */}
-                            <div className="w-full">
-                              <select
-                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md"
-                                value={filter.operator}
-                                onChange={(e) => updateFilter(index, 'operator', e.target.value as any)}
-                              >
-                                <option value="=">=</option>
-                                <option value="!=">!=</option>
-                                <option value=">">{">"}</option>
-                                <option value=">=">{"≥"}</option>
-                                <option value="<">{"<"}</option>
-                                <option value="<=">{"≤"}</option>
-                                <option value="LIKE">Contains</option>
-                              </select>
-                            </div>
+                            <select
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md"
+                              value={filter.operator}
+                              onChange={(e) => updateFilter(index, 'operator', e.target.value)}
+                            >
+                              <option value="=">=</option>
+                              <option value="!=">!=</option>
+                              <option value=">">{">"}</option>
+                              <option value=">=">{"≥"}</option>
+                              <option value="<">{"<"}</option>
+                              <option value="<=">{"≤"}</option>
+                              <option value="LIKE">Contains</option>
+                            </select>
                             
                             {/* Value input */}
-                            <div className="w-full">
-                              {/* Get the field metadata for the current filter */}
-                              {(() => {
-                                const fieldMetadata = selectedEntityMetadata.fields.find(f => f.name === filter.field);
-                                return (
-                                  <FilterValueInput
-                                    fieldType={fieldMetadata?.type || 'text'}
-                                    fieldName={fieldMetadata?.label || filter.field}
-                                    value={filter.value as string}
-                                    onChange={(value) => updateFilter(index, 'value', value)}
-                                    enumValues={fieldMetadata?.enum_values}
-                                    placeholder="Value"
-                                  />
-                                );
-                              })()}
-                            </div>
+                            <input
+                              type="text"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md"
+                              value={filter.value as string}
+                              onChange={(e) => updateFilter(index, 'value', e.target.value)}
+                              placeholder="Value"
+                            />
                             
                             {/* Remove button */}
                             <button
