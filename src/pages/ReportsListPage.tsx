@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart4, PlusCircle, File, Edit, Trash2, Copy, Play } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardContent, CardHeader } from '../components/common/Card';
 import useReports, { CustomReport } from '../hooks/useReports';
-import { useAuthStore } from '../stores/authStore';
 import { format } from 'date-fns';
 import LoadingScreen from '../components/common/LoadingScreen';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
@@ -12,7 +11,6 @@ import { toast } from 'react-toastify';
 
 const ReportsListPage = () => {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
   const { reports, isLoading, deleteReport } = useReports();
   
   const [reportToDelete, setReportToDelete] = useState<CustomReport | null>(null);
