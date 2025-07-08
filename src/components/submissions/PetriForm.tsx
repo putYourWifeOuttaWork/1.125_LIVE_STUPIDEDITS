@@ -257,23 +257,12 @@ const PetriForm = forwardRef<PetriFormRef, PetriFormProps>(({
       temperatureValue,
       humidityValue,
       usingFallback: data.outdoor_temperature === undefined || data.outdoor_humidity === undefined
-    });
-    
-    if (data.isDirty) {
-      setIsDirty(true);
-    }
-  };
-
-  useEffect(() => {
-    // Only update if there's data to report or this is a form with initial data
-    if (hasData || initialData) {
-      logger.debug(`useEffect updating parent with:`, { 
-        petriCode: formik.values.petriCode,
-        initialPetriCode: formik.initialValues.petriCode,
+      logger.debug(`useEffect updating parent with:`, {
+        formId,
+        petriCode: formik.values.petriCode, 
         hasImageFile: !!imageFile,
         hasInitialImageUrl: !!(initialData?.observationId && initialData?.imageUrl),
         hasTempImageKey: !!tempImageKey,
-        initialImageUrl: initialData?.imageUrl,
         tempImageKey,
         imageFile: imageFile ? {
           name: imageFile.name,
@@ -285,39 +274,24 @@ const PetriForm = forwardRef<PetriFormRef, PetriFormProps>(({
         hasImage,
         observationId: observationId || initialData?.observationId,
         isDirty,
-        outdoor_temperature: formik.values.outdoor_temperature,
-        initialOutdoor_temperature: formik.initialValues.outdoor_temperature,
-        outdoor_humidity: formik.values.outdoor_humidity,
-        initialOutdoor_humidity: formik.initialValues.outdoor_humidity,
         is_image_split: formik.values.is_image_split,
-        initialIs_image_split: formik.initialValues.is_image_split,
         is_split_source: formik.values.is_split_source,
-        initialIs_split_source: formik.initialValues.is_split_source,
+        split_processed: formik.values.split_processed,
         main_petri_id: formik.values.main_petri_id,
-        phase_observation_settings: formik.values.phase_observation_settings
+        outdoor_temperature: formik.values.outdoor_temperature,
+        is_image_split: formik.values.is_image_split,
+        is_split_source: formik.values.is_split_source,
+        main_petri_id: formik.values.main_petri_id,
       });
-      
       onUpdate(formId, {
-        petriCode: formik.values.petriCode,
         imageFile,
-        imageUrl: initialData?.observationId ? initialData?.imageUrl : undefined,
-        tempImageKey,
-        plantType: initialData?.plantType || 'Other Fresh Perishable',
-        fungicideUsed: formik.values.fungicideUsed,
+        tempImageKey, 
         surroundingWaterSchedule: formik.values.surroundingWaterSchedule,
         notes: formik.values.notes,
         placement: formik.values.placement,
         outdoor_temperature: formik.values.outdoor_temperature,
         outdoor_humidity: formik.values.outdoor_humidity,
-        isValid,
-        hasData,
         hasImage,
-        observationId: observationId || initialData?.observationId,
-        isDirty,
-        is_image_split: formik.values.is_image_split,
-        is_split_source: formik.values.is_split_source,
-        split_processed: formik.values.split_processed,
-        phase_observation_settings: formik.values.phase_observation_settings,
         main_petri_id: formik.values.main_petri_id
       });
     }
