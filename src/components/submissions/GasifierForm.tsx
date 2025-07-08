@@ -122,7 +122,7 @@ const GasifierFormSchema = Yup.object().shape({
     .max(200, 'Notes must be less than 200 characters'),
 });
 
-const GasifierForm = forwardRef<GasifierFormRef, GasifierFormProps>(({ 
+const GasifierForm = forwardRef<GasifierFormRef, GasifierFormProps>((
   id,
   formId, 
   index, 
