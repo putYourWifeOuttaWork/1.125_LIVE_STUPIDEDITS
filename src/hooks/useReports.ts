@@ -1,8 +1,38 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from '../stores/authStore';
 import { toast } from 'react-toastify';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { withRetry } from '../utils/helpers';
+import { createLogger } from '../utils/logger';
+
+// Create a logger for report operations
+const logger = createLogger('useReports');
+
+// Define types for reports
+export interface ReportConfiguration {
+  entity: string;
+  dimensions?: string[];
+  metrics?: {
+    function: string;
+    field: string;
+  }[];
+  time_dimension?: {
+    field: string;
+    granularity: 'day' | 'week' | 'month' | 'quarter' | 'year';
+  };
+  filters?: {
+    field: string;
+    operator: '=' | '!=' | '>' | '>=' | '<' | '<=' | 'LIKE' | 'IN';
+    value: string | string[] | number | boolean;
+  }[];
+  program_id?: string;
+  company_id?: string;
+  visualization?: {
+    type: 'bar' | 'line' | 'pie' | 'table';
+    options?: Record<string, any>;
+  };
+}
 
 export interface CustomReport {
   report_id: string;
@@ -11,43 +41,27 @@ export interface CustomReport {
   created_by_user_id: string;
   company_id: string;
   program_id?: string;
-  configuration: {
-    entity: string;
-    metrics?: Array<{
-      field: string;
-      function: string;
-    }>;
-    time_dimension?: {
-      field: string;
-      granularity: string;
-    };
-    filters?: Array<{
-      field: string;
-      operator: string;
-      value: any;
-    }>;
-  };
+  configuration: ReportConfiguration;
   created_at: string;
   updated_at: string;
 }
 
-// Interface for a single entity's metadata
-export interface ReportEntityMetadata {
+export interface ReportMetadata {
   entity: string;
   label: string;
-  fields: Array<{
+  fields: {
     name: string;
     label: string;
     type: string;
-    roles: string[];
+    roles: ('dimension' | 'metric' | 'filter')[];
     enum_values?: string[];
-  }>;
-  aggregations: Array<{
+  }[];
+  aggregations: {
     name: string;
     label: string;
     function: string;
     field?: string;
-  }>;
+  }[];
   join_keys: Record<string, { local: string; foreign: string }>;
 }
 
@@ -71,137 +85,279 @@ export function useReports() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
 
-
   // Query for fetching all reports
   const reportsQuery = useQuery({
     queryKey: ['reports', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('custom_reports')
-        .select('*')
-        .order('name');
+      if (!user) return [];
+      
+      logger.debug('Fetching reports for user:', user.id);
+      const { data, error } = await withRetry(() => 
+        supabase
+          .from('custom_reports')
+          .select('*')
+          .order('name')
+      , 'fetchReports');
+        
       if (error) {
+        logger.error('Error fetching reports:', error);
         throw error;
       }
+      
+      logger.debug(`Successfully fetched ${data?.length || 0} reports`);
       return data || [];
     },
+    enabled: !!user,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 2,
   });
 
   // Query for fetching report metadata
   const reportMetadataQuery = useQuery({
     queryKey: ['reportMetadata'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_available_report_metadata');
+      logger.debug('Fetching report metadata');
+      
+      const { data, error } = await withRetry(() => 
+        supabase.rpc('get_available_report_metadata')
+      , 'getReportMetadata');
+      
       if (error) {
+        logger.error('Error fetching report metadata:', error);
         throw error;
       }
-      if (!data) {
-        return []; // Return empty array instead of null if no data
-      }
-      return Array.isArray(data) ? data : []; // Ensure we always return an array
+      
+      logger.debug('Successfully fetched report metadata');
+      return data as ReportMetadata[];
     },
     staleTime: 24 * 60 * 60 * 1000, // 24 hours - metadata doesn't change often
+    retry: 2,
   });
 
-  // Execute a report query
-  const executeReportQuery = async (
-    configuration: any,
-    limit = 1000,
-    offset = 0
-  ): Promise<ReportResult | null> => {
-    try {
-      const { data, error } = await supabase.rpc('execute_custom_report_query', {
-        p_report_configuration: configuration,
-        p_limit: limit,
-        p_offset: offset
-      });
-
-      if (error) throw error;
-
-      return data as ReportResult;
-    } catch (error) {
-      console.error('Error executing report query:', error);
-      toast.error('Failed to execute report query');
-      return null;
-    }
-  };
-
-  // Create report mutation
+  // Mutation for creating a new report
   const createReportMutation = useMutation({
     mutationFn: async (reportData: {
       name: string;
       description?: string;
       program_id?: string;
-      configuration: any;
+      configuration: ReportConfiguration;
     }) => {
-      // Get current user info
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
-
-      // Get user's company_id
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
-      if (userError) throw userError;
-      if (!userData?.company_id) throw new Error('User has no company association');
-
-      const fullReportData = {
-        name: reportData.name,
-        description: reportData.description,
-        created_by_user_id: user.id,
-        company_id: userData.company_id,
-        program_id: reportData.program_id,
-        configuration: reportData.configuration
-      };
-
-      const { data, error } = await supabase
-        .from('custom_reports')
-        .insert([fullReportData])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      logger.debug('Creating new report:', reportData.name);
+      
+      const { data, error } = await withRetry(() => 
+        supabase
+          .from('custom_reports')
+          .insert({
+            name: reportData.name,
+            description: reportData.description,
+            created_by_user_id: user!.id,
+            company_id: user!.user_metadata?.company_id || '', // This assumes company_id is stored in user metadata
+            program_id: reportData.program_id,
+            configuration: reportData.configuration
+          })
+          .select()
+          .single()
+      , 'createReport');
+      
+      if (error) {
+        logger.error('Error creating report:', error);
+        throw error;
+      }
+      
+      logger.debug('Report created successfully:', data.report_id);
+      return data as CustomReport;
     },
-    onSuccess: (newReport) => {
-      queryClient.invalidateQueries(['reports']);
+    onSuccess: (data) => {
+      // Invalidate and refetch reports query
+      queryClient.invalidateQueries({queryKey: ['reports']});
+      
       toast.success('Report created successfully');
     },
     onError: (error) => {
-      console.error('Error in createReportMutation:', error);
+      logger.error('Error in createReportMutation:', error);
       toast.error(`Failed to create report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
-  // Delete report mutation
+  // Mutation for updating an existing report
+  const updateReportMutation = useMutation({
+    mutationFn: async ({
+      reportId,
+      updates
+    }: {
+      reportId: string;
+      updates: Partial<Omit<CustomReport, 'report_id' | 'created_by_user_id' | 'created_at' | 'updated_at'>>;
+    }) => {
+      logger.debug(`Updating report ${reportId}:`, updates);
+      
+      const { data, error } = await withRetry(() => 
+        supabase
+          .from('custom_reports')
+          .update(updates)
+          .eq('report_id', reportId)
+          .select()
+          .single()
+      , `updateReport(${reportId})`);
+      
+      if (error) {
+        logger.error('Error updating report:', error);
+        throw error;
+      }
+      
+      logger.debug('Report updated successfully:', data.report_id);
+      return data as CustomReport;
+    },
+    onSuccess: (data) => {
+      // Update the cache for this report
+      queryClient.setQueryData(['report', data.report_id], data);
+      
+      // Update the report in the reports list
+      queryClient.setQueryData<CustomReport[]>(['reports', user?.id], (oldData) => {
+        if (!oldData) return [data];
+        return oldData.map(r => 
+          r.report_id === data.report_id ? data : r
+        );
+      });
+      
+      toast.success('Report updated successfully');
+    },
+    onError: (error) => {
+      logger.error('Error in updateReportMutation:', error);
+      toast.error(`Failed to update report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  // Mutation for deleting a report
   const deleteReportMutation = useMutation({
     mutationFn: async (reportId: string) => {
-      const { error } = await supabase
-        .from('custom_reports')
-        .delete()
-        .eq('report_id', reportId);
-
-      if (error) throw error;
+      logger.debug(`Deleting report ${reportId}`);
+      
+      const { error } = await withRetry(() => 
+        supabase
+          .from('custom_reports')
+          .delete()
+          .eq('report_id', reportId)
+      , `deleteReport(${reportId})`);
+      
+      if (error) {
+        logger.error('Error deleting report:', error);
+        throw error;
+      }
+      
+      logger.debug('Report deleted successfully');
       return reportId;
     },
     onSuccess: (reportId) => {
-      queryClient.invalidateQueries(['reports']);
+      // Remove the report from the cache
+      queryClient.removeQueries({queryKey: ['report', reportId]});
+      
+      // Remove the report from the reports list
+      queryClient.setQueryData<CustomReport[]>(['reports', user?.id], (oldData) => {
+        if (!oldData) return [];
+        return oldData.filter(r => r.report_id !== reportId);
+      });
+      
       toast.success('Report deleted successfully');
     },
     onError: (error) => {
-      console.error('Error in deleteReportMutation:', error);
+      logger.error('Error in deleteReportMutation:', error);
       toast.error(`Failed to delete report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
-  // Wrapper for createReport
+  // Mutation for executing a report query
+  const executeReportQueryMutation = useMutation({
+    mutationFn: async ({
+      configuration,
+      limit = 1000,
+      offset = 0
+    }: {
+      configuration: ReportConfiguration;
+      limit?: number;
+      offset?: number;
+    }) => {
+      logger.debug('Executing report query:', {
+        entity: configuration.entity,
+        dimensions: configuration.dimensions,
+    // Check if user has a company ID
+    const companyId = user!.user_metadata?.company_id;
+    if (!companyId) {
+      throw new Error('You must be associated with a company to create reports');
+    }
+    
+        metrics: configuration.metrics,
+        limit,
+        offset
+      });
+      
+      const { data, error } = await withRetry(() => 
+        supabase.rpc('execute_custom_report_query', {
+          company_id: companyId, // Use the validated company_id
+          p_limit: limit,
+          p_offset: offset
+        })
+      , 'executeReportQuery');
+      
+      if (error) {
+        logger.error('Error executing report query:', error);
+        throw error;
+      }
+      
+      logger.debug('Report query executed successfully:', {
+        success: data.success,
+        count: data.count,
+        dataLength: data.data?.length
+      });
+      
+      return data as ReportResult;
+    },
+    onError: (error) => {
+      logger.error('Error in executeReportQueryMutation:', error);
+      toast.error(`Failed to execute report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  // Function to fetch a single report by ID
+  const fetchReport = useCallback(async (reportId: string): Promise<CustomReport | null> => {
+    try {
+      logger.debug(`Fetching report with ID: ${reportId}`);
+      
+      // Check cache first
+      const cachedReport = queryClient.getQueryData<CustomReport>(['report', reportId]);
+      if (cachedReport) {
+        logger.debug('Using cached report data');
+        return cachedReport;
+      }
+      
+      const { data, error } = await withRetry(() => 
+        supabase
+          .from('custom_reports')
+          .select('*')
+          .eq('report_id', reportId)
+          .single()
+      , `fetchReport(${reportId})`);
+        
+      if (error) {
+        logger.error('Error fetching report:', error);
+        return null;
+      }
+      
+      // Cache the result
+      queryClient.setQueryData(['report', reportId], data);
+      
+      logger.debug('Successfully fetched report');
+      return data as CustomReport;
+    } catch (err) {
+      logger.error('Error in fetchReport:', err);
+      return null;
+    }
+  }, [queryClient]);
+
+  // Wrapper functions to expose the functionality with simpler interfaces
+
   const createReport = async (
     name: string,
-    configuration: any,
+    configuration: ReportConfiguration,
     description?: string,
     programId?: string
   ): Promise<CustomReport | null> => {
@@ -217,89 +373,56 @@ export function useReports() {
     }
   };
 
-  // Wrapper for deleteReport
+  const updateReport = async (
+    reportId: string,
+    updates: {
+      name?: string;
+      description?: string;
+      program_id?: string;
+      configuration?: ReportConfiguration;
+    }
+  ): Promise<CustomReport | null> => {
+    try {
+      return await updateReportMutation.mutateAsync({ reportId, updates });
+    } catch (error) {
+      return null;
+    }
+  };
+
   const deleteReport = async (reportId: string): Promise<boolean> => {
     try {
       await deleteReportMutation.mutateAsync(reportId);
       return true;
     } catch (error) {
-      console.error('Error deleting report:', error);
-      return false;
-      };
-  }
-
-  // Update report
-  const updateReport = async (
-    reportId: string,
-    updates: {
-      name: string;
-      description?: string | undefined;
-      configuration: ReportConfiguration;
-    }
-  ): Promise<boolean> => {
-    try {
-      const { data, error } = await supabase
-        .from('custom_reports')
-        .update(updates)
-        .eq('report_id', reportId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Update cache
-      queryClient.setQueryData(['report', reportId], data);
-      queryClient.invalidateQueries(['reports']);
-      
-      toast.success('Report updated successfully');
-      return true;
-    } catch (err) {
-      console.error('Error updating report:', err);
-      toast.error('Failed to update report');
       return false;
     }
   };
-  
-  // Fetch a single report by ID
-  const fetchReport = useCallback(async (reportId: string): Promise<CustomReport | null> => {
-    try {
-      console.log(`Fetching report with ID: ${reportId}`);
-      // Check cache first
-      const cachedReport = queryClient.getQueryData<CustomReport>(['report', reportId]);
-      if (cachedReport) {
-        console.log('Using cached report data');
-        return cachedReport;
-      }
-      const { data, error } = await supabase
-        .from('custom_reports')
-        .select('*')
-        .eq('report_id', reportId)
-        .single();
-      if (error) throw error;
-      
-      // Cache the result
-      queryClient.setQueryData(['report', reportId], data);
-      console.log('Successfully fetched report');
-      return data as CustomReport;
-    } catch (err) {
-      console.error('Error in fetchReport:', err);
-      toast.error('Failed to load report');
-      return null; // Return null on error
-    }
-  }, [queryClient]);
 
+  const executeReportQuery = async (
+    configuration: ReportConfiguration,
+    limit?: number,
+    offset?: number
+  ): Promise<ReportResult | null> => {
+    try {
+      return await executeReportQueryMutation.mutateAsync({ configuration, limit, offset });
+    } catch (error) {
+      return null;
+    }
+  };
+
+  // Return all queries and mutations for use in components
   return {
     reports: reportsQuery.data || [],
-    reportMetadata: reportMetadataQuery.data || [], // Now returns the array directly
-    isLoading: reportsQuery.isLoading || reportMetadataQuery.isLoading || reportsQuery.isRefetching || reportMetadataQuery.isRefetching,
+    reportMetadata: reportMetadataQuery.data || [],
+    isLoading: reportsQuery.isLoading || reportMetadataQuery.isLoading,
     isError: reportsQuery.isError || reportMetadataQuery.isError,
     error: reportsQuery.error || reportMetadataQuery.error,
     createReport,
+    updateReport,
     deleteReport,
     fetchReport,
-    updateReport,
     executeReportQuery
   };
-};
+}
 
 export default useReports;

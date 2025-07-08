@@ -9,11 +9,11 @@ interface FilterValueInputProps {
   placeholder?: string;
 }
 
-const FilterValueInput: React.FC<FilterValueInputProps> = ({ 
-  fieldType, 
-  fieldName, 
-  value, 
-  onChange, 
+const FilterValueInput: React.FC<FilterValueInputProps> = ({
+  fieldType,
+  fieldName,
+  value,
+  onChange,
   enumValues = [],
   placeholder = 'Enter value...'
 }) => {

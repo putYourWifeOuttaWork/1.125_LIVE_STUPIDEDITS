@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   Leaf,
   Plus,
-  BarChart4,
   CloudRain,
   Sun,
   Cloud,
@@ -311,18 +310,6 @@ const HomePage = () => {
               View All Sites
             </Button>
           )}
-          
-          {/* Add Reports Button */}
-          <div className="mt-4">
-            <Button 
-              variant="outline"
-              onClick={() => navigate('/reports')}
-              icon={<BarChart4 size={16} />}
-              testId="go-to-reports-button"
-            >
-              Go To Reports
-            </Button>
-          </div>
         </div>
       </div>
       
