@@ -205,7 +205,7 @@ const ReportBuilderPage = () => {
       toast.error('Please run the report successfully before saving, and provide a report name');
       return;
     }
-    
+
     try {
       setIsSaving(true);
       
