@@ -14,7 +14,6 @@ import {
   Home,
   Hash,
   ClipboardList,
-  BarChart4,
 } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent, CardFooter } from '../components/common/Card';
