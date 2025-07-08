@@ -10,68 +10,44 @@ const logger = createLogger('submissionUtils');
 export interface PetriFormData {
   formId: string;
   petriCode: string;
-  initialPetriCode?: string;
   imageFile: File | null;
   imageUrl?: string;
   tempImageKey?: string;
   plantType: string;
-  initialPlantType?: string;
   fungicideUsed: 'Yes' | 'No';
-  initialFungicideUsed?: 'Yes' | 'No';
   surroundingWaterSchedule: string;
-  initialSurroundingWaterSchedule?: string;
   notes: string;
-  initialNotes?: string;
   placement?: string | null;
-  initialPlacement?: string | null;
   placement_dynamics?: string | null;
-  initialPlacement_dynamics?: string | null;
   outdoor_temperature?: number;
-  initialOutdoor_temperature?: number;
   outdoor_humidity?: number;
-  initialOutdoor_humidity?: number;
   observationId?: string;
   isValid: boolean;
   hasData: boolean;
   hasImage: boolean;
   isDirty: boolean;
   is_image_split?: boolean;
-  initialIs_image_split?: boolean;
   is_split_source?: boolean;
-  initialIs_split_source?: boolean;
   split_processed?: boolean;
-  initialSplit_processed?: boolean;
   phase_observation_settings?: any;
-  initialPhase_observation_settings?: any;
   main_petri_id?: string;
-  initialMain_petri_id?: string;
 }
 
 export interface GasifierFormData {
   formId: string;
   gasifierCode: string;
-  initialGasifierCode?: string;
   imageFile: File | null;
   imageUrl?: string;
   tempImageKey?: string;
   chemicalType: string;
-  initialChemicalType?: string;
   measure: number | null;
-  initialMeasure?: number | null;
   anomaly: boolean;
-  initialAnomaly?: boolean;
   placementHeight?: string | null;
-  initialPlacementHeight?: string | null;
   directionalPlacement?: string | null;
-  initialDirectionalPlacement?: string | null;
   placementStrategy?: string | null;
-  initialPlacementStrategy?: string | null;
   notes: string;
-  initialNotes?: string;
   outdoor_temperature?: number;
-  initialOutdoor_temperature?: number;
   outdoor_humidity?: number;
-  initialOutdoor_humidity?: number;
   observationId?: string;
   isValid: boolean;
   hasData: boolean;
@@ -181,7 +157,6 @@ export const updatePetriObservation = async (
       formData: {
         formId: formData.formId,
         petriCode: formData.petriCode,
-        initialPetriCode: formData.initialPetriCode,
         hasImageFile: !!formData.imageFile,
         imageFileDetails: formData.imageFile ? {
           name: formData.imageFile.name,
@@ -193,32 +168,19 @@ export const updatePetriObservation = async (
         hasTempKey: !!formData.tempImageKey,
         tempImageKey: formData.tempImageKey,
         plantType: formData.plantType,
-        initialPlantType: formData.initialPlantType,
         fungicideUsed: formData.fungicideUsed,
-        initialFungicideUsed: formData.initialFungicideUsed,
         surroundingWaterSchedule: formData.surroundingWaterSchedule,
-        initialSurroundingWaterSchedule: formData.initialSurroundingWaterSchedule,
         placement: formData.placement,
-        initialPlacement: formData.initialPlacement,
         placement_dynamics: formData.placement_dynamics,
-        initialPlacement_dynamics: formData.initialPlacement_dynamics,
         notes: formData.notes ? formData.notes.substring(0, 30) + '...' : null,
-        initialNotes: formData.initialNotes ? formData.initialNotes.substring(0, 30) + '...' : null,
         observationId: formData.observationId,
         is_image_split: formData.is_image_split,
-        initialIs_image_split: formData.initialIs_image_split,
         is_split_source: formData.is_split_source,
-        initialIs_split_source: formData.initialIs_split_source,
         split_processed: formData.split_processed,
-        initialSplit_processed: formData.initialSplit_processed,
         phase_observation_settings: formData.phase_observation_settings,
-        initialPhase_observation_settings: formData.initialPhase_observation_settings,
         main_petri_id: formData.main_petri_id,
-        initialMain_petri_id: formData.initialMain_petri_id,
         outdoor_temperature: formData.outdoor_temperature,
-        initialOutdoor_temperature: formData.initialOutdoor_temperature,
         outdoor_humidity: formData.outdoor_humidity,
-        initialOutdoor_humidity: formData.initialOutdoor_humidity,
         isValid: formData.isValid,
         hasData: formData.hasData,
         hasImage: formData.hasImage,
@@ -270,92 +232,47 @@ export const updatePetriObservation = async (
         logger.debug(`[updatePetriObservation] Image upload succeeded, got URL: ${imageUrl.substring(0, 30)}...`);
       }
 
-      // Build update payload with only changed fields
-      const updatePayload: any = {};
-      
-      // Always include the last_updated_by_user_id
-      updatePayload.last_updated_by_user_id = (await supabase.auth.getUser()).data.user?.id;
-      
-      // Check each field and only include if changed
-      if (formData.petriCode !== formData.initialPetriCode) {
-        updatePayload.petri_code = formData.petriCode;
-      }
-      
-      // Handle image URL specially - include if new upload or explicitly cleared
-      if (formData.imageFile || imageUrl !== formData.initialImageUrl) {
-        updatePayload.image_url = imageUrl;
-      }
-      
-      if (plantType !== formData.initialPlantType) {
-        updatePayload.plant_type = plantType;
-      }
-      
-      if (fungicideUsed !== formData.initialFungicideUsed) {
-        updatePayload.fungicide_used = fungicideUsed;
-      }
-      
-      if (surroundingWaterSchedule !== formData.initialSurroundingWaterSchedule) {
-        updatePayload.surrounding_water_schedule = surroundingWaterSchedule;
-      }
-      
-      if (placement !== formData.initialPlacement) {
-        updatePayload.placement = placement;
-      }
-      
-      if (placementDynamics !== formData.initialPlacement_dynamics) {
-        updatePayload.placement_dynamics = placementDynamics;
-      }
-      
-      if (formData.notes !== formData.initialNotes) {
-        updatePayload.notes = formData.notes || null;
-      }
-      
-      if (formData.outdoor_temperature !== formData.initialOutdoor_temperature) {
-        updatePayload.outdoor_temperature = formData.outdoor_temperature || null;
-      }
-      
-      if (formData.outdoor_humidity !== formData.initialOutdoor_humidity) {
-        updatePayload.outdoor_humidity = formData.outdoor_humidity || null;
-      }
-      
-      // Split image related fields - only update if explicitly changed
-      // These are typically managed by the backend, not the frontend
-      if (formData.is_image_split !== formData.initialIs_image_split) {
-        updatePayload.is_image_split = formData.is_image_split || false;
-      }
-      
-      if (formData.is_split_source !== formData.initialIs_split_source) {
-        updatePayload.is_split_source = formData.is_split_source || false;
-      }
-      
-      if (formData.split_processed !== formData.initialSplit_processed) {
-        updatePayload.split_processed = formData.split_processed || false;
-      }
-
-      // Only update phase_observation_settings if it has changed and isn't null
-      const initialPhaseSettings = safeJsonb(formData.initialPhase_observation_settings);
-      if (JSON.stringify(phaseObservationSettings) !== JSON.stringify(initialPhaseSettings)) {
-        updatePayload.phase_observation_settings = phaseObservationSettings;
-      }
-      
-      if (formData.main_petri_id !== formData.initialMain_petri_id) {
-        updatePayload.main_petri_id = formData.main_petri_id || null;
-      }
       logger.debug('[updatePetriObservation] Updating existing observation with new data:', {
-        ...updatePayload,
+        petri_code: formData.petriCode,
+        image_url: imageUrl ? `${imageUrl.substring(0, 30)}...` : undefined,
+        plant_type: plantType,
+        fungicide_used: fungicideUsed,
+        surrounding_water_schedule: surroundingWaterSchedule,
+        placement,
+        placement_dynamics: placementDynamics,
+        notes: formData.notes ? `${formData.notes.substring(0, 30)}...` : null,
+        is_image_split: formData.is_image_split,
+        is_split_source: formData.is_split_source,
+        split_processed: formData.split_processed,
+        phase_observation_settings: phaseObservationSettings ? JSON.stringify(phaseObservationSettings).substring(0, 30) + '...' : null,
+        main_petri_id: formData.main_petri_id,
+        outdoor_temperature: formData.outdoor_temperature,
+        outdoor_humidity: formData.outdoor_humidity,
         observation_id: formData.observationId
       });
-      
-      // Skip update if no fields have changed (except last_updated_by_user_id)
-      if (Object.keys(updatePayload).length <= 1) {
-        logger.debug(`[updatePetriObservation] No fields changed, skipping update for ${formData.observationId}`);
-        return { success: true, observationId: formData.observationId };
-      }
       
       // Update the observation with correct enum handling
       const { data: updateData, error } = await supabase
         .from('petri_observations')
-        .update(updatePayload)
+        .update({
+          petri_code: formData.petriCode,
+          image_url: imageUrl,
+          plant_type: plantType, // Use the properly handled value
+          fungicide_used: fungicideUsed, // Use the properly handled value
+          surrounding_water_schedule: surroundingWaterSchedule, // Use the properly handled value
+          placement: placement, // Use the properly handled value (null if empty)
+          placement_dynamics: placementDynamics, // Use the properly handled value (null if empty)
+          notes: formData.notes || null,
+          last_updated_by_user_id: (await supabase.auth.getUser()).data.user?.id,
+          outdoor_temperature: formData.outdoor_temperature || null,
+          outdoor_humidity: formData.outdoor_humidity || null
+          // Split image properties
+          //is_image_split: formData.is_image_split || false,
+          //is_split_source: formData.is_split_source || false,
+          //split_processed: formData.split_processed || false,
+          //phase_observation_settings: phaseObservationSettings, // Safely processed JSONB
+          //main_petri_id: formData.main_petri_id || null
+        })
         .eq('observation_id', formData.observationId)
         .select(); // Added select() to get the response data
         
@@ -483,7 +400,6 @@ export const updateGasifierObservation = async (
       formData: {
         formId: formData.formId,
         gasifierCode: formData.gasifierCode,
-        initialGasifierCode: formData.initialGasifierCode,
         hasImageFile: !!formData.imageFile,
         imageFileDetails: formData.imageFile ? {
           name: formData.imageFile.name,
@@ -495,24 +411,15 @@ export const updateGasifierObservation = async (
         hasTempKey: !!formData.tempImageKey,
         tempImageKey: formData.tempImageKey,
         chemicalType: formData.chemicalType,
-        initialChemicalType: formData.initialChemicalType,
         measure: formData.measure,
-        initialMeasure: formData.initialMeasure,
         anomaly: formData.anomaly,
-        initialAnomaly: formData.initialAnomaly,
         placementHeight: formData.placementHeight,
-        initialPlacementHeight: formData.initialPlacementHeight,
         directionalPlacement: formData.directionalPlacement,
-        initialDirectionalPlacement: formData.initialDirectionalPlacement,
         placementStrategy: formData.placementStrategy,
-        initialPlacementStrategy: formData.initialPlacementStrategy,
         notes: formData.notes ? formData.notes.substring(0, 30) + '...' : null,
-        initialNotes: formData.initialNotes ? formData.initialNotes.substring(0, 30) + '...' : null,
         observationId: formData.observationId,
         outdoor_temperature: formData.outdoor_temperature,
-        initialOutdoor_temperature: formData.initialOutdoor_temperature,
         outdoor_humidity: formData.outdoor_humidity,
-        initialOutdoor_humidity: formData.initialOutdoor_humidity,
         isValid: formData.isValid,
         hasData: formData.hasData,
         hasImage: formData.hasImage,
@@ -557,72 +464,38 @@ export const updateGasifierObservation = async (
         logger.debug(`[updateGasifierObservation] Image upload succeeded, got URL: ${imageUrl.substring(0, 30)}...`);
       }
 
-      // Build update payload with only changed fields
-      const updatePayload: any = {};
-      
-      // Always include the last_updated_by_user_id
-      updatePayload.last_updated_by_user_id = (await supabase.auth.getUser()).data.user?.id;
-      
-      // Check each field and only include if changed
-      if (formData.gasifierCode !== formData.initialGasifierCode) {
-        updatePayload.gasifier_code = formData.gasifierCode;
-      }
-      
-      // Handle image URL specially - include if new upload or explicitly cleared
-      if (formData.imageFile || imageUrl !== formData.imageUrl) {
-        updatePayload.image_url = imageUrl;
-      }
-      
-      if (chemicalType !== formData.initialChemicalType) {
-        updatePayload.chemical_type = chemicalType;
-      }
-      
-      if (formData.measure !== formData.initialMeasure) {
-        updatePayload.measure = formData.measure;
-      }
-      
-      if (formData.anomaly !== formData.initialAnomaly) {
-        updatePayload.anomaly = formData.anomaly;
-      }
-      
-      if (placementHeight !== formData.initialPlacementHeight) {
-        updatePayload.placement_height = placementHeight;
-      }
-      
-      if (directionalPlacement !== formData.initialDirectionalPlacement) {
-        updatePayload.directional_placement = directionalPlacement;
-      }
-      
-      if (placementStrategy !== formData.initialPlacementStrategy) {
-        updatePayload.placement_strategy = placementStrategy;
-      }
-      
-      if (formData.notes !== formData.initialNotes) {
-        updatePayload.notes = formData.notes || null;
-      }
-      
-      if (formData.outdoor_temperature !== formData.initialOutdoor_temperature) {
-        updatePayload.outdoor_temperature = formData.outdoor_temperature || null;
-      }
-      
-      if (formData.outdoor_humidity !== formData.initialOutdoor_humidity) {
-        updatePayload.outdoor_humidity = formData.outdoor_humidity || null;
-      }
       logger.debug('[updateGasifierObservation] Updating existing observation with data:', {
-        ...updatePayload,
+        gasifier_code: formData.gasifierCode,
+        image_url: imageUrl ? `${imageUrl.substring(0, 30)}...` : undefined,
+        chemical_type: chemicalType,
+        measure: formData.measure,
+        anomaly: formData.anomaly,
+        placement_height: placementHeight,
+        directional_placement: directionalPlacement,
+        placement_strategy: placementStrategy,
+        notes: formData.notes ? `${formData.notes.substring(0, 30)}...` : null,
+        outdoor_temperature: formData.outdoor_temperature,
+        outdoor_humidity: formData.outdoor_humidity,
         observation_id: formData.observationId
       });
       
-      // Skip update if no fields have changed (except last_updated_by_user_id)
-      if (Object.keys(updatePayload).length <= 1) {
-        logger.debug(`[updateGasifierObservation] No fields changed, skipping update for ${formData.observationId}`);
-        return { success: true, observationId: formData.observationId };
-      }
-
       // Update the observation with correct enum handling
       const { data: updateData, error } = await supabase
         .from('gasifier_observations')
-        .update(updatePayload)
+        .update({
+          gasifier_code: formData.gasifierCode,
+          image_url: imageUrl,
+          chemical_type: chemicalType, // Use the properly handled value
+          measure: formData.measure,
+          anomaly: formData.anomaly,
+          placement_height: placementHeight, // Use the properly handled value (null if empty)
+          directional_placement: directionalPlacement, // Use the properly handled value (null if empty)
+          placement_strategy: placementStrategy, // Use the properly handled value (null if empty)
+          notes: formData.notes || null,
+          last_updated_by_user_id: (await supabase.auth.getUser()).data.user?.id,
+          outdoor_temperature: formData.outdoor_temperature || null,
+          outdoor_humidity: formData.outdoor_humidity || null
+        })
         .eq('observation_id', formData.observationId)
         .select(); // Added select() to get the response data
         
