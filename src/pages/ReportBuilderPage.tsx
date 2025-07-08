@@ -56,6 +56,10 @@ const ReportBuilderPage = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
+  // State for validation
+  const [canRunReport, setCanRunReport] = useState(false);
+  const [canSaveReport, setCanSaveReport] = useState(false);
+  
   const chartRef = useRef<SVGSVGElement | null>(null);
   
   // When entity changes, update available fields
@@ -80,17 +84,50 @@ const ReportBuilderPage = () => {
     }
   }, [selectedEntity, reportMetadata]);
   
+  // Determine if report can be run based on required fields
+  useEffect(() => {
+    // Report can be run if:
+    // 1. An entity is selected
+    // 2. A metric is selected
+    // 3. Either a dimension is selected OR time dimension is being used
+    const hasRequiredFields = 
+      !!selectedEntity && 
+      !!selectedMetric && 
+      (
+        (useTimeFilter && !!selectedTimeField) || 
+        (!useTimeFilter && !!selectedDimension)
+      );
+    
+    setCanRunReport(hasRequiredFields);
+  }, [selectedEntity, selectedMetric, selectedDimension, useTimeFilter, selectedTimeField]);
+  
+  // Determine if report can be saved based on required fields and results
+  useEffect(() => {
+    // Report can be saved if:
+    // 1. A name is provided
+    // 2. Report has been run successfully
+    const hasValidName = !!reportName.trim();
+    const hasValidResults = !!reportResults && reportResults.success;
+    
+    setCanSaveReport(hasValidName && hasValidResults);
+  }, [reportName, reportResults]);
+  
   // Function to build report configuration
   const buildReportConfiguration = (): ReportConfiguration => {
     let config: ReportConfiguration = {
       entity: selectedEntity || 'submissions' // Default to submissions if nothing selected
     };
-    
-    // Add dimension
-    if (selectedDimension) {
+
+    // If using time filter, use time dimension, otherwise use selected dimension
+    if (useTimeFilter && selectedTimeField) {
+      config.time_dimension = {
+        field: selectedTimeField,
+        granularity: selectedTimeGranularity
+      };
+    } else if (selectedDimension) {
       config.dimensions = [selectedDimension];
     }
-    
+
     // Add metric
     if (selectedMetric) {
       config.metrics = [{
@@ -98,14 +135,9 @@ const ReportBuilderPage = () => {
         field: selectedMetric.field
       }];
     }
-    
-    // Add time dimension
+
+    // Add date range filter if using time dimension
     if (useTimeFilter && selectedTimeField) {
-      config.time_dimension = {
-        field: selectedTimeField,
-        granularity: selectedTimeGranularity
-      };
-      
       // Add date range filter
       config.filters = [
         ...(config.filters || []),
@@ -140,8 +172,8 @@ const ReportBuilderPage = () => {
   
   // Function to run the report
   const runReport = async () => {
-    if (!selectedEntity) {
-      toast.error('Please select an entity to report on');
+    if (!canRunReport) {
+      toast.error('Please select all required fields: entity, metric, and dimension');
       return;
     }
     
@@ -169,13 +201,8 @@ const ReportBuilderPage = () => {
   
   // Function to save the report
   const saveReport = async () => {
-    if (!selectedEntity) {
-      toast.error('Please select an entity to report on');
-      return;
-    }
-    
-    if (!reportName.trim()) {
-      toast.error('Please enter a report name');
+    if (!canSaveReport) {
+      toast.error('Please run the report successfully before saving, and provide a report name');
       return;
     }
     
@@ -520,6 +547,28 @@ const ReportBuilderPage = () => {
                   </div>
                 )}
                 
+                {/* Dimension Selection - Only show if not using time filter */}
+                {!useTimeFilter && selectedEntityMetadata && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Dimension
+                    </label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      value={selectedDimension || ''}
+                      onChange={(e) => setSelectedDimension(e.target.value)}
+                    >
+                      <option value="">Select a dimension</option>
+                      {selectedEntityMetadata.fields
+                        .filter(field => field.roles.includes('dimension'))
+                        .map(field => (
+                          <option key={field.name} value={field.name}>{field.label}</option>
+                        ))
+                      }
+                    </select>
+                  </div>
+                )}
+                
                 {/* Metric Selection */}
                 {selectedEntityMetadata && (
                   <div>
@@ -737,7 +786,7 @@ const ReportBuilderPage = () => {
                   icon={<Play size={16} />}
                   onClick={runReport}
                   isLoading={isRunning}
-                  disabled={!selectedEntity}
+                  disabled={!canRunReport || isRunning}
                 >
                   Run Report
                 </Button>
@@ -746,7 +795,7 @@ const ReportBuilderPage = () => {
                   icon={<Save size={16} />}
                   onClick={saveReport}
                   isLoading={isSaving}
-                  disabled={!selectedEntity || !reportName}
+                  disabled={!canSaveReport || isSaving}
                 >
                   Save
                 </Button>
