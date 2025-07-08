@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useAuthStore } from '../stores/authStore';
 import { toast } from 'react-toastify';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -66,8 +67,8 @@ export interface ReportResult {
   };
 }
 
-const useReports = () => {
-  const { user } = { user: { id: '' } }; // Get from auth store
+export function useReports() {
+  const { user } = useAuthStore();
   const queryClient = useQueryClient();
 
   // Query for fetching all reports
@@ -228,7 +229,14 @@ const useReports = () => {
   }
 
   // Update report
-  const updateReport = async (reportId: string, updates: Partial<CustomReport>): Promise<boolean> => {
+  const updateReport = async (
+    reportId: string,
+    updates: {
+      name: string;
+      description?: string | undefined;
+      configuration: ReportConfiguration;
+    }
+  ): Promise<boolean> => {
     try {
       const { data, error } = await supabase
         .from('custom_reports')
@@ -239,21 +247,31 @@ const useReports = () => {
 
       if (error) throw error;
 
-      // Update local state
-      queryClient.invalidateQueries(['reports']);
+      // Update cache
       queryClient.setQueryData(['report', reportId], data);
+      queryClient.invalidateQueries(['reports']);
       
+      toast.success('Report updated successfully');
       return true;
-    } catch (error) {
-      console.error('Error updating report:', error);
+    } catch (err) {
+      console.error('Error updating report:', err);
       toast.error('Failed to update report');
       return false;
     }
   };
   
-  // Fetch a report by ID
-  const fetchReport = async (reportId: string): Promise<CustomReport | null> => {
+  // Fetch a single report by ID
+  const fetchReport = useCallback(async (reportId: string): Promise<CustomReport | null> => {
     try {
+      console.log(`Fetching report with ID: ${reportId}`);
+      
+      // Check cache first
+      const cachedReport = queryClient.getQueryData<CustomReport>(['report', reportId]);
+      if (cachedReport) {
+        console.log('Using cached report data');
+        return cachedReport;
+      }
+      
       const { data, error } = await supabase
         .from('custom_reports')
         .select('*')
@@ -261,12 +279,17 @@ const useReports = () => {
         .single();
       
       if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error fetching report:', error);
+      
+      // Cache the result
+      queryClient.setQueryData(['report', reportId], data);
+      
+      console.log('Successfully fetched report');
+      return data as CustomReport;
+    } catch (err) {
+      console.error('Error in fetchReport:', err);
       return null;
     }
-  };
+  }, [queryClient]);
 
   return {
     reports: reportsQuery.data || [],
