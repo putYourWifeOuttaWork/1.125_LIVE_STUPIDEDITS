@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { BarChart4, PlusCircle, Save, Play, Filter, Calendar, RefreshCw, AlertTriangle, FileText, Download, X } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent, CardFooter } from '../components/common/Card';
@@ -15,18 +15,25 @@ import FilterValueInput from '../components/reports/FilterValueInput';
 
 // D3 imports for visualization
 import * as d3 from 'd3';
-import { useRef } from 'react';
 
 const ReportBuilderPage = () => {
   const navigate = useNavigate();
+  const { reportId } = useParams<{ reportId: string }>();
+  const [searchParams] = useSearchParams();
+  const shouldRunOnLoad = searchParams.get('run') === 'true';
   const { user } = useAuthStore();
   const { 
     reportMetadata, 
     reports, 
     isLoading, 
+    fetchReport,
     createReport, 
+    updateReport,
     executeReportQuery 
   } = useReports();
+  
+  // Flag to track if we're editing an existing report
+  const [isEditingExistingReport, setIsEditingExistingReport] = useState(false);
   
   // State for report configuration
   const [reportName, setReportName] = useState('New Report');
@@ -51,6 +58,9 @@ const ReportBuilderPage = () => {
   // State for visualization
   const [visualizationType, setVisualizationType] = useState<'bar' | 'line' | 'table'>('bar');
   
+  // Loading state for report data
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
+  
   // State for report results
   const [reportResults, setReportResults] = useState<ReportResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -61,6 +71,105 @@ const ReportBuilderPage = () => {
   const [canSaveReport, setCanSaveReport] = useState(false);
   
   const chartRef = useRef<SVGSVGElement | null>(null);
+  
+  // Load report data when reportId is provided
+  useEffect(() => {
+    const loadReport = async () => {
+      if (!reportId) return;
+      
+      setIsLoadingReport(true);
+      try {
+        const report = await fetchReport(reportId);
+        if (report) {
+          // We're editing an existing report
+          setIsEditingExistingReport(true);
+          
+          // Set basic report info
+          setReportName(report.name);
+          setReportDescription(report.description || '');
+          setSelectedEntity(report.configuration.entity);
+          
+          // Wait for entity to load before setting other fields
+          setTimeout(() => {
+            // Set dimensions
+            if (report.configuration.dimensions && report.configuration.dimensions.length > 0) {
+              setSelectedDimension(report.configuration.dimensions[0]);
+            }
+            
+            // Set time dimension
+            if (report.configuration.time_dimension) {
+              setUseTimeFilter(true);
+              setSelectedTimeField(report.configuration.time_dimension.field);
+              setSelectedTimeGranularity(report.configuration.time_dimension.granularity);
+              
+              // Look for date range filters
+              const dateFilters = (report.configuration.filters || []).filter(
+                f => f.field === report.configuration.time_dimension!.field && 
+                    (f.operator === '>=' || f.operator === '<=')
+              );
+              
+              // Extract date range values if found
+              if (dateFilters.length >= 2) {
+                const startFilter = dateFilters.find(f => f.operator === '>=');
+                const endFilter = dateFilters.find(f => f.operator === '<=');
+                
+                if (startFilter && startFilter.value) {
+                  setStartDate(new Date(startFilter.value));
+                }
+                if (endFilter && endFilter.value) {
+                  setEndDate(new Date(endFilter.value));
+                }
+              }
+            }
+            
+            // Set metrics
+            if (report.configuration.metrics && report.configuration.metrics.length > 0) {
+              const metric = report.configuration.metrics[0];
+              setSelectedMetric({
+                function: metric.function,
+                field: metric.field,
+                label: `${metric.function} of ${metric.field}`
+              });
+            }
+            
+            // Set other filters (excluding date range filters for time dimension)
+            if (report.configuration.filters) {
+              const normalFilters = report.configuration.time_dimension
+                ? report.configuration.filters.filter(
+                    f => f.field !== report.configuration.time_dimension.field || 
+                        (f.operator !== '>=' && f.operator !== '<=')
+                  )
+                : report.configuration.filters;
+              
+              setFilters(normalFilters);
+            }
+            
+            // Set visualization type
+            if (report.configuration.visualization?.type) {
+              setVisualizationType(report.configuration.visualization.type);
+            }
+            
+            // Run the report if requested
+            if (shouldRunOnLoad) {
+              runReport();
+            }
+          }, 300); // Short delay to ensure entity metadata has loaded
+        } else {
+          toast.error('Report not found');
+          navigate('/reports');
+        }
+      } catch (error) {
+        console.error('Error loading report:', error);
+        toast.error('Failed to load report');
+      } finally {
+        setIsLoadingReport(false);
+      }
+    };
+    
+    if (reportId) {
+      loadReport();
+    }
+  }, [reportId, fetchReport, navigate, shouldRunOnLoad]);
   
   // When entity changes, update available fields
   useEffect(() => {
@@ -86,17 +195,12 @@ const ReportBuilderPage = () => {
   
   // Determine if report can be run based on required fields
   useEffect(() => {
-    // Report can be run if:
-    // 1. An entity is selected
-    // 2. A metric is selected
-    // 3. Either a dimension is selected OR time dimension is being used
-    const hasRequiredFields = 
+    const hasRequiredFields = (
       !!selectedEntity && 
-      !!selectedMetric && 
-      (
+      !!selectedMetric && (
         (useTimeFilter && !!selectedTimeField) || 
         (!useTimeFilter && !!selectedDimension)
-      );
+      ));
     
     setCanRunReport(hasRequiredFields);
   }, [selectedEntity, selectedMetric, selectedDimension, useTimeFilter, selectedTimeField]);
@@ -202,22 +306,32 @@ const ReportBuilderPage = () => {
   // Function to save the report
   const saveReport = async () => {
     if (!canSaveReport) {
-      toast.error('Please run the report successfully before saving, and provide a report name');
+      toast.error('Please provide a report name and run the report successfully before saving');
       return;
     }
 
     try {
       setIsSaving(true);
       
-      // Build the report configuration
-      const config = buildReportConfiguration();
+      // Build the current report configuration
+      const reportConfig = buildReportConfiguration();
       
-      // Save the report
-      const result = await createReport(reportName, config, reportDescription);
-      
-      if (result) {
-        toast.success('Report saved successfully');
-        // Navigate to reports list or stay on page?
+      if (isEditingExistingReport && reportId) {
+        // Update existing report
+        await updateReport(reportId, {
+          name: reportName,
+          description: reportDescription || undefined,
+          configuration: reportConfig
+        });
+        toast.success('Report updated successfully');
+      } else {
+        // Create a new report
+        const result = await createReport(reportName, reportConfig, reportDescription);
+        if (result) {
+          setIsEditingExistingReport(true);
+          navigate(`/reports/builder/${result.report_id}`, { replace: true });
+          toast.success('Report saved successfully');
+        }
       }
     } catch (error) {
       console.error('Error saving report:', error);
@@ -389,7 +503,7 @@ const ReportBuilderPage = () => {
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Custom Report Builder</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{isEditingExistingReport ? 'Edit Report' : 'Custom Report Builder'}</h1>
           <p className="text-gray-600 mt-1">
             Build and save custom reports with flexible dimensions and metrics
           </p>
@@ -405,7 +519,10 @@ const ReportBuilderPage = () => {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {isLoadingReport ? (
+        <LoadingScreen />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Report Builder Panel */}
         <div className="lg:col-span-1">
           <Card>
@@ -450,9 +567,10 @@ const ReportBuilderPage = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     value={selectedEntity || ''}
                     onChange={(e) => setSelectedEntity(e.target.value)}
+                    disabled={isEditingExistingReport}
                   >
                     <option value="">Select a data source</option>
-                    {reportMetadata.map(entity => (
+                    {Array.isArray(reportMetadata) && reportMetadata.map(entity => (
                       <option key={entity.entity} value={entity.entity}>{entity.label}</option>
                     ))}
                   </select>
@@ -757,28 +875,31 @@ const ReportBuilderPage = () => {
             <CardFooter className="flex justify-between">
               <Button
                 variant="outline"
-                onClick={() => {
-                  // Reset all form states to initial values
-                  setReportName('New Report');
-                  setReportDescription('');
-                  setSelectedEntity('');
-                  setSelectedDimension(null);
-                  setSelectedMetric(null);
-                  setSelectedTimeField(null);
-                  setSelectedTimeGranularity('week');
-                  setUseTimeFilter(false);
-                  setStartDate(subDays(new Date(), 30));
-                  setEndDate(new Date());
-                  setFilters([]);
-                  setReportResults(null);
-                  
-                  // Also clear the chart
-                  if (chartRef.current) {
-                    d3.select(chartRef.current).selectAll('*').remove();
-                  }
-                }}
+                onClick={isEditingExistingReport 
+                  ? () => navigate('/reports')
+                  : () => {
+                      // Reset all form states to initial values
+                      setReportName('New Report');
+                      setReportDescription('');
+                      setSelectedEntity('');
+                      setSelectedDimension(null);
+                      setSelectedMetric(null);
+                      setSelectedTimeField(null);
+                      setSelectedTimeGranularity('week');
+                      setUseTimeFilter(false);
+                      setStartDate(subDays(new Date(), 30));
+                      setEndDate(new Date());
+                      setFilters([]);
+                      setReportResults(null);
+                      
+                      // Also clear the chart
+                      if (chartRef.current) {
+                        d3.select(chartRef.current).selectAll('*').remove();
+                      }
+                    }
+                }
               >
-                Reset
+                {isEditingExistingReport ? 'Cancel' : 'Reset'}
               </Button>
               <div className="flex flex-col space-y-2">
                 <Button
@@ -797,7 +918,7 @@ const ReportBuilderPage = () => {
                   isLoading={isSaving}
                   disabled={!canSaveReport || isSaving}
                 >
-                  Save
+                  {isEditingExistingReport ? 'Update' : 'Save'}
                 </Button>
               </div>
             </CardFooter>
@@ -947,6 +1068,7 @@ const ReportBuilderPage = () => {
           </Card>
         </div>
       </div>
+      )}
     </div>
   );
 };

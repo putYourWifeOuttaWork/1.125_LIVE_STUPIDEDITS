@@ -37,10 +37,8 @@ const ReportsListPage = () => {
   
   // Handle viewing/editing a report
   const handleViewReport = (reportId: string) => {
-    // For now, just navigate to the report builder - in the future could implement a view-only mode
-    // navigate(`/reports/${reportId}`);
-    toast.info('Report viewing is coming soon. Opening in edit mode.');
-    navigate('/reports/builder');
+    // Navigate to the report builder with the report ID but don't run it
+    navigate(`/reports/builder/${reportId}`);
   };
   
   // Handle deleting a report
@@ -72,9 +70,9 @@ const ReportsListPage = () => {
   
   // Handle running a report
   const handleRunReport = (reportId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    // For now, navigate to the builder page - in the future, implement a dedicated view
-    navigate('/reports/builder');
+    e.stopPropagation(); // Prevent card click handler from firing
+    // Navigate to the builder page with the report ID and run=true parameter
+    navigate(`/reports/builder/${reportId}?run=true`);
   };
 
   if (isLoading) {

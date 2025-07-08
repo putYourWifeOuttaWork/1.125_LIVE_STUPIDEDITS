@@ -371,6 +371,11 @@ function App() {
                   <ReportBuilderPage />
                 </Suspense>
               } />
+              <Route path="/reports/builder/:reportId" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <ReportBuilderPage />
+                </Suspense>
+              } />
               <Route path="/programs/:programId/audit-log" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <AuditLogPage />
