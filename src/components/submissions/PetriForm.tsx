@@ -302,28 +302,18 @@ const PetriForm = forwardRef<PetriFormRef, PetriFormProps>(({
         imageFile,
         imageUrl: initialData?.observationId ? initialData?.imageUrl : undefined,
         tempImageKey,
-        initialPetriCode: formik.initialValues.petriCode,
         plantType: initialData?.plantType || 'Other Fresh Perishable',
         fungicideUsed: formik.values.fungicideUsed,
-        initialImageUrl: initialData?.imageUrl,
-      logger.debug(`useEffect updating parent with:`, {
-        petriCode: formik.values.petriCode,
-        hasImageFile: !!imageFile,
-        hasInitialImageUrl: !!(initialData?.observationId && initialData?.imageUrl),
-        hasTempImageKey: !!tempImageKey,
-        tempImageKey,
-        imageFile: imageFile ? {
-          name: imageFile.name,
-          size: imageFile.size,
-          type: imageFile.type
-        } : null,
+        surroundingWaterSchedule: formik.values.surroundingWaterSchedule,
+        notes: formik.values.notes,
+        placement: formik.values.placement,
+        outdoor_temperature: formik.values.outdoor_temperature,
+        outdoor_humidity: formik.values.outdoor_humidity,
         isValid,
         hasData,
         hasImage,
         observationId: observationId || initialData?.observationId,
         isDirty,
-        outdoor_temperature: formik.values.outdoor_temperature,
-        outdoor_humidity: formik.values.outdoor_humidity,
         is_image_split: formik.values.is_image_split,
         is_split_source: formik.values.is_split_source,
         split_processed: formik.values.split_processed,
@@ -351,9 +341,18 @@ const PetriForm = forwardRef<PetriFormRef, PetriFormProps>(({
     formId
   ]);
 
-  // Show a message for split image if this is a split source
+  const isSplitSource = formik.values.is_image_split && formik.values.is_split_source;
+
   return (
-        main_petri_id: formik.values.main_petri_id // Include the main_petri_id field to prevent it from being cleared
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
+      {/* Header with expand/collapse and remove buttons */}
+      <div className="flex justify-between items-center mb-3">
+        <div className="flex items-center">
+          <h3 className="text-lg font-medium text-gray-900">
+            Petri {index + 1}
+          </h3>
+          <button
+            type="button"
             onClick={toggleExpanded}
             className="ml-2 p-1 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-200 transition-colors"
             title={isExpanded ? "Collapse" : "Expand"}
