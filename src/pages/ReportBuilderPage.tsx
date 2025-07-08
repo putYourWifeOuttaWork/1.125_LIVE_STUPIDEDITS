@@ -155,6 +155,11 @@ const ReportBuilderPage = () => {
       
       if (results && results.success) {
         setReportResults(results);
+        
+        // If we have a chart element and data, render the visualization
+        if (chartRef.current && results.data && results.data.length > 0) {
+          renderVisualization(results.data, visualizationType);
+        }
       } else {
         toast.error(results?.message || 'Failed to execute report query');
       }
@@ -203,15 +208,15 @@ const ReportBuilderPage = () => {
   const renderVisualization = (data: any[], type: 'bar' | 'line' | 'table') => {
     if (!chartRef.current) return;
     
-    // Clear previous chart before rendering
+    // Clear previous chart
     d3.select(chartRef.current).selectAll('*').remove();
     
     // Skip visualization if using table view
     if (type === 'table') return;
     
     // Set up dimensions
-    const margin = { top: 20, right: 30, bottom: 100, left: 60 };
-    const width = Math.max(0, chartRef.current.clientWidth - margin.left - margin.right);
+    const margin = { top: 20, right: 30, bottom: 40, left: 40 };
+    const width = chartRef.current.clientWidth - margin.left - margin.right;
     const height = 400 - margin.top - margin.bottom;
     
     // Create SVG
@@ -239,24 +244,7 @@ const ReportBuilderPage = () => {
     // Add X axis
     svg.append('g')
       .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x).tickFormat(d => {
-        // If this looks like a date, format it nicely
-        if (typeof d === 'string' && (d.includes('-') || d.includes('+'))) {
-          try {
-            // Try to parse it as a date
-            const date = new Date(d);
-            // Check if it's a valid date
-            if (!isNaN(date.getTime())) {
-              // Format to "Jun 1", "Jun 8", etc.
-              return format(date, 'MMM d');
-            }
-          } catch (error) {
-            // If parsing fails, return original value
-            return d;
-          }
-        }
-        return d;
-      }))
+      .call(d3.axisBottom(x))
       .selectAll('text')
       .style('text-anchor', 'end')
       .attr('dx', '-.8em')
@@ -310,16 +298,6 @@ const ReportBuilderPage = () => {
         .attr('fill', '#4ade80');
     }
   };
-  
-  // Add a useEffect hook to re-render the chart when reportResults or visualizationType changes
-  useEffect(() => {
-    if (chartRef.current && reportResults && reportResults.data && reportResults.data.length > 0) {
-      renderVisualization(reportResults.data, visualizationType);
-    } else if (chartRef.current) {
-      // Clear the chart if there are no results
-      d3.select(chartRef.current).selectAll('*').remove();
-    }
-  }, [reportResults, visualizationType]);
   
   // Function to add a new filter
   const addFilter = () => {
@@ -530,18 +508,13 @@ const ReportBuilderPage = () => {
                       value={selectedMetric ? `${selectedMetric.function}_${selectedMetric.field}` : ''}
                       onChange={(e) => {
                         const [fn, field] = e.target.value.split('_');
-                        // Handle the case where field might be '*' for COUNT aggregations
-                        const fieldValue = field === '*' ? undefined : field;
-                        
-                        // Find the matching aggregation in the metadata
-                        const metric = selectedEntityMetadata.aggregations.find(agg => 
-                          agg.function === fn && (agg.field === fieldValue || (!agg.field && fieldValue === undefined))
+                        const metric = selectedEntityMetadata.aggregations.find(
+                          a => a.function === fn && a.field === field
                         );
-                        
                         if (metric) {
                           setSelectedMetric({
                             function: metric.function,
-                            field: metric.field || '*', // Use '*' for undefined fields
+                            field: metric.field || '*',
                             label: metric.label
                           });
                         }
@@ -695,29 +668,18 @@ const ReportBuilderPage = () => {
               <Button
                 variant="outline"
                 onClick={() => {
-                  // Reset all form states to initial values
+                  // Reset form
                   setReportName('New Report');
                   setReportDescription('');
                   setSelectedEntity(null);
                   setSelectedDimension(null);
                   setSelectedMetric(null);
-                  setSelectedTimeField(null);
-                  setSelectedTimeGranularity('week');
-                  setUseTimeFilter(false);
-                  setStartDate(subDays(new Date(), 30));
-                  setEndDate(new Date());
                   setFilters([]);
-                  setReportResults(null);
-                  
-                  // Also clear the chart
-                  if (chartRef.current) {
-                    d3.select(chartRef.current).selectAll('*').remove();
-                  }
                 }}
               >
                 Reset
               </Button>
-              <div className="flex flex-col space-y-2">
+              <div className="space-x-2">
                 <Button
                   variant="primary"
                   icon={<Play size={16} />}
