@@ -129,6 +129,14 @@ const SubmissionEditPage = () => {
           return;
         }
         
+        // Check if data and submission are defined
+        if (!data || !data.submission) {
+          console.error('No submission data returned');
+          toast.error('Submission data not found');
+          navigate(`/programs/${programId}/sites/${siteId}`);
+          return;
+        }
+        
         if (!data || !data.submission) {
           console.error('Error: No submission data returned');
           toast.error('Failed to load submission data');
