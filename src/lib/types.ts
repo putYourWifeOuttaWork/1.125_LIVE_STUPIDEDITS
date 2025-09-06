@@ -86,7 +86,7 @@ export interface SubmissionDefaults {
   weather: 'Clear' | 'Cloudy' | 'Rain';
   notes?: string | null;
   indoor_temperature?: number | null;
-  indoor_humidity?: number | null;
+  indoor_humidity_new?: number | null;
 }
 
 export interface PetriDefaults {

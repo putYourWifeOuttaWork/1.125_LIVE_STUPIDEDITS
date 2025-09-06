@@ -52,7 +52,7 @@ export interface InitialSubmissionData {
   weather: 'Clear' | 'Cloudy' | 'Rain';
   notes?: string;
   indoor_temperature?: number;
-  indoor_humidity?: number;
+  indoor_humidity_new?: number;
   timezone?: string;
 }
 
