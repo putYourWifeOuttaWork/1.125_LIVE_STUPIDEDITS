@@ -29,7 +29,7 @@ const SubmissionSchema = Yup.object().shape({
     .nullable()
     .min(32, 'Indoor temperature must be at least 32°F')
     .max(120, 'Indoor temperature cannot exceed 120°F'),
-  indoor_humidity: Yup.number()
+  indoor_humidity_new: Yup.number()
     .nullable()
     .min(1, 'Indoor humidity must be at least 1%')
     .max(100, 'Indoor humidity cannot exceed 100%'),
@@ -145,7 +145,7 @@ const NewSubmissionPage = () => {
       temperature: localSiteData?.default_temperature || currentConditions?.temp || 70,
       humidity: localSiteData?.default_humidity || currentConditions?.RelativeHumidity || currentConditions?.humidity || 50,
       indoor_temperature: localSiteData?.default_indoor_temperature || '',
-      indoor_humidity: localSiteData?.default_indoor_humidity || '',
+      indoor_humidity_new: localSiteData?.default_indoor_humidity_new || '',
       airflow: localSiteData?.submission_defaults?.airflow || 'Open',
       odorDistance: localSiteData?.submission_defaults?.odor_distance || '5-10ft',
       weather: suggestedWeatherType || localSiteData?.default_weather || userCompany?.default_weather || 'Clear',
@@ -179,8 +179,8 @@ const NewSubmissionPage = () => {
           submissionData.indoor_temperature = Number(values.indoor_temperature);
         }
         
-        if (values.indoor_humidity) {
-          submissionData.indoor_humidity = Number(values.indoor_humidity);
+        if (values.indoor_humidity_new) {
+          submissionData.indoor_humidity_new = Number(values.indoor_humidity_new);
         }
         
         // Add timezone for transport facilities
@@ -261,10 +261,10 @@ const NewSubmissionPage = () => {
         updatedValues.indoor_temperature = localSiteData.default_indoor_temperature.toString();
       }
       
-      if (defaults.indoor_humidity) {
-        updatedValues.indoor_humidity = defaults.indoor_humidity.toString();
-      } else if (localSiteData.default_indoor_humidity) {
-        updatedValues.indoor_humidity = localSiteData.default_indoor_humidity.toString();
+      if (defaults.indoor_humidity_new) {
+        updatedValues.indoor_humidity_new = defaults.indoor_humidity_new.toString();
+      } else if (localSiteData.default_indoor_humidity_new) {
+        updatedValues.indoor_humidity_new = localSiteData.default_indoor_humidity_new.toString();
       }
       
       if (defaults.airflow) {
@@ -295,8 +295,8 @@ const NewSubmissionPage = () => {
         updatedValues.indoor_temperature = localSiteData.default_indoor_temperature.toString();
       }
       
-      if (localSiteData.default_indoor_humidity) {
-        updatedValues.indoor_humidity = localSiteData.default_indoor_humidity.toString();
+      if (localSiteData.default_indoor_humidity_new) {
+        updatedValues.indoor_humidity_new = localSiteData.default_indoor_humidity_new.toString();
       }
       
       // For weather, prioritize suggestedWeatherType, then site default, then company default
@@ -535,14 +535,14 @@ const NewSubmissionPage = () => {
                   <Droplets className="text-secondary-500 mr-2" size={18} />
                   <Input
                     label="Indoor Humidity (%)"
-                    id="indoor_humidity"
-                    name="indoor_humidity"
+                    id="indoor_humidity_new"
+                    name="indoor_humidity_new"
                     type="number"
                     placeholder="e.g., 45"
-                    value={formik.values.indoor_humidity}
+                    value={formik.values.indoor_humidity_new}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
-                    error={formik.touched.indoor_humidity && formik.errors.indoor_humidity ? formik.errors.indoor_humidity : undefined}
+                    error={formik.touched.indoor_humidity_new && formik.errors.indoor_humidity_new ? formik.errors.indoor_humidity_new : undefined}
                     helperText="Valid range: 1-100% (optional)"
                     className="!mb-0"
                     testId="indoor-humidity-input"

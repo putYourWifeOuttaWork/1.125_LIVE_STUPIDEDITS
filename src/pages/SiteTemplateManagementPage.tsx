@@ -625,8 +625,8 @@ const SiteTemplateManagementPage = () => {
                         <div className="border rounded-md p-3 bg-gray-50">
                           <p className="text-sm text-gray-500">Indoor Humidity</p>
                           <p className="font-medium">
-                            {template.submissionDefaults?.indoor_humidity 
-                              ? `${template.submissionDefaults.indoor_humidity}%` 
+                            {template.submissionDefaults?.indoor_humidity_new 
+                              ? `${template.submissionDefaults.indoor_humidity_new}%` 
                               : 'Not set'}
                           </p>
                         </div>

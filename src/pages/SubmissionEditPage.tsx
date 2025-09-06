@@ -543,7 +543,7 @@ const SubmissionEditPage = () => {
           validGasifierData,
           undefined,
           submission.indoor_temperature,
-          submission.indoor_humidity
+          submission.indoor_humidity_new
         );
         
         if (!result) {

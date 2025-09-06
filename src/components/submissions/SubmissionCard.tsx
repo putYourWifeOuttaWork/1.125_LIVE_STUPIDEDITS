@@ -238,7 +238,7 @@ const SubmissionCard = ({ submission, onDelete, canDelete, sessionStatus, lastAc
                   <div className="flex items-center">
                     <Calendar className="text-primary-500 mr-2" size={18} />
                     <span className="text-sm">
-                      {format(new Date(submission.created_at), 'PPp')}
+                      {submission.indoor_humidity_new ? `${submission.indoor_humidity_new}%` : 'N/A'}
                     </span>
                   </div>
                   {submission.created_by && (

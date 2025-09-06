@@ -71,7 +71,7 @@ const SiteTemplateSchema = Yup.object().shape({
     .nullable()
     .min(32, 'Indoor temperature must be at least 32°F')
     .max(120, 'Indoor temperature cannot exceed 120°F'),
-  indoor_humidity: Yup.number()
+  indoor_humidity_new: Yup.number()
     .nullable()
     .min(1, 'Indoor humidity must be at least 1%')
     .max(100, 'Indoor humidity cannot exceed 100%'),
@@ -163,7 +163,7 @@ const SiteTemplateForm = ({
       temperature: initialValues.submissionDefaults?.temperature || 70,
       humidity: initialValues.submissionDefaults?.humidity || 50,
       indoor_temperature: initialValues.submissionDefaults?.indoor_temperature || '',
-      indoor_humidity: initialValues.submissionDefaults?.indoor_humidity || '',
+      indoor_humidity_new: initialValues.submissionDefaults?.indoor_humidity_new || '',
       airflow: initialValues.submissionDefaults?.airflow || 'Open',
       odorDistance: initialValues.submissionDefaults?.odor_distance || '5-10ft',
       weather: initialValues.submissionDefaults?.weather || 'Clear',
@@ -215,8 +215,8 @@ const SiteTemplateForm = ({
           submissionDefaults.indoor_temperature = Number(values.indoor_temperature);
         }
         
-        if (values.indoor_humidity) {
-          submissionDefaults.indoor_humidity = Number(values.indoor_humidity);
+        if (values.indoor_humidity_new) {
+          submissionDefaults.indoor_humidity_new = Number(values.indoor_humidity_new);
         }
         
         // Construct site properties object
@@ -491,13 +491,13 @@ const SiteTemplateForm = ({
               
               <Input
                 label="Indoor Humidity (%) - Optional"
-                id="indoor_humidity"
-                name="indoor_humidity"
+                id="indoor_humidity_new"
+                name="indoor_humidity_new"
                 type="number"
-                value={formik.values.indoor_humidity}
+                value={formik.values.indoor_humidity_new}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
-                error={formik.touched.indoor_humidity && formik.errors.indoor_humidity ? formik.errors.indoor_humidity : undefined}
+                error={formik.touched.indoor_humidity_new && formik.errors.indoor_humidity_new ? formik.errors.indoor_humidity_new : undefined}
                 disabled={isLoading}
                 helperText="Valid range: 1-100%"
               />
