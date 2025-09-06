@@ -220,10 +220,9 @@ export function useSubmissions(siteId?: string) {
           weather,
           notes,
           created_by: user.id,
-          indoor_humidity_new: indoorHumidity
+          indoor_humidity_new: indoorHumidity,
           updated_at: new Date().toISOString(),
           indoor_temperature: indoorTemperature,
-          indoor_humidity_new: indoorHumidity
         } as Submission;
 
         // Store petri observations offline
