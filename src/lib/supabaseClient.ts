@@ -1,9 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './types';
 
-// Get environment variables - using explicit values as fallback if env vars are missing
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://vxxsqkbkkkksmhnihlkd.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ4eHNxa2Jra2trc21obmlobGtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2NDYxMjgsImV4cCI6MjA2NDIyMjEyOH0.oGekj3JGCVloz9NVeYdKITRt-k-bWDG2zfxG75oRboQ';
+// Get environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables. Please check your .env file.');
+}
 
 console.log('Connecting to Supabase:', supabaseUrl);
 
