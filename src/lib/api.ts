@@ -165,13 +165,469 @@ export const fetchSubmissionsBySiteId = async (siteId: string) => {
  */
 export const fetchSiteById = async (siteId: string) => {
   if (!siteId) return { data: null, error: null };
-  
+
   logger.debug(`Fetching site ${siteId}`);
-  return withRetry(() => 
+  return withRetry(() =>
     supabase
       .from('sites')
       .select('*')
       .eq('site_id', siteId)
       .single()
   , `fetchSiteById(${siteId})`);
+};
+
+// ==========================================
+// PILOT PROGRAMS API
+// ==========================================
+
+/**
+ * Fetch all pilot programs accessible to the current user
+ */
+export const fetchPilotPrograms = async () => {
+  logger.debug('Fetching all pilot programs');
+  return withRetry(() =>
+    supabase
+      .from('pilot_programs')
+      .select('*')
+      .order('created_at', { ascending: false })
+  , 'fetchPilotPrograms');
+};
+
+/**
+ * Fetch a single pilot program by ID
+ */
+export const fetchPilotProgramById = async (programId: string) => {
+  if (!programId) return { data: null, error: null };
+
+  logger.debug(`Fetching pilot program ${programId}`);
+  return withRetry(() =>
+    supabase
+      .from('pilot_programs')
+      .select('*')
+      .eq('program_id', programId)
+      .maybeSingle()
+  , `fetchPilotProgramById(${programId})`);
+};
+
+/**
+ * Fetch pilot programs for a specific company
+ */
+export const fetchPilotProgramsByCompanyId = async (companyId: string) => {
+  if (!companyId) return { data: [], error: null };
+
+  logger.debug(`Fetching pilot programs for company ${companyId}`);
+  return withRetry(() =>
+    supabase
+      .from('pilot_programs')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+  , `fetchPilotProgramsByCompanyId(${companyId})`);
+};
+
+/**
+ * Fetch pilot programs with progress metrics (uses view)
+ */
+export const fetchPilotProgramsWithProgress = async () => {
+  logger.debug('Fetching pilot programs with progress');
+  return withRetry(() =>
+    supabase
+      .from('pilot_programs_with_progress')
+      .select('*')
+      .order('created_at', { ascending: false })
+  , 'fetchPilotProgramsWithProgress');
+};
+
+// ==========================================
+// COMPANIES API
+// ==========================================
+
+/**
+ * Fetch all companies
+ */
+export const fetchCompanies = async () => {
+  logger.debug('Fetching all companies');
+  return withRetry(() =>
+    supabase
+      .from('companies')
+      .select('*')
+      .order('name', { ascending: true })
+  , 'fetchCompanies');
+};
+
+/**
+ * Fetch a single company by ID
+ */
+export const fetchCompanyById = async (companyId: string) => {
+  if (!companyId) return { data: null, error: null };
+
+  logger.debug(`Fetching company ${companyId}`);
+  return withRetry(() =>
+    supabase
+      .from('companies')
+      .select('*')
+      .eq('company_id', companyId)
+      .maybeSingle()
+  , `fetchCompanyById(${companyId})`);
+};
+
+// ==========================================
+// USERS API
+// ==========================================
+
+/**
+ * Fetch user profile by ID
+ */
+export const fetchUserById = async (userId: string) => {
+  if (!userId) return { data: null, error: null };
+
+  logger.debug(`Fetching user ${userId}`);
+  return withRetry(() =>
+    supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle()
+  , `fetchUserById(${userId})`);
+};
+
+/**
+ * Fetch users by company ID
+ */
+export const fetchUsersByCompanyId = async (companyId: string) => {
+  if (!companyId) return { data: [], error: null };
+
+  logger.debug(`Fetching users for company ${companyId}`);
+  return withRetry(() =>
+    supabase
+      .from('users')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('full_name', { ascending: true })
+  , `fetchUsersByCompanyId(${companyId})`);
+};
+
+/**
+ * Fetch users with access to a specific program
+ */
+export const fetchUsersByProgramId = async (programId: string) => {
+  if (!programId) return { data: [], error: null };
+
+  logger.debug(`Fetching users for program ${programId}`);
+  return withRetry(() =>
+    supabase
+      .from('program_access')
+      .select('user_id, access_level, users(*)')
+      .eq('program_id', programId)
+  , `fetchUsersByProgramId(${programId})`);
+};
+
+// ==========================================
+// SUBMISSIONS API
+// ==========================================
+
+/**
+ * Fetch a single submission by ID
+ */
+export const fetchSubmissionById = async (submissionId: string) => {
+  if (!submissionId) return { data: null, error: null };
+
+  logger.debug(`Fetching submission ${submissionId}`);
+  return withRetry(() =>
+    supabase
+      .from('submissions')
+      .select('*')
+      .eq('submission_id', submissionId)
+      .maybeSingle()
+  , `fetchSubmissionById(${submissionId})`);
+};
+
+/**
+ * Fetch submissions by program ID
+ */
+export const fetchSubmissionsByProgramId = async (programId: string) => {
+  if (!programId) return { data: [], error: null };
+
+  logger.debug(`Fetching submissions for program ${programId}`);
+  return withRetry(() =>
+    supabase
+      .from('submissions')
+      .select('*')
+      .eq('program_id', programId)
+      .order('created_at', { ascending: false })
+  , `fetchSubmissionsByProgramId(${programId})`);
+};
+
+// ==========================================
+// PETRI OBSERVATIONS API (Device Data)
+// ==========================================
+
+/**
+ * Fetch petri observations by submission ID
+ */
+export const fetchPetriObservationsBySubmissionId = async (submissionId: string) => {
+  if (!submissionId) return { data: [], error: null };
+
+  logger.debug(`Fetching petri observations for submission ${submissionId}`);
+  return withRetry(() =>
+    supabase
+      .from('petri_observations')
+      .select('*')
+      .eq('submission_id', submissionId)
+      .order('order_index', { ascending: true })
+  , `fetchPetriObservationsBySubmissionId(${submissionId})`);
+};
+
+/**
+ * Fetch petri observations by site ID
+ */
+export const fetchPetriObservationsBySiteId = async (siteId: string) => {
+  if (!siteId) return { data: [], error: null };
+
+  logger.debug(`Fetching petri observations for site ${siteId}`);
+  return withRetry(() =>
+    supabase
+      .from('petri_observations')
+      .select('*')
+      .eq('site_id', siteId)
+      .order('created_at', { ascending: false })
+  , `fetchPetriObservationsBySiteId(${siteId})`);
+};
+
+/**
+ * Fetch a single petri observation by ID
+ */
+export const fetchPetriObservationById = async (observationId: string) => {
+  if (!observationId) return { data: null, error: null };
+
+  logger.debug(`Fetching petri observation ${observationId}`);
+  return withRetry(() =>
+    supabase
+      .from('petri_observations')
+      .select('*')
+      .eq('observation_id', observationId)
+      .maybeSingle()
+  , `fetchPetriObservationById(${observationId})`);
+};
+
+// ==========================================
+// GASIFIER OBSERVATIONS API (Device Data)
+// ==========================================
+
+/**
+ * Fetch gasifier observations by submission ID
+ */
+export const fetchGasifierObservationsBySubmissionId = async (submissionId: string) => {
+  if (!submissionId) return { data: [], error: null };
+
+  logger.debug(`Fetching gasifier observations for submission ${submissionId}`);
+  return withRetry(() =>
+    supabase
+      .from('gasifier_observations')
+      .select('*')
+      .eq('submission_id', submissionId)
+      .order('order_index', { ascending: true })
+  , `fetchGasifierObservationsBySubmissionId(${submissionId})`);
+};
+
+/**
+ * Fetch gasifier observations by site ID
+ */
+export const fetchGasifierObservationsBySiteId = async (siteId: string) => {
+  if (!siteId) return { data: [], error: null };
+
+  logger.debug(`Fetching gasifier observations for site ${siteId}`);
+  return withRetry(() =>
+    supabase
+      .from('gasifier_observations')
+      .select('*')
+      .eq('site_id', siteId)
+      .order('created_at', { ascending: false })
+  , `fetchGasifierObservationsBySiteId(${siteId})`);
+};
+
+/**
+ * Fetch a single gasifier observation by ID
+ */
+export const fetchGasifierObservationById = async (observationId: string) => {
+  if (!observationId) return { data: null, error: null };
+
+  logger.debug(`Fetching gasifier observation ${observationId}`);
+  return withRetry(() =>
+    supabase
+      .from('gasifier_observations')
+      .select('*')
+      .eq('observation_id', observationId)
+      .maybeSingle()
+  , `fetchGasifierObservationById(${observationId})`);
+};
+
+// ==========================================
+// SUBMISSION SESSIONS API
+// ==========================================
+
+/**
+ * Fetch active sessions for current user
+ */
+export const fetchActiveSessions = async () => {
+  logger.debug('Fetching active sessions');
+  return withRetry(() =>
+    supabase
+      .rpc('get_active_sessions_with_details')
+  , 'fetchActiveSessions');
+};
+
+/**
+ * Fetch session by submission ID
+ */
+export const fetchSessionBySubmissionId = async (submissionId: string) => {
+  if (!submissionId) return { data: null, error: null };
+
+  logger.debug(`Fetching session for submission ${submissionId}`);
+  return withRetry(() =>
+    supabase
+      .from('submission_sessions')
+      .select('*')
+      .eq('submission_id', submissionId)
+      .maybeSingle()
+  , `fetchSessionBySubmissionId(${submissionId})`);
+};
+
+// ==========================================
+// AUDIT LOG API
+// ==========================================
+
+/**
+ * Fetch audit log entries for a program
+ */
+export const fetchAuditLogByProgramId = async (programId: string) => {
+  if (!programId) return { data: [], error: null };
+
+  logger.debug(`Fetching audit log for program ${programId}`);
+  return withRetry(() =>
+    supabase
+      .from('pilot_program_history_staging')
+      .select('*')
+      .eq('program_id', programId)
+      .order('changed_at', { ascending: false })
+  , `fetchAuditLogByProgramId(${programId})`);
+};
+
+/**
+ * Fetch audit log entries for a site
+ */
+export const fetchAuditLogBySiteId = async (siteId: string) => {
+  if (!siteId) return { data: [], error: null };
+
+  logger.debug(`Fetching audit log for site ${siteId}`);
+  return withRetry(() =>
+    supabase
+      .from('pilot_program_history_staging')
+      .select('*')
+      .eq('site_id', siteId)
+      .order('changed_at', { ascending: false })
+  , `fetchAuditLogBySiteId(${siteId})`);
+};
+
+/**
+ * Fetch audit log entries for a user
+ */
+export const fetchAuditLogByUserId = async (userId: string) => {
+  if (!userId) return { data: [], error: null };
+
+  logger.debug(`Fetching audit log for user ${userId}`);
+  return withRetry(() =>
+    supabase
+      .from('pilot_program_history_staging')
+      .select('*')
+      .eq('changed_by_user_id', userId)
+      .order('changed_at', { ascending: false })
+  , `fetchAuditLogByUserId(${userId})`);
+};
+
+// ==========================================
+// PROGRAM ACCESS API
+// ==========================================
+
+/**
+ * Fetch user's access level for a program
+ */
+export const fetchUserAccessForProgram = async (programId: string, userId: string) => {
+  if (!programId || !userId) return { data: null, error: null };
+
+  logger.debug(`Fetching access level for user ${userId} in program ${programId}`);
+  return withRetry(() =>
+    supabase
+      .from('program_access')
+      .select('*')
+      .eq('program_id', programId)
+      .eq('user_id', userId)
+      .maybeSingle()
+  , `fetchUserAccessForProgram(${programId}, ${userId})`);
+};
+
+// ==========================================
+// CUSTOM REPORTS API
+// ==========================================
+
+/**
+ * Fetch custom reports for a company
+ */
+export const fetchCustomReportsByCompanyId = async (companyId: string) => {
+  if (!companyId) return { data: [], error: null };
+
+  logger.debug(`Fetching custom reports for company ${companyId}`);
+  return withRetry(() =>
+    supabase
+      .from('custom_reports')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+  , `fetchCustomReportsByCompanyId(${companyId})`);
+};
+
+/**
+ * Fetch custom reports for a program
+ */
+export const fetchCustomReportsByProgramId = async (programId: string) => {
+  if (!programId) return { data: [], error: null };
+
+  logger.debug(`Fetching custom reports for program ${programId}`);
+  return withRetry(() =>
+    supabase
+      .from('custom_reports')
+      .select('*')
+      .eq('program_id', programId)
+      .order('created_at', { ascending: false })
+  , `fetchCustomReportsByProgramId(${programId})`);
+};
+
+/**
+ * Get available report metadata (entities and fields)
+ */
+export const getReportMetadata = async () => {
+  logger.debug('Fetching report metadata');
+  return withRetry(() =>
+    supabase
+      .rpc('get_available_report_metadata')
+  , 'getReportMetadata');
+};
+
+/**
+ * Execute a custom report query
+ */
+export const executeCustomReport = async (
+  reportConfiguration: any,
+  limit: number = 1000,
+  offset: number = 0
+) => {
+  logger.debug('Executing custom report');
+  return withRetry(() =>
+    supabase
+      .rpc('execute_custom_report_query', {
+        p_report_configuration: reportConfiguration,
+        p_limit: limit,
+        p_offset: offset
+      })
+  , 'executeCustomReport');
 };
