@@ -107,7 +107,7 @@ USING (
       SELECT program_id
       FROM pilot_program_users
       WHERE user_id = auth.uid()
-      AND access_level IN ('Admin')
+      AND role = 'Admin'
     )
   )
   OR auth.uid() IN (
