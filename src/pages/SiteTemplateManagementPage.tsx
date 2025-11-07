@@ -274,21 +274,7 @@ const SiteTemplateManagementPage = () => {
                 interiorWorkingSurfaceTypes: selectedSite.interior_working_surface_types || [],
                 microbialRiskZone: selectedSite.microbial_risk_zone || 'Medium',
                 quantityDeadzones: selectedSite.quantity_deadzones || undefined,
-                lightingSystem: selectedSite.lighting_system,
-                // New dimension fields
-                length: selectedSite.length,
-                width: selectedSite.width,
-                height: selectedSite.height,
-                // New density fields
-                minEfficaciousGasifierDensity: selectedSite.min_efficacious_gasifier_density_sqft_per_bag,
                 recommendedPlacementDensity: selectedSite.recommended_placement_density_bags,
-                // New airflow dynamics fields
-                hasDeadZones: selectedSite.has_dead_zones,
-                numRegularlyOpenedPorts: selectedSite.num_regularly_opened_ports,
-                // New environmental fields
-                interiorWorkingSurfaceTypes: selectedSite.interior_working_surface_types || [],
-                microbialRiskZone: selectedSite.microbial_risk_zone || 'Medium',
-                quantityDeadzones: selectedSite.quantity_deadzones,
                 ventilationStrategy: selectedSite.ventilation_strategy
               }}
               initialSiteName={selectedSite.name}
