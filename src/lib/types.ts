@@ -346,3 +346,36 @@ export interface DeviceCaptureMetadata {
   wifi_rssi?: number;
   firmware_version?: string;
 }
+
+// IoT Device Types
+export type Device = Database['public']['Tables']['devices']['Row'];
+
+export type DeviceTelemetry = Database['public']['Tables']['device_telemetry']['Row'];
+
+export type DeviceImage = Database['public']['Tables']['device_images']['Row'];
+
+export type DeviceCommand = Database['public']['Tables']['device_commands']['Row'];
+
+export type DeviceAlert = Database['public']['Tables']['device_alerts']['Row'];
+
+export type DeviceImageStatus = 'pending' | 'receiving' | 'complete' | 'failed';
+
+export type DeviceCommandStatus = 'pending' | 'sent' | 'acknowledged' | 'failed' | 'expired';
+
+export type DeviceAlertSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export type DeviceAlertType =
+  | 'low_battery'
+  | 'offline'
+  | 'transmission_failure'
+  | 'sensor_anomaly'
+  | 'storage_full'
+  | 'firmware_update_required';
+
+export interface DeviceWithStats extends Device {
+  total_images?: number;
+  pending_images?: number;
+  failed_images?: number;
+  last_telemetry?: DeviceTelemetry;
+  active_alerts?: number;
+}
