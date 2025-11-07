@@ -68,12 +68,12 @@ USING (
     site_id IN (
       SELECT site_id FROM sites
       WHERE program_id IN (
-        SELECT program_id FROM program_access
+        SELECT program_id FROM pilot_program_users
         WHERE user_id = auth.uid()
       )
     )
     OR program_id IN (
-      SELECT program_id FROM program_access
+      SELECT program_id FROM pilot_program_users
       WHERE user_id = auth.uid()
     )
   )
@@ -91,7 +91,7 @@ USING (
       SELECT id FROM users WHERE is_company_admin = true
     )
     OR program_id IN (
-      SELECT program_id FROM program_access
+      SELECT program_id FROM pilot_program_users
       WHERE user_id = auth.uid()
       AND access_level = 'Admin'
     )
@@ -104,7 +104,7 @@ WITH CHECK (
       SELECT id FROM users WHERE is_company_admin = true
     )
     OR program_id IN (
-      SELECT program_id FROM program_access
+      SELECT program_id FROM pilot_program_users
       WHERE user_id = auth.uid()
       AND access_level = 'Admin'
     )

@@ -43,6 +43,8 @@ export type Site = Database['public']['Tables']['sites']['Row'] & {
 };
 export type Submission = Database['public']['Tables']['submissions']['Row'] & {
   global_submission_id?: number;
+  created_by_device_id?: string | null;
+  is_device_generated?: boolean;
 };
 export type PetriObservation = Database['public']['Tables']['petri_observations']['Row'] & {
   outdoor_temperature?: number;
@@ -63,6 +65,9 @@ export type PetriObservation = Database['public']['Tables']['petri_observations'
   // Program phase day fields
   daysInThisProgramPhase?: number;
   todays_day_of_phase?: number;
+  // Device-generated fields
+  is_device_generated?: boolean;
+  device_capture_metadata?: DeviceCaptureMetadata;
 };
 export type GasifierObservation = Database['public']['Tables']['gasifier_observations']['Row'] & {
   outdoor_temperature?: number;
@@ -72,6 +77,9 @@ export type GasifierObservation = Database['public']['Tables']['gasifier_observa
   // Program phase day fields
   daysInThisProgramPhase?: number;
   todays_day_of_phase?: number;
+  // Device-generated fields
+  is_device_generated?: boolean;
+  device_capture_metadata?: DeviceCaptureMetadata;
 };
 export type UserRole = 'Admin' | 'Edit' | 'Respond' | 'ReadOnly';
 export type HistoryEventType = Database['public']['Tables']['pilot_program_history_staging']['Row']['update_type'];
@@ -207,4 +215,134 @@ export type AnalyticsGranularity = '12hour' | 'day' | 'week';
 export interface OutdoorEnvironmentalData {
   outdoor_temperature?: number;
   outdoor_humidity?: number;
+}
+
+// ==========================================
+// IoT DEVICE TYPES
+// ==========================================
+
+export type Device = {
+  device_id: string;
+  device_mac: string;
+  device_name: string | null;
+  site_id: string | null;
+  program_id: string | null;
+  firmware_version: string | null;
+  hardware_version: string;
+  is_active: boolean;
+  last_seen_at: string | null;
+  last_wake_at: string | null;
+  next_wake_at: string | null;
+  wake_schedule_cron: string | null;
+  battery_voltage: number | null;
+  battery_health_percent: number | null;
+  wifi_ssid: string | null;
+  mqtt_client_id: string | null;
+  provisioned_at: string | null;
+  provisioned_by_user_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DeviceTelemetry = {
+  telemetry_id: string;
+  device_id: string;
+  captured_at: string;
+  temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+  gas_resistance: number | null;
+  battery_voltage: number | null;
+  wifi_rssi: number | null;
+  created_at: string;
+};
+
+export type DeviceImageStatus = 'pending' | 'receiving' | 'complete' | 'failed';
+
+export type DeviceImage = {
+  image_id: string;
+  device_id: string;
+  submission_id: string | null;
+  observation_id: string | null;
+  observation_type: 'petri' | 'gasifier' | null;
+  captured_at: string;
+  image_url: string | null;
+  storage_path: string | null;
+  total_chunks: number;
+  received_chunks: number;
+  status: DeviceImageStatus;
+  error_message: string | null;
+  device_metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DeviceCommandType =
+  | 'capture_image'
+  | 'send_image'
+  | 'set_wake_schedule'
+  | 'update_config'
+  | 'reboot'
+  | 'update_firmware';
+
+export type DeviceCommandStatus =
+  | 'pending'
+  | 'sent'
+  | 'acknowledged'
+  | 'completed'
+  | 'failed'
+  | 'timeout';
+
+export type DeviceCommand = {
+  command_id: string;
+  device_id: string;
+  command_type: DeviceCommandType;
+  command_payload: Record<string, any>;
+  issued_by_user_id: string;
+  issued_at: string;
+  status: DeviceCommandStatus;
+  sent_at: string | null;
+  acknowledged_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DeviceAlertType =
+  | 'missed_wake'
+  | 'low_battery'
+  | 'connection_failure'
+  | 'sensor_error'
+  | 'image_transmission_failed'
+  | 'prolonged_offline';
+
+export type DeviceAlertSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export type DeviceAlert = {
+  alert_id: string;
+  device_id: string;
+  alert_type: DeviceAlertType;
+  severity: DeviceAlertSeverity;
+  message: string;
+  details: Record<string, any>;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by_user_id: string | null;
+  resolution_notes: string | null;
+};
+
+// Device capture metadata for observations
+export interface DeviceCaptureMetadata {
+  device_id: string;
+  device_mac: string;
+  captured_at: string;
+  temperature?: number;
+  humidity?: number;
+  pressure?: number;
+  gas_resistance?: number;
+  battery_voltage?: number;
+  wifi_rssi?: number;
+  firmware_version?: string;
 }

@@ -76,7 +76,7 @@ USING (
     FROM devices
     WHERE program_id IN (
       SELECT program_id
-      FROM program_access
+      FROM pilot_program_users
       WHERE user_id = auth.uid()
     )
     OR site_id IN (
@@ -84,7 +84,7 @@ USING (
       FROM sites
       WHERE program_id IN (
         SELECT program_id
-        FROM program_access
+        FROM pilot_program_users
         WHERE user_id = auth.uid()
       )
     )
@@ -105,7 +105,7 @@ USING (
     FROM devices
     WHERE program_id IN (
       SELECT program_id
-      FROM program_access
+      FROM pilot_program_users
       WHERE user_id = auth.uid()
       AND access_level IN ('Admin')
     )
