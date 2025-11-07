@@ -8,20 +8,24 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function testProductionData() {
   console.log('🔗 Testing connection to production Supabase...\n');
   
-  const { data: programs, count: programCount } = await supabase
+  const { data: programs, count: programCount, error: progError } = await supabase
     .from('pilot_programs')
-    .select('id, name', { count: 'exact' })
+    .select('program_id, name', { count: 'exact' })
     .limit(3);
+
+  if (progError) console.log('Program error:', progError);
   
   console.log('✅ Pilot Programs:', programCount || 0, 'total');
   if (programs && programs.length > 0) {
     programs.forEach(p => console.log(`   - ${p.name}`));
   }
   
-  const { data: sites, count: sitesCount } = await supabase
+  const { data: sites, count: sitesCount, error: sitesError } = await supabase
     .from('sites')
-    .select('id, name', { count: 'exact' })
+    .select('site_id, name', { count: 'exact' })
     .limit(3);
+
+  if (sitesError) console.log('Sites error:', sitesError);
   
   console.log('\n✅ Sites:', sitesCount || 0, 'total');
   if (sites && sites.length > 0) {
