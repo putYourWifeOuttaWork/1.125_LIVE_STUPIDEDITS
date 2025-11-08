@@ -84,36 +84,88 @@ BEGIN
 END $$;
 
 -- =====================================================
--- 4. CREATE device_commands TABLE (Command Queue)
+-- 4. EXTEND device_commands TABLE (already exists)
 -- =====================================================
+-- Add new columns to existing device_commands table
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'device_commands') THEN
-    CREATE TABLE device_commands (
-      command_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      device_id uuid NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
-      command_type text NOT NULL CHECK (command_type IN ('retry_image', 'capture_image', 'update_config', 'resend_chunks')),
-      command_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-      priority integer DEFAULT 5 CHECK (priority BETWEEN 1 AND 10),
-      status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'acknowledged', 'completed', 'failed', 'cancelled')),
-      scheduled_for timestamptz,
-      published_at timestamptz,
-      acknowledged_at timestamptz,
-      completed_at timestamptz,
-      expires_at timestamptz,
-      retry_count integer DEFAULT 0,
-      max_retries integer DEFAULT 3,
-      error_message text,
-      created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-      created_at timestamptz DEFAULT now(),
-      updated_at timestamptz DEFAULT now()
-    );
-
-    CREATE INDEX idx_device_commands_device ON device_commands(device_id);
-    CREATE INDEX idx_device_commands_status ON device_commands(status);
-    CREATE INDEX idx_device_commands_scheduled ON device_commands(scheduled_for);
-    CREATE INDEX idx_device_commands_priority ON device_commands(priority DESC);
+  -- Add priority column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'device_commands' AND column_name = 'priority'
+  ) THEN
+    ALTER TABLE device_commands ADD COLUMN priority integer DEFAULT 5 CHECK (priority BETWEEN 1 AND 10);
+    CREATE INDEX IF NOT EXISTS idx_device_commands_priority ON device_commands(priority DESC);
   END IF;
+
+  -- Add scheduled_for column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'device_commands' AND column_name = 'scheduled_for'
+  ) THEN
+    ALTER TABLE device_commands ADD COLUMN scheduled_for timestamptz;
+    CREATE INDEX IF NOT EXISTS idx_device_commands_scheduled ON device_commands(scheduled_for);
+  END IF;
+
+  -- Add published_at column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'device_commands' AND column_name = 'published_at'
+  ) THEN
+    ALTER TABLE device_commands ADD COLUMN published_at timestamptz;
+  END IF;
+
+  -- Add completed_at column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'device_commands' AND column_name = 'completed_at'
+  ) THEN
+    ALTER TABLE device_commands ADD COLUMN completed_at timestamptz;
+  END IF;
+
+  -- Add expires_at column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'device_commands' AND column_name = 'expires_at'
+  ) THEN
+    ALTER TABLE device_commands ADD COLUMN expires_at timestamptz;
+  END IF;
+
+  -- Add max_retries column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'device_commands' AND column_name = 'max_retries'
+  ) THEN
+    ALTER TABLE device_commands ADD COLUMN max_retries integer DEFAULT 3;
+  END IF;
+
+  -- Add error_message column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'device_commands' AND column_name = 'error_message'
+  ) THEN
+    ALTER TABLE device_commands ADD COLUMN error_message text;
+  END IF;
+END $$;
+
+-- Update command_type CHECK constraint to include retry_image
+DO $$
+BEGIN
+  ALTER TABLE device_commands DROP CONSTRAINT IF EXISTS device_commands_command_type_check;
+  ALTER TABLE device_commands ADD CONSTRAINT device_commands_command_type_check
+    CHECK (command_type IN ('retry_image', 'capture_image', 'send_image', 'set_wake_schedule', 'update_config', 'reboot', 'update_firmware', 'resend_chunks'));
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
+
+-- Update status CHECK constraint to include new statuses
+DO $$
+BEGIN
+  ALTER TABLE device_commands DROP CONSTRAINT IF EXISTS device_commands_status_check;
+  ALTER TABLE device_commands ADD CONSTRAINT device_commands_status_check
+    CHECK (status IN ('pending', 'sent', 'published', 'acknowledged', 'completed', 'failed', 'expired', 'cancelled'));
+EXCEPTION
+  WHEN OTHERS THEN NULL;
 END $$;
 
 -- =====================================================
@@ -136,10 +188,9 @@ CREATE POLICY "Users can view sessions for devices they have access to"
     EXISTS (
       SELECT 1 FROM devices d
       JOIN sites s ON d.site_id = s.site_id
+      JOIN users u ON u.id = auth.uid()
       WHERE d.device_id = device_sessions.device_id
-      AND s.company_id IN (
-        SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
-      )
+      AND s.company_id = u.company_id
     )
   );
 
@@ -149,8 +200,8 @@ CREATE POLICY "System can manage all sessions"
   TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM user_company_roles
-      WHERE user_id = auth.uid() AND role = 'admin'
+      SELECT 1 FROM users
+      WHERE id = auth.uid() AND (is_company_admin = true OR is_super_admin = true)
     )
   );
 
@@ -170,10 +221,9 @@ CREATE POLICY "Users can view commands for their devices"
     EXISTS (
       SELECT 1 FROM devices d
       JOIN sites s ON d.site_id = s.site_id
+      JOIN users u ON u.id = auth.uid()
       WHERE d.device_id = device_commands.device_id
-      AND s.company_id IN (
-        SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
-      )
+      AND s.company_id = u.company_id
     )
   );
 
@@ -183,8 +233,8 @@ CREATE POLICY "Admins can create commands"
   TO authenticated
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM user_company_roles
-      WHERE user_id = auth.uid() AND role IN ('admin', 'manager')
+      SELECT 1 FROM users
+      WHERE id = auth.uid() AND (is_company_admin = true OR is_super_admin = true)
     )
   );
 
@@ -194,8 +244,8 @@ CREATE POLICY "System can update commands"
   TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM user_company_roles
-      WHERE user_id = auth.uid() AND role = 'admin'
+      SELECT 1 FROM users
+      WHERE id = auth.uid() AND (is_company_admin = true OR is_super_admin = true)
     )
   );
 
