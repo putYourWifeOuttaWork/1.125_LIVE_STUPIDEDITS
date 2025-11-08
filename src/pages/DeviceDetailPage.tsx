@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Radio, Camera } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Radio, Camera, AlertCircle } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -358,6 +358,33 @@ const DeviceDetailPage = () => {
                   <p className="text-xs text-gray-500 mt-1">
                     Images currently being transmitted
                   </p>
+                </div>
+              )}
+              {device.failed_images && device.failed_images > 0 && (
+                <div className="pt-3 border-t border-gray-200 bg-error-50 -mx-4 -mb-4 px-4 pb-4 rounded-b-lg">
+                  <div className="flex items-center justify-between pt-3">
+                    <div>
+                      <p className="text-sm font-medium text-error-800 flex items-center gap-1">
+                        <AlertCircle size={14} />
+                        Failed Transfers
+                      </p>
+                      <p className="text-2xl font-bold text-error-700 mt-1">{device.failed_images}</p>
+                      <p className="text-xs text-error-600 mt-1">
+                        Images that failed to complete before wake window
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full border-error-300 text-error-700 hover:bg-error-100"
+                    onClick={() => {
+                      // TODO: Implement retry all failed images
+                      console.log('Retry all failed images for device:', device.device_id);
+                    }}
+                  >
+                    Retry All Failed Images
+                  </Button>
                 </div>
               )}
             </CardContent>

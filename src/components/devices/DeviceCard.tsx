@@ -1,4 +1,4 @@
-import { Camera, MapPin, MoreVertical, Eye, Edit, Power, PowerOff } from 'lucide-react';
+import { Camera, MapPin, MoreVertical, Eye, Edit, Power, PowerOff, AlertCircle } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
 import { DeviceWithStats } from '../../lib/types';
@@ -89,12 +89,20 @@ const DeviceCard = ({
           )}
 
           <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-            <div className="flex items-center gap-1 text-sm text-gray-600">
-              <Camera size={14} className="text-gray-400" />
-              <span>{device.total_images || 0} images</span>
+            <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-1 text-gray-600">
+                <Camera size={14} className="text-gray-400" />
+                <span>{device.total_images || 0}</span>
+              </div>
               {device.pending_images && device.pending_images > 0 && (
-                <span className="ml-1 text-yellow-600">
-                  ({device.pending_images} pending)
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-100 text-warning-800">
+                  {device.pending_images} pending
+                </span>
+              )}
+              {device.failed_images && device.failed_images > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error-100 text-error-800">
+                  <AlertCircle size={12} />
+                  {device.failed_images} failed
                 </span>
               )}
             </div>
