@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Radio } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Radio, Camera } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -338,6 +338,30 @@ const DeviceDetailPage = () => {
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader>
+              <h2 className="text-lg font-semibold">Images</h2>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Total Images</p>
+                  <p className="text-2xl font-bold text-gray-900">{device.total_images || 0}</p>
+                </div>
+                <Camera size={32} className="text-gray-300" />
+              </div>
+              {device.pending_images && device.pending_images > 0 && (
+                <div className="pt-3 border-t border-gray-200">
+                  <p className="text-sm text-gray-500">Pending Transfer</p>
+                  <p className="text-lg font-semibold text-warning-600">{device.pending_images}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Images currently being transmitted
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {device.notes && (
             <Card>
