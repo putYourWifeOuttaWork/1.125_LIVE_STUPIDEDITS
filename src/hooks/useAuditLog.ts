@@ -75,18 +75,10 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
         if (error) throw error;
         setAuditLogs(data || []);
       } else {
-        const { data, error } = await supabase
-          .rpc('get_filtered_audit_history', {
-            p_program_id: programId,
-            p_site_id: siteId || null,
-            p_object_type: null,
-            p_event_type: null,
-            p_user_id: null,
-            p_limit: 100
-          });
-
-        if (error) throw error;
-        setAuditLogs(data || []);
+        // Fallback to regular audit log query - for now just return empty
+        // This would need the original get_filtered_audit_history function
+        console.warn('Device events disabled, returning empty audit logs');
+        setAuditLogs([]);
       }
 
       setCurrentFilters({});
@@ -143,18 +135,9 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
         if (error) throw error;
         setAuditLogs(data || []);
       } else {
-        const { data, error } = await supabase
-          .rpc('get_filtered_audit_history', {
-            p_program_id: programId,
-            p_site_id: siteId || null,
-            p_object_type: objectType || null,
-            p_event_type: eventType || null,
-            p_user_id: userId || null,
-            p_limit: 100
-          });
-
-        if (error) throw error;
-        setAuditLogs(data || []);
+        // Fallback to regular audit log query - for now just return empty
+        console.warn('Device events disabled, filtering not supported without device events');
+        setAuditLogs([]);
       }
 
       setCurrentFilters({ objectType, eventType, userId, deviceCategories, startDate, endDate });

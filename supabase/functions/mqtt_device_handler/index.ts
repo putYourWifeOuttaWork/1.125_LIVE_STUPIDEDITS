@@ -79,12 +79,166 @@ type ImageBuffer = {
   chunks: Map<number, Uint8Array>;
   totalChunks: number;
   imageRecord: any;
+  sessionId?: string;
 };
 
 const imageBuffers = new Map<string, ImageBuffer>();
 
 function getImageKey(deviceId: string, imageName: string): string {
   return `${deviceId}|${imageName}`;
+}
+
+async function logDeviceHistoryEvent(
+  deviceId: string,
+  eventCategory: string,
+  eventType: string,
+  severity: string = 'info',
+  description: string | null = null,
+  eventData: any = {},
+  sessionId: string | null = null
+) {
+  try {
+    const { error } = await supabase.rpc('add_device_history_event', {
+      p_device_id: deviceId,
+      p_event_category: eventCategory,
+      p_event_type: eventType,
+      p_severity: severity,
+      p_description: description,
+      p_event_data: eventData,
+      p_session_id: sessionId,
+      p_user_id: null
+    });
+
+    if (error) {
+      console.error('[HISTORY ERROR]', error);
+    }
+  } catch (err) {
+    console.error('[HISTORY EXCEPTION]', err);
+  }
+}
+
+async function createWakeSession(deviceId: string, device: any) {
+  try {
+    const { data: session, error } = await supabase
+      .from('device_wake_sessions')
+      .insert({
+        device_id: device.device_id,
+        site_id: device.site_id,
+        program_id: device.program_id,
+        wake_timestamp: new Date().toISOString(),
+        connection_success: true,
+        mqtt_connected: true,
+        status: 'in_progress'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[SESSION ERROR] Failed to create wake session:', error);
+      return null;
+    }
+
+    console.log(`[SESSION] Created wake session ${session.session_id} for device ${device.device_code || device.device_mac}`);
+
+    await logDeviceHistoryEvent(
+      device.device_id,
+      'WakeSession',
+      'device_wake_start',
+      'info',
+      `Device ${device.device_code || device.device_mac} woke up and connected`,
+      { connection_type: 'mqtt', wifi_connected: true },
+      session.session_id
+    );
+
+    return session;
+  } catch (err) {
+    console.error('[SESSION EXCEPTION]', err);
+    return null;
+  }
+}
+
+async function updateWakeSession(sessionId: string, updates: any) {
+  try {
+    const { error } = await supabase
+      .from('device_wake_sessions')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('session_id', sessionId);
+
+    if (error) {
+      console.error('[SESSION ERROR] Failed to update wake session:', error);
+    }
+  } catch (err) {
+    console.error('[SESSION EXCEPTION]', err);
+  }
+}
+
+async function completeWakeSession(sessionId: string, status: string, errorCodes: string[] = []) {
+  try {
+    const { data: session } = await supabase
+      .from('device_wake_sessions')
+      .select('wake_timestamp, device_id')
+      .eq('session_id', sessionId)
+      .single();
+
+    if (session) {
+      const durationMs = new Date().getTime() - new Date(session.wake_timestamp).getTime();
+
+      await supabase
+        .from('device_wake_sessions')
+        .update({
+          status,
+          error_codes: errorCodes,
+          session_duration_ms: durationMs,
+          updated_at: new Date().toISOString()
+        })
+        .eq('session_id', sessionId);
+
+      console.log(`[SESSION] Completed session ${sessionId} with status ${status} (${durationMs}ms)`);
+    }
+  } catch (err) {
+    console.error('[SESSION EXCEPTION]', err);
+  }
+}
+
+async function updateDeviceBatteryFromTelemetry(deviceId: string, telemetryData: any) {
+  try {
+    if (!telemetryData.battery_voltage && !telemetryData.battery_health_percent) {
+      return;
+    }
+
+    const { data: device } = await supabase
+      .from('devices')
+      .select('battery_voltage, battery_health_percent')
+      .eq('device_id', deviceId)
+      .single();
+
+    const updates: any = {};
+    let batteryChanged = false;
+
+    if (telemetryData.battery_voltage && device?.battery_voltage !== telemetryData.battery_voltage) {
+      updates.battery_voltage = telemetryData.battery_voltage;
+      batteryChanged = true;
+    }
+
+    if (telemetryData.battery_health_percent && device?.battery_health_percent !== telemetryData.battery_health_percent) {
+      updates.battery_health_percent = telemetryData.battery_health_percent;
+      batteryChanged = true;
+    }
+
+    if (batteryChanged) {
+      await supabase
+        .from('devices')
+        .update(updates)
+        .eq('device_id', deviceId);
+
+      console.log(`[BATTERY] Updated battery for device ${deviceId}`);
+    }
+  } catch (err) {
+    console.error('[BATTERY EXCEPTION]', err);
+  }
 }
 
 async function generateDeviceCode(hardwareVersion: string = "ESP32-S3"): Promise<string> {
@@ -124,6 +278,16 @@ async function autoProvisionDevice(deviceMac: string) {
     }
 
     console.log(`[SUCCESS] Auto-provisioned device ${deviceMac} with code ${deviceCode} and ID ${newDevice.device_id}`);
+
+    await logDeviceHistoryEvent(
+      newDevice.device_id,
+      'ProvisioningStep',
+      'device_auto_provisioned',
+      'info',
+      `Device ${deviceMac} auto-provisioned with code ${deviceCode}`,
+      { device_mac: deviceMac, device_code: deviceCode, provisioning_method: 'mqtt_auto' }
+    );
+
     return newDevice;
   } catch (error) {
     console.error(`[ERROR] Auto-provision exception:`, error);
@@ -140,7 +304,6 @@ async function handleStatusMessage(payload: DeviceStatusMessage) {
     .eq("device_mac", payload.device_id)
     .maybeSingle();
 
-  // Auto-provision if device doesn't exist
   if (!device && !deviceError) {
     console.log(`[AUTO-PROVISION] Device ${payload.device_id} not found, attempting auto-provision...`);
     device = await autoProvisionDevice(payload.device_id);
@@ -156,7 +319,6 @@ async function handleStatusMessage(payload: DeviceStatusMessage) {
     return null;
   }
 
-  // Update device last seen and activate it
   await supabase
     .from("devices")
     .update({
@@ -165,12 +327,20 @@ async function handleStatusMessage(payload: DeviceStatusMessage) {
     })
     .eq("device_id", device.device_id);
 
+  const session = await createWakeSession(payload.device_id, device);
+
+  if (session && payload.pendingImg && payload.pendingImg > 0) {
+    await updateWakeSession(session.session_id, {
+      pending_images_count: payload.pendingImg
+    });
+  }
+
   console.log(`[STATUS] Device ${device.device_code || device.device_mac} updated (status: ${device.provisioning_status})`);
 
-  return { device, pendingCount: payload.pendingImg || 0 };
+  return { device, pendingCount: payload.pendingImg || 0, session };
 }
 
-async function handleMetadataMessage(payload: ImageMetadata, client: mqtt.MqttClient) {
+async function handleMetadataMessage(payload: ImageMetadata, client: mqtt.MqttClient, sessionId?: string) {
   console.log(`[METADATA] Received for image ${payload.image_name} from ${payload.device_id}`);
 
   const { data: device } = await supabase
@@ -210,10 +380,42 @@ async function handleMetadataMessage(payload: ImageMetadata, client: mqtt.MqttCl
 
   if (imageError) {
     console.error(`[ERROR] Failed to create image record:`, imageError);
+    await logDeviceHistoryEvent(
+      device.device_id,
+      'ErrorEvent',
+      'image_metadata_error',
+      'error',
+      `Failed to create image record for ${payload.image_name}`,
+      { error: imageError.message, image_name: payload.image_name },
+      sessionId
+    );
     return;
   }
 
-  if (payload.temperature !== undefined) {
+  if (sessionId) {
+    await updateWakeSession(sessionId, {
+      image_captured: true,
+      image_id: imageRecord.image_id,
+      chunks_total: payload.total_chunks_count
+    });
+  }
+
+  await logDeviceHistoryEvent(
+    device.device_id,
+    'ImageCapture',
+    'image_capture_initiated',
+    'info',
+    `Image ${payload.image_name} capture started (${payload.total_chunks_count} chunks)`,
+    {
+      image_name: payload.image_name,
+      image_size: payload.image_size,
+      total_chunks: payload.total_chunks_count,
+      error_code: payload.error
+    },
+    sessionId
+  );
+
+  if (payload.temperature !== undefined || payload.humidity !== undefined) {
     await supabase.from("device_telemetry").insert({
       device_id: device.device_id,
       captured_at: payload.capture_timestamp,
@@ -223,6 +425,38 @@ async function handleMetadataMessage(payload: ImageMetadata, client: mqtt.MqttCl
       gas_resistance: payload.gas_resistance,
       battery_voltage: device.battery_voltage,
     });
+
+    await logDeviceHistoryEvent(
+      device.device_id,
+      'EnvironmentalReading',
+      'telemetry_recorded',
+      'info',
+      `Environmental data recorded: ${payload.temperature}°F, ${payload.humidity}% humidity`,
+      {
+        temperature: payload.temperature,
+        humidity: payload.humidity,
+        pressure: payload.pressure,
+        gas_resistance: payload.gas_resistance
+      },
+      sessionId
+    );
+
+    const telemetryWithBattery = {
+      temperature: payload.temperature,
+      humidity: payload.humidity,
+      pressure: payload.pressure,
+      gas_resistance: payload.gas_resistance,
+      battery_voltage: device.battery_voltage,
+      battery_health_percent: device.battery_health_percent
+    };
+
+    if (sessionId) {
+      await updateWakeSession(sessionId, {
+        telemetry_data: telemetryWithBattery
+      });
+    }
+
+    await updateDeviceBatteryFromTelemetry(device.device_id, telemetryWithBattery);
   }
 
   imageBuffers.set(imageKey, {
@@ -230,6 +464,7 @@ async function handleMetadataMessage(payload: ImageMetadata, client: mqtt.MqttCl
     chunks: new Map(),
     totalChunks: payload.total_chunks_count,
     imageRecord,
+    sessionId
   });
 
   console.log(`[METADATA] Ready to receive ${payload.total_chunks_count} chunks for ${payload.image_name}`);
@@ -255,6 +490,38 @@ async function handleChunkMessage(payload: ImageChunk, client: mqtt.MqttClient) 
     .update({ received_chunks: receivedCount })
     .eq("image_id", buffer.imageRecord.image_id);
 
+  if (buffer.sessionId) {
+    await updateWakeSession(buffer.sessionId, {
+      chunks_sent: receivedCount,
+      chunks_total: buffer.totalChunks
+    });
+  }
+
+  if (receivedCount % 5 === 0 || receivedCount === buffer.totalChunks) {
+    const { data: device } = await supabase
+      .from("devices")
+      .select("device_id")
+      .eq("device_mac", payload.device_id)
+      .single();
+
+    if (device) {
+      await logDeviceHistoryEvent(
+        device.device_id,
+        'ChunkTransmission',
+        'chunks_received',
+        'info',
+        `Received ${receivedCount}/${buffer.totalChunks} chunks for ${payload.image_name}`,
+        {
+          image_name: payload.image_name,
+          chunks_received: receivedCount,
+          chunks_total: buffer.totalChunks,
+          progress_percent: Math.round((receivedCount / buffer.totalChunks) * 100)
+        },
+        buffer.sessionId
+      );
+    }
+  }
+
   if (receivedCount === buffer.totalChunks) {
     console.log(`[COMPLETE] All chunks received for ${payload.image_name}`);
     await reassembleAndUploadImage(payload.device_id, payload.image_name, buffer, client);
@@ -268,6 +535,17 @@ async function reassembleAndUploadImage(
   client: mqtt.MqttClient
 ) {
   try {
+    const { data: device } = await supabase
+      .from("devices")
+      .select("device_id")
+      .eq("device_mac", deviceId)
+      .single();
+
+    if (!device) {
+      console.error(`[ERROR] Device not found for MAC ${deviceId}`);
+      return;
+    }
+
     const missingChunks: number[] = [];
     for (let i = 0; i < buffer.totalChunks; i++) {
       if (!buffer.chunks.has(i)) {
@@ -277,6 +555,27 @@ async function reassembleAndUploadImage(
 
     if (missingChunks.length > 0) {
       console.log(`[MISSING] Requesting ${missingChunks.length} missing chunks for ${imageName}`);
+
+      if (buffer.sessionId) {
+        await updateWakeSession(buffer.sessionId, {
+          chunks_missing: missingChunks
+        });
+      }
+
+      await logDeviceHistoryEvent(
+        device.device_id,
+        'ChunkTransmission',
+        'missing_chunks_requested',
+        'warning',
+        `Requesting ${missingChunks.length} missing chunks for ${imageName}`,
+        {
+          image_name: imageName,
+          missing_chunks: missingChunks,
+          missing_count: missingChunks.length
+        },
+        buffer.sessionId
+      );
+
       const missingRequest: MissingChunksRequest = {
         device_id: deviceId,
         image_name: imageName,
@@ -317,6 +616,20 @@ async function reassembleAndUploadImage(
         .from("device_images")
         .update({ status: "failed", error_code: 1 })
         .eq("image_id", buffer.imageRecord.image_id);
+
+      await logDeviceHistoryEvent(
+        device.device_id,
+        'ErrorEvent',
+        'image_upload_failed',
+        'error',
+        `Failed to upload image ${imageName}`,
+        { error: uploadError.message, image_name: imageName },
+        buffer.sessionId
+      );
+
+      if (buffer.sessionId) {
+        await completeWakeSession(buffer.sessionId, 'failed', ['image_upload_error']);
+      }
       return;
     }
 
@@ -335,6 +648,27 @@ async function reassembleAndUploadImage(
 
     console.log(`[SUCCESS] Image uploaded: ${fileName}`);
 
+    await logDeviceHistoryEvent(
+      device.device_id,
+      'ImageCapture',
+      'image_upload_success',
+      'info',
+      `Image ${imageName} uploaded successfully`,
+      {
+        image_name: imageName,
+        file_name: fileName,
+        image_url: urlData.publicUrl,
+        file_size: totalLength
+      },
+      buffer.sessionId
+    );
+
+    if (buffer.sessionId) {
+      await updateWakeSession(buffer.sessionId, {
+        transmission_complete: true
+      });
+    }
+
     await createSubmissionAndObservation(buffer, urlData.publicUrl);
 
     const nextWakeTime = calculateNextWakeTime();
@@ -349,13 +683,43 @@ async function reassembleAndUploadImage(
     client.publish(`device/${deviceId}/ack`, JSON.stringify(ackMessage));
     console.log(`[ACK] Sent ACK_OK with next wake: ${nextWakeTime}`);
 
+    if (buffer.sessionId) {
+      await updateWakeSession(buffer.sessionId, {
+        next_wake_scheduled: nextWakeTime
+      });
+      await completeWakeSession(buffer.sessionId, 'success');
+    }
+
     imageBuffers.delete(getImageKey(deviceId, imageName));
   } catch (error) {
     console.error(`[ERROR] Failed to reassemble image:`, error);
-    await supabase
-      .from("device_images")
-      .update({ status: "failed", error_code: 2 })
-      .eq("image_id", buffer.imageRecord.image_id);
+
+    const { data: device } = await supabase
+      .from("devices")
+      .select("device_id")
+      .eq("device_mac", deviceId)
+      .single();
+
+    if (device) {
+      await supabase
+        .from("device_images")
+        .update({ status: "failed", error_code: 2 })
+        .eq("image_id", buffer.imageRecord.image_id);
+
+      await logDeviceHistoryEvent(
+        device.device_id,
+        'ErrorEvent',
+        'image_assembly_failed',
+        'error',
+        `Failed to reassemble image ${imageName}`,
+        { error: error instanceof Error ? error.message : 'Unknown error', image_name: imageName },
+        buffer.sessionId
+      );
+
+      if (buffer.sessionId) {
+        await completeWakeSession(buffer.sessionId, 'failed', ['image_assembly_error']);
+      }
+    }
   }
 }
 
@@ -478,8 +842,26 @@ function connectToMQTT(): Promise<mqtt.MqttClient> {
             client.publish(`device/${payload.device_id}/cmd`, JSON.stringify(captureCmd));
           }
         } else if (topic.includes("/data")) {
+          const deviceMac = topic.split('/')[1];
+          const { data: device } = await supabase
+            .from("devices")
+            .select("device_id, session_id")
+            .eq("device_mac", deviceMac)
+            .maybeSingle();
+
+          const currentSession = await supabase
+            .from('device_wake_sessions')
+            .select('session_id')
+            .eq('device_id', device?.device_id)
+            .eq('status', 'in_progress')
+            .order('wake_timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const sessionId = currentSession?.data?.session_id;
+
           if (payload.total_chunks_count !== undefined && payload.chunk_id === undefined) {
-            await handleMetadataMessage(payload, client);
+            await handleMetadataMessage(payload, client, sessionId);
           } else if (payload.chunk_id !== undefined) {
             await handleChunkMessage(payload, client);
           }
@@ -510,7 +892,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: "MQTT Device Handler is running",
+        message: "MQTT Device Handler is running with device history logging",
         connected: mqttClient?.connected || false,
       }),
       {
