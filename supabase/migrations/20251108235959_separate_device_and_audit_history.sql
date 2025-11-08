@@ -79,7 +79,7 @@ BEGIN
     pph.object_id AS object_id,
     pph.update_type,
     CASE WHEN pph.object_type = 'site' THEN pph.object_id ELSE NULL END AS site_id,
-    s.name AS site_name,
+    s.name::TEXT AS site_name,
     pph.user_id,
     pph.user_email,
     pph.old_data,
@@ -183,10 +183,10 @@ BEGIN
   SELECT
     dh.history_id,
     dh.device_id,
-    d.device_mac,
-    d.device_name,
+    d.device_mac::TEXT,
+    d.device_name::TEXT,
     dh.site_id,
-    s.name AS site_name,
+    s.name::TEXT AS site_name,
     dh.session_id,
     dh.event_category::TEXT AS event_category,
     dh.event_type,
@@ -196,7 +196,7 @@ BEGIN
     dh.event_data,
     dh.metadata,
     dh.user_id,
-    u.email AS user_email
+    u.email::TEXT AS user_email
   FROM device_history dh
   LEFT JOIN devices d ON dh.device_id = d.device_id
   LEFT JOIN sites s ON dh.site_id = s.site_id
@@ -245,8 +245,8 @@ BEGIN
   SELECT
     dh.history_id,
     dh.device_id,
-    d.device_mac,
-    d.device_name,
+    d.device_mac::TEXT,
+    d.device_name::TEXT,
     dh.session_id,
     dh.event_category::TEXT AS event_category,
     dh.event_type,
@@ -256,7 +256,7 @@ BEGIN
     dh.event_data,
     dh.metadata,
     dh.user_id,
-    u.email AS user_email
+    u.email::TEXT AS user_email
   FROM device_history dh
   LEFT JOIN devices d ON dh.device_id = d.device_id
   LEFT JOIN users u ON dh.user_id = u.id
