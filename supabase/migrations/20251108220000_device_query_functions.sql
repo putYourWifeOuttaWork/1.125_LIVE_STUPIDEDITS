@@ -26,7 +26,7 @@ CREATE OR REPLACE FUNCTION get_device_history(
   p_program_id UUID DEFAULT NULL,
   p_start_date TIMESTAMPTZ DEFAULT NULL,
   p_end_date TIMESTAMPTZ DEFAULT NULL,
-  p_categories event_category[] DEFAULT NULL,
+  p_categories device_event_category[] DEFAULT NULL,
   p_severity_levels event_severity[] DEFAULT NULL,
   p_user_id UUID DEFAULT NULL,
   p_has_errors BOOLEAN DEFAULT NULL,
@@ -40,7 +40,7 @@ RETURNS TABLE (
   site_id UUID,
   program_id UUID,
   session_id UUID,
-  event_category event_category,
+  event_category device_event_category,
   event_type TEXT,
   severity event_severity,
   event_timestamp TIMESTAMPTZ,
@@ -189,7 +189,7 @@ CREATE OR REPLACE FUNCTION export_device_history_csv(
   p_program_id UUID DEFAULT NULL,
   p_start_date TIMESTAMPTZ DEFAULT NULL,
   p_end_date TIMESTAMPTZ DEFAULT NULL,
-  p_categories event_category[] DEFAULT NULL,
+  p_categories device_event_category[] DEFAULT NULL,
   p_severity_levels event_severity[] DEFAULT NULL
 )
 RETURNS TEXT
