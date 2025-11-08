@@ -135,8 +135,7 @@ CREATE POLICY "Users can view sessions for devices they have access to"
   USING (
     EXISTS (
       SELECT 1 FROM devices d
-      JOIN device_site_mappings dsm ON d.device_id = dsm.device_id
-      JOIN sites s ON dsm.site_id = s.site_id
+      JOIN sites s ON d.site_id = s.site_id
       WHERE d.device_id = device_sessions.device_id
       AND s.company_id IN (
         SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
@@ -170,8 +169,7 @@ CREATE POLICY "Users can view commands for their devices"
   USING (
     EXISTS (
       SELECT 1 FROM devices d
-      JOIN device_site_mappings dsm ON d.device_id = dsm.device_id
-      JOIN sites s ON dsm.site_id = s.site_id
+      JOIN sites s ON d.site_id = s.site_id
       WHERE d.device_id = device_commands.device_id
       AND s.company_id IN (
         SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
