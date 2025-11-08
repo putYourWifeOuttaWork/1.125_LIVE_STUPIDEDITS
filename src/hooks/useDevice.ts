@@ -6,6 +6,71 @@ import { createLogger } from '../utils/logger';
 
 const logger = createLogger('useDevice');
 
+// Hook for managing device images
+export const useDeviceImages = (deviceId: string) => {
+  const queryClient = useQueryClient();
+
+  const {
+    data: images = [],
+    isLoading,
+    error,
+    refetch
+  } = useQuery({
+    queryKey: ['device-images', deviceId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .rpc('get_device_images_with_status', { p_device_id: deviceId });
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!deviceId,
+    refetchInterval: 15000,
+  });
+
+  const retryImageMutation = useMutation({
+    mutationFn: async ({ imageId, imageName }: { imageId: string; imageName: string }) => {
+      const { data, error } = await supabase
+        .rpc('queue_image_retry', {
+          p_device_id: deviceId,
+          p_image_id: imageId,
+          p_image_name: imageName
+        });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['device-images', deviceId] });
+      queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
+    }
+  });
+
+  const retryAllFailedMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase
+        .rpc('retry_failed_device_images', { p_device_id: deviceId });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['device-images', deviceId] });
+      queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
+    }
+  });
+
+  return {
+    images,
+    isLoading,
+    error,
+    refetch,
+    retryImage: (imageId: string, imageName: string) => retryImageMutation.mutateAsync({ imageId, imageName }),
+    retryFailedImages: () => retryAllFailedMutation.mutateAsync(),
+    isRetrying: retryImageMutation.isPending || retryAllFailedMutation.isPending
+  };
+};
+
 export const useDevice = (deviceId: string | undefined, refetchInterval: number = 10000) => {
   const queryClient = useQueryClient();
 
@@ -402,6 +467,43 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
     }
   });
 
+  const updateDeviceMutation = useMutation({
+    mutationFn: async (updates: {
+      device_name?: string;
+      wake_schedule_cron?: string;
+      notes?: string;
+    }) => {
+      if (!deviceId) throw new Error('Device ID is required');
+
+      logger.debug('Updating device', { deviceId, updates });
+
+      const { data, error } = await supabase
+        .from('devices')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('device_id', deviceId)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('Error updating device:', error);
+        throw error;
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
+      toast.success('Device updated successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update device: ${error.message}`);
+    }
+  });
+
   return {
     device,
     isLoading,
@@ -412,10 +514,12 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
     deactivateDevice: deactivateDeviceMutation.mutateAsync,
     unassignDevice: unassignDeviceMutation.mutateAsync,
     reassignDevice: reassignDeviceMutation.mutateAsync,
+    updateDevice: updateDeviceMutation.mutateAsync,
     isMapping: mapDeviceMutation.isPending,
     isActivating: activateDeviceMutation.isPending,
     isDeactivating: deactivateDeviceMutation.isPending,
     isUnassigning: unassignDeviceMutation.isPending,
     isReassigning: reassignDeviceMutation.isPending,
+    isUpdating: updateDeviceMutation.isPending,
   };
 };

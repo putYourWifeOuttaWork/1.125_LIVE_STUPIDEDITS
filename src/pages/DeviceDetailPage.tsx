@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Radio, Camera, AlertCircle } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Radio, Camera, AlertCircle, Image, Edit } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -11,19 +11,22 @@ import DeviceUnassignModal from '../components/devices/DeviceUnassignModal';
 import DeviceReassignModal from '../components/devices/DeviceReassignModal';
 import DeviceHistoryPanel from '../components/devices/DeviceHistoryPanel';
 import DeviceSessionsView from '../components/devices/DeviceSessionsView';
+import DeviceImagesPanel from '../components/devices/DeviceImagesPanel';
+import DeviceEditModal from '../components/devices/DeviceEditModal';
 import { useDevice } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
 
-type TabType = 'overview' | 'history' | 'sessions';
+type TabType = 'overview' | 'history' | 'sessions' | 'images';
 
 const DeviceDetailPage = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
   const navigate = useNavigate();
   const { isAdmin } = useCompanies();
-  const { device, isLoading, activateDevice, deactivateDevice, unassignDevice, reassignDevice } = useDevice(deviceId);
+  const { device, isLoading, activateDevice, deactivateDevice, unassignDevice, reassignDevice, updateDevice } = useDevice(deviceId);
   const [showUnassignModal, setShowUnassignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   if (isLoading) {
@@ -58,6 +61,11 @@ const DeviceDetailPage = () => {
   const handleReassign = async (mapping: any) => {
     await reassignDevice(mapping);
     setShowReassignModal(false);
+  };
+
+  const handleUpdate = async (updates: any) => {
+    await updateDevice(updates);
+    setShowEditModal(false);
   };
 
   return (
@@ -161,6 +169,17 @@ const DeviceDetailPage = () => {
             >
               <Radio className="inline-block mr-2" size={18} />
               Sessions
+            </button>
+            <button
+              onClick={() => setActiveTab('images')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'images'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Image className="inline-block mr-2" size={18} />
+              Images
             </button>
           </nav>
         </div>
@@ -410,6 +429,10 @@ const DeviceDetailPage = () => {
 
       {activeTab === 'sessions' && deviceId && (
         <DeviceSessionsView deviceId={deviceId} />
+      )}
+
+      {activeTab === 'images' && deviceId && (
+        <DeviceImagesPanel deviceId={deviceId} />
       )}
 
       {showUnassignModal && (
