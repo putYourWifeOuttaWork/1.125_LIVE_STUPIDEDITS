@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Radio } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -9,9 +9,13 @@ import DeviceBatteryIndicator from '../components/devices/DeviceBatteryIndicator
 import DeviceSetupProgress from '../components/devices/DeviceSetupProgress';
 import DeviceUnassignModal from '../components/devices/DeviceUnassignModal';
 import DeviceReassignModal from '../components/devices/DeviceReassignModal';
+import DeviceHistoryPanel from '../components/devices/DeviceHistoryPanel';
+import DeviceSessionsView from '../components/devices/DeviceSessionsView';
 import { useDevice } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
+
+type TabType = 'overview' | 'history' | 'sessions';
 
 const DeviceDetailPage = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -20,6 +24,7 @@ const DeviceDetailPage = () => {
   const { device, isLoading, activateDevice, deactivateDevice, unassignDevice, reassignDevice } = useDevice(deviceId);
   const [showUnassignModal, setShowUnassignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -121,7 +126,48 @@ const DeviceDetailPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="mb-6">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'overview'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Activity className="inline-block mr-2" size={18} />
+              Overview
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'history'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <FileText className="inline-block mr-2" size={18} />
+              History
+            </button>
+            <button
+              onClick={() => setActiveTab('sessions')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'sessions'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Radio className="inline-block mr-2" size={18} />
+              Sessions
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
@@ -305,6 +351,15 @@ const DeviceDetailPage = () => {
           )}
         </div>
       </div>
+      )}
+
+      {activeTab === 'history' && deviceId && (
+        <DeviceHistoryPanel deviceId={deviceId} />
+      )}
+
+      {activeTab === 'sessions' && deviceId && (
+        <DeviceSessionsView deviceId={deviceId} />
+      )}
 
       {showUnassignModal && (
         <DeviceUnassignModal

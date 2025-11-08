@@ -2,12 +2,16 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePilotProgramStore } from '../stores/pilotProgramStore';
 import { useAuditLog } from '../hooks/useAuditLog';
-import { Clock, Filter, User, FileText, ArrowLeft, RefreshCw, Download, Hash } from 'lucide-react';
+import { Clock, Filter, User, FileText, ArrowLeft, RefreshCw, Download, Hash, Cpu } from 'lucide-react';
 import Button from '../components/common/Button';
 import LoadingScreen from '../components/common/LoadingScreen';
+import DateRangePicker from '../components/common/DateRangePicker';
+import EventCategoryBadge from '../components/devices/EventCategoryBadge';
+import SeverityIndicator from '../components/devices/SeverityIndicator';
+import DeviceTelemetryCard from '../components/devices/DeviceTelemetryCard';
 import { format } from 'date-fns';
 import useUserRole from '../hooks/useUserRole';
-import { HistoryEventType } from '../lib/types';
+import { HistoryEventType, DeviceEventCategory } from '../lib/types';
 import usePilotPrograms from '../hooks/usePilotPrograms';
 import { useSites } from '../hooks/useSites';
 import { toast } from 'react-toastify';
@@ -91,7 +95,11 @@ const AuditLogPage = () => {
   const [filterObjectType, setFilterObjectType] = useState<string>('');
   const [filterEventType, setFilterEventType] = useState<HistoryEventType | ''>('');
   const [filterUserId, setFilterUserId] = useState<string>('');
+  const [filterDeviceCategories, setFilterDeviceCategories] = useState<DeviceEventCategory[]>([]);
+  const [filterStartDate, setFilterStartDate] = useState<string>(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+  const [filterEndDate, setFilterEndDate] = useState<string>(new Date().toISOString());
   const [exporting, setExporting] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   
   // Extract unique users from audit logs for the user filter dropdown
   const uniqueUsers = auditLogs
@@ -155,15 +163,31 @@ const AuditLogPage = () => {
     await filterLogs(
       filterObjectType || undefined,
       filterEventType || undefined,
-      filterUserId || undefined
+      filterUserId || undefined,
+      filterDeviceCategories.length > 0 ? filterDeviceCategories : undefined,
+      filterStartDate,
+      filterEndDate
     );
   };
-  
+
   const resetFilters = async () => {
     setFilterObjectType('');
     setFilterEventType('');
     setFilterUserId('');
+    setFilterDeviceCategories([]);
+    setFilterStartDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    setFilterEndDate(new Date().toISOString());
     await fetchAuditLogs();
+  };
+
+  const toggleRowExpansion = (eventId: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(eventId)) {
+      newExpanded.delete(eventId);
+    } else {
+      newExpanded.add(eventId);
+    }
+    setExpandedRows(newExpanded);
   };
   
   const handleExportCsv = async () => {
@@ -302,6 +326,16 @@ const AuditLogPage = () => {
 
         {showFilters && (
           <div className="p-4 bg-gray-50 border-b border-gray-100 animate-fade-in">
+            <DateRangePicker
+              startDate={filterStartDate}
+              endDate={filterEndDate}
+              onDateRangeChange={(start, end) => {
+                setFilterStartDate(start);
+                setFilterEndDate(end);
+              }}
+              className="mb-4"
+            />
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -361,7 +395,32 @@ const AuditLogPage = () => {
                 </select>
               </div>
 
-              <div className="flex items-end space-x-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Device Event Category
+                </label>
+                <select
+                  multiple
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                  value={filterDeviceCategories}
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions, option => option.value) as DeviceEventCategory[];
+                    setFilterDeviceCategories(selected);
+                  }}
+                  size={5}
+                >
+                  <option value="WakeSession">Wake Session</option>
+                  <option value="ImageCapture">Image Capture</option>
+                  <option value="EnvironmentalReading">Environmental</option>
+                  <option value="BatteryStatus">Battery Status</option>
+                  <option value="Assignment">Assignment</option>
+                  <option value="Activation">Activation</option>
+                  <option value="ErrorEvent">Error Event</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-end space-x-2 mt-4">
                 <Button
                   variant="primary"
                   size="sm"
@@ -378,7 +437,6 @@ const AuditLogPage = () => {
                   Reset
                 </Button>
               </div>
-            </div>
           </div>
         )}
 
@@ -414,35 +472,53 @@ const AuditLogPage = () => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {auditLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {format(new Date(log.event_timestamp), 'MMM d, yyyy HH:mm:ss')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        log.update_type.includes('Creation')
-                          ? 'bg-success-100 text-success-800'
-                          : log.update_type.includes('Update')
-                          ? 'bg-secondary-100 text-secondary-800'
-                          : log.update_type.includes('Deletion')
-                          ? 'bg-error-100 text-error-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {eventTypeLabels[log.update_type as HistoryEventType] || log.update_type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <div className="flex items-center">
-                        <User className="h-4 w-4 text-gray-400 mr-1" />
-                        {log.user_email || 'System'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                  <>
+                    <tr
+                      key={log.event_id}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => toggleRowExpansion(log.event_id)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {format(new Date(log.event_timestamp), 'MMM d, yyyy HH:mm:ss')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {log.event_source === 'device' ? (
+                          <div className="flex items-center gap-2">
+                            <EventCategoryBadge category={log.event_category as DeviceEventCategory} size="sm" />
+                            {log.severity && <SeverityIndicator severity={log.severity} size="sm" />}
+                          </div>
+                        ) : (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            log.event_type?.includes('Creation')
+                              ? 'bg-success-100 text-success-800'
+                              : log.event_type?.includes('Update')
+                              ? 'bg-secondary-100 text-secondary-800'
+                              : log.event_type?.includes('Deletion')
+                              ? 'bg-error-100 text-error-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {eventTypeLabels[log.event_type as HistoryEventType] || log.event_type}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <div className="flex items-center">
+                          <User className="h-4 w-4 text-gray-400 mr-1" />
+                          {log.user_email || 'System'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
                       <div>
+                        {log.event_source === 'device' && log.device_name && (
+                          <div className="flex items-center gap-2 mb-1">
+                            <Cpu size={14} className="text-gray-400" />
+                            <span className="text-xs text-gray-500">{log.device_name}</span>
+                          </div>
+                        )}
                         <p className="font-medium text-gray-900">
-                          {log.object_type.charAt(0).toUpperCase() + log.object_type.slice(1).replace('_', ' ')}
+                          {log.description || (log.object_type ? log.object_type.charAt(0).toUpperCase() + log.object_type.slice(1).replace('_', ' ') : '')}
                         </p>
-                        {log.new_data && Object.keys(log.new_data).length > 0 && (
+                        {log.new_data && Object.keys(log.new_data).length > 0 && log.event_source !== 'device' && (
                           <div className="mt-1 text-xs">
                             {log.update_type === 'UserAdded' && (
                               <span>Added user: {log.new_data.user_email}</span>
@@ -500,6 +576,27 @@ const AuditLogPage = () => {
                       </div>
                     </td>
                   </tr>
+                  {expandedRows.has(log.event_id) && log.event_source === 'device' && log.event_data && (
+                    <tr key={`${log.event_id}-details`}>
+                      <td colSpan={4} className="px-6 py-4 bg-gray-50">
+                        <div className="space-y-3">
+                          {(log.event_data.temperature !== undefined || log.event_data.humidity !== undefined) && (
+                            <div>
+                              <h4 className="text-sm font-semibold text-gray-700 mb-2">Telemetry Data</h4>
+                              <DeviceTelemetryCard telemetryData={log.event_data} compact />
+                            </div>
+                          )}
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-700 mb-2">Event Data</h4>
+                            <pre className="text-xs bg-white p-3 rounded border border-gray-200 overflow-x-auto">
+                              {JSON.stringify(log.event_data, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </>
                 ))}
               </tbody>
             </table>

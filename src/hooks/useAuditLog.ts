@@ -1,29 +1,40 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { AuditLogEntry, HistoryEventType } from '../lib/types';
+import { AuditLogEntry, HistoryEventType, DeviceEventCategory } from '../lib/types';
 
 interface UseAuditLogProps {
   programId: string;
-  siteId?: string; // Make siteId optional
+  siteId?: string;
+  includeDeviceEvents?: boolean;
 }
 
 interface UseAuditLogResult {
-  auditLogs: AuditLogEntry[];
+  auditLogs: any[];
   loading: boolean;
   error: string | null;
   fetchAuditLogs: () => Promise<void>;
-  filterLogs: (objectType?: string, eventType?: HistoryEventType, userId?: string) => Promise<void>;
+  filterLogs: (
+    objectType?: string,
+    eventType?: HistoryEventType,
+    userId?: string,
+    deviceCategories?: DeviceEventCategory[],
+    startDate?: string,
+    endDate?: string
+  ) => Promise<void>;
   exportAuditLogsCsv: () => Promise<string | null>;
 }
 
-export function useAuditLog({ programId, siteId }: UseAuditLogProps): UseAuditLogResult {
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: UseAuditLogProps): UseAuditLogResult {
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [currentFilters, setCurrentFilters] = useState<{
     objectType?: string,
     eventType?: HistoryEventType,
-    userId?: string
+    userId?: string,
+    deviceCategories?: DeviceEventCategory[],
+    startDate?: string,
+    endDate?: string
   }>({});
 
   const fetchAuditLogs = async () => {
@@ -37,19 +48,48 @@ export function useAuditLog({ programId, siteId }: UseAuditLogProps): UseAuditLo
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .rpc('get_filtered_audit_history', {
-          p_program_id: programId,
-          p_site_id: siteId || null,
-          p_object_type: null,
-          p_event_type: null,
-          p_user_id: null,
-          p_limit: 100
-        });
+      if (includeDeviceEvents && siteId) {
+        const { data, error } = await supabase
+          .rpc('get_site_history_with_devices', {
+            p_site_id: siteId,
+            p_start_date: null,
+            p_end_date: null,
+            p_event_types: null,
+            p_device_categories: null,
+            p_limit: 100
+          });
 
-      if (error) throw error;
-      setAuditLogs(data || []);
-      setCurrentFilters({}); // Reset filters
+        if (error) throw error;
+        setAuditLogs(data || []);
+      } else if (includeDeviceEvents && !siteId) {
+        const { data, error } = await supabase
+          .rpc('get_program_history_with_devices', {
+            p_program_id: programId,
+            p_start_date: null,
+            p_end_date: null,
+            p_event_types: null,
+            p_device_categories: null,
+            p_limit: 100
+          });
+
+        if (error) throw error;
+        setAuditLogs(data || []);
+      } else {
+        const { data, error } = await supabase
+          .rpc('get_filtered_audit_history', {
+            p_program_id: programId,
+            p_site_id: siteId || null,
+            p_object_type: null,
+            p_event_type: null,
+            p_user_id: null,
+            p_limit: 100
+          });
+
+        if (error) throw error;
+        setAuditLogs(data || []);
+      }
+
+      setCurrentFilters({});
     } catch (err) {
       console.error('Error fetching audit logs:', err);
       setError('Failed to load audit logs');
@@ -58,7 +98,14 @@ export function useAuditLog({ programId, siteId }: UseAuditLogProps): UseAuditLo
     }
   };
 
-  const filterLogs = async (objectType?: string, eventType?: HistoryEventType, userId?: string) => {
+  const filterLogs = async (
+    objectType?: string,
+    eventType?: HistoryEventType,
+    userId?: string,
+    deviceCategories?: DeviceEventCategory[],
+    startDate?: string,
+    endDate?: string
+  ) => {
     if (!programId) {
       setAuditLogs([]);
       setLoading(false);
@@ -69,19 +116,48 @@ export function useAuditLog({ programId, siteId }: UseAuditLogProps): UseAuditLo
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .rpc('get_filtered_audit_history', {
-          p_program_id: programId,
-          p_site_id: siteId || null,
-          p_object_type: objectType || null,
-          p_event_type: eventType || null,
-          p_user_id: userId || null,
-          p_limit: 100
-        });
+      if (includeDeviceEvents && siteId) {
+        const { data, error } = await supabase
+          .rpc('get_site_history_with_devices', {
+            p_site_id: siteId,
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+            p_event_types: eventType ? [eventType] : null,
+            p_device_categories: deviceCategories || null,
+            p_limit: 100
+          });
 
-      if (error) throw error;
-      setAuditLogs(data || []);
-      setCurrentFilters({ objectType, eventType, userId });
+        if (error) throw error;
+        setAuditLogs(data || []);
+      } else if (includeDeviceEvents && !siteId) {
+        const { data, error } = await supabase
+          .rpc('get_program_history_with_devices', {
+            p_program_id: programId,
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+            p_event_types: eventType ? [eventType] : null,
+            p_device_categories: deviceCategories || null,
+            p_limit: 100
+          });
+
+        if (error) throw error;
+        setAuditLogs(data || []);
+      } else {
+        const { data, error } = await supabase
+          .rpc('get_filtered_audit_history', {
+            p_program_id: programId,
+            p_site_id: siteId || null,
+            p_object_type: objectType || null,
+            p_event_type: eventType || null,
+            p_user_id: userId || null,
+            p_limit: 100
+          });
+
+        if (error) throw error;
+        setAuditLogs(data || []);
+      }
+
+      setCurrentFilters({ objectType, eventType, userId, deviceCategories, startDate, endDate });
     } catch (err) {
       console.error('Error filtering audit logs:', err);
       setError('Failed to filter audit logs');

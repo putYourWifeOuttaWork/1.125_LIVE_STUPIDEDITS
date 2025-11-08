@@ -1,0 +1,334 @@
+import { useState } from 'react';
+import { Download, Filter, RefreshCw, Clock, User } from 'lucide-react';
+import { format } from 'date-fns';
+import { useDeviceHistory, HistoryFilterOptions } from '../../hooks/useDeviceHistory';
+import { DeviceEventCategory, EventSeverity } from '../../lib/types';
+import Button from '../common/Button';
+import LoadingScreen from '../common/LoadingScreen';
+import EventCategoryBadge from './EventCategoryBadge';
+import SeverityIndicator from './SeverityIndicator';
+import DeviceTelemetryCard from './DeviceTelemetryCard';
+import DateRangePicker from '../common/DateRangePicker';
+import { toast } from 'react-toastify';
+
+interface DeviceHistoryPanelProps {
+  deviceId: string;
+}
+
+const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
+  const {
+    history,
+    loading,
+    error,
+    fetchHistory,
+    filterHistory,
+    exportHistoryCsv,
+    currentFilters
+  } = useDeviceHistory({ deviceId });
+
+  const [showFilters, setShowFilters] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const [localFilters, setLocalFilters] = useState<HistoryFilterOptions>({
+    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    endDate: new Date().toISOString(),
+    categories: undefined,
+    severityLevels: undefined,
+    hasErrors: undefined,
+    searchText: undefined
+  });
+
+  const handleApplyFilters = async () => {
+    await filterHistory(localFilters);
+  };
+
+  const handleResetFilters = async () => {
+    const defaultFilters: HistoryFilterOptions = {
+      startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      endDate: new Date().toISOString()
+    };
+    setLocalFilters(defaultFilters);
+    await filterHistory(defaultFilters);
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const csv = await exportHistoryCsv();
+      if (csv) {
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `device-history-${deviceId}-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast.success('Device history exported successfully');
+      }
+    } catch (err) {
+      toast.error('Failed to export device history');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const toggleRowExpansion = (historyId: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(historyId)) {
+      newExpanded.delete(historyId);
+    } else {
+      newExpanded.add(historyId);
+    }
+    setExpandedRows(newExpanded);
+  };
+
+  const eventCategories: DeviceEventCategory[] = [
+    'WakeSession', 'ImageCapture', 'EnvironmentalReading', 'BatteryStatus',
+    'Assignment', 'Unassignment', 'Activation', 'Deactivation',
+    'ChunkTransmission', 'OfflineCapture', 'WiFiConnectivity', 'MQTTStatus',
+    'ProvisioningStep', 'FirmwareUpdate', 'ConfigurationChange',
+    'MaintenanceActivity', 'ErrorEvent'
+  ];
+
+  const severityLevels: EventSeverity[] = ['info', 'warning', 'error', 'critical'];
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Device Event History</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {history.length} events found
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Filter size={14} />}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            {showFilters ? 'Hide Filters' : 'Filters'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Download size={14} />}
+            onClick={handleExport}
+            isLoading={exporting}
+          >
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<RefreshCw size={14} />}
+            onClick={fetchHistory}
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {showFilters && (
+        <div className="bg-gray-50 rounded-lg p-4 space-y-4 animate-fade-in">
+          <DateRangePicker
+            startDate={localFilters.startDate || ''}
+            endDate={localFilters.endDate || ''}
+            onDateRangeChange={(start, end) => setLocalFilters({ ...localFilters, startDate: start, endDate: end })}
+          />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Event Category
+              </label>
+              <select
+                multiple
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                value={localFilters.categories || []}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions, option => option.value) as DeviceEventCategory[];
+                  setLocalFilters({ ...localFilters, categories: selected.length > 0 ? selected : undefined });
+                }}
+                size={5}
+              >
+                {eventCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Severity Level
+              </label>
+              <select
+                multiple
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                value={localFilters.severityLevels || []}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions, option => option.value) as EventSeverity[];
+                  setLocalFilters({ ...localFilters, severityLevels: selected.length > 0 ? selected : undefined });
+                }}
+                size={4}
+              >
+                {severityLevels.map(sev => (
+                  <option key={sev} value={sev} className="capitalize">{sev}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Search Description
+              </label>
+              <input
+                type="text"
+                placeholder="Search events..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                value={localFilters.searchText || ''}
+                onChange={(e) => setLocalFilters({ ...localFilters, searchText: e.target.value || undefined })}
+              />
+
+              <div className="mt-3">
+                <label className="flex items-center text-sm">
+                  <input
+                    type="checkbox"
+                    checked={localFilters.hasErrors || false}
+                    onChange={(e) => setLocalFilters({ ...localFilters, hasErrors: e.target.checked || undefined })}
+                    className="mr-2"
+                  />
+                  Errors Only
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={handleApplyFilters}>
+              Apply Filters
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleResetFilters}>
+              Reset
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-error-50 text-error-700 p-4 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {history.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-lg">
+          <Clock className="mx-auto h-12 w-12 text-gray-300 mb-2" />
+          <p className="text-gray-500">No device events found</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Time
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Category
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Severity
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    User
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {history.map((event) => (
+                  <>
+                    <tr
+                      key={event.history_id}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => toggleRowExpansion(event.history_id)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {format(new Date(event.event_timestamp), 'MMM d, yyyy HH:mm:ss')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <EventCategoryBadge category={event.event_category} size="sm" />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <SeverityIndicator severity={event.severity} />
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        <div>
+                          <p className="font-medium">{event.event_type}</p>
+                          {event.description && (
+                            <p className="text-gray-500 mt-1">{event.description}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {event.user_email ? (
+                          <div className="flex items-center">
+                            <User size={14} className="mr-1" />
+                            {event.user_email}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 italic">System</span>
+                        )}
+                      </td>
+                    </tr>
+                    {expandedRows.has(event.history_id) && (
+                      <tr key={`${event.history_id}-details`}>
+                        <td colSpan={5} className="px-6 py-4 bg-gray-50">
+                          <div className="space-y-3">
+                            {event.event_data && Object.keys(event.event_data).length > 0 && (
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">Event Data</h4>
+                                {event.event_data.temperature !== undefined && (
+                                  <DeviceTelemetryCard telemetryData={event.event_data} compact />
+                                )}
+                                <pre className="text-xs bg-white p-3 rounded border border-gray-200 mt-2 overflow-x-auto">
+                                  {JSON.stringify(event.event_data, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                            {event.metadata && Object.keys(event.metadata).length > 0 && (
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">Device Metadata</h4>
+                                <pre className="text-xs bg-white p-3 rounded border border-gray-200 overflow-x-auto">
+                                  {JSON.stringify(event.metadata, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default DeviceHistoryPanel;
