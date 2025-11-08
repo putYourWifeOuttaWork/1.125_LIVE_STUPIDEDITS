@@ -532,3 +532,121 @@ export type SiteProgramAssignment = {
     name: string;
   };
 };
+
+// ==========================================
+// DEVICE HISTORY & SESSION TYPES
+// ==========================================
+
+export type DeviceEventCategory =
+  | 'WakeSession'
+  | 'ImageCapture'
+  | 'EnvironmentalReading'
+  | 'BatteryStatus'
+  | 'Assignment'
+  | 'Unassignment'
+  | 'Activation'
+  | 'Deactivation'
+  | 'ChunkTransmission'
+  | 'OfflineCapture'
+  | 'WiFiConnectivity'
+  | 'MQTTStatus'
+  | 'ProvisioningStep'
+  | 'FirmwareUpdate'
+  | 'ConfigurationChange'
+  | 'MaintenanceActivity'
+  | 'ErrorEvent';
+
+export type EventSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export type DeviceSessionStatus = 'success' | 'partial' | 'failed' | 'in_progress';
+
+export type DeviceWakeSession = {
+  session_id: string;
+  device_id: string;
+  site_id: string | null;
+  program_id: string | null;
+  wake_timestamp: string;
+  session_duration_ms: number | null;
+  next_wake_scheduled: string | null;
+  connection_success: boolean;
+  wifi_retry_count: number;
+  mqtt_connected: boolean;
+  image_captured: boolean;
+  image_id: string | null;
+  chunks_sent: number;
+  chunks_total: number;
+  chunks_missing: number[];
+  transmission_complete: boolean;
+  telemetry_data: DeviceSessionTelemetry;
+  status: DeviceSessionStatus;
+  error_codes: string[];
+  pending_images_count: number;
+  was_offline_capture: boolean;
+  offline_duration_hours: number | null;
+  created_at: string;
+  updated_at: string;
+  // Joined data
+  device_mac?: string;
+  device_name?: string;
+  site_name?: string;
+  program_name?: string;
+};
+
+export interface DeviceSessionTelemetry {
+  temperature?: number;
+  humidity?: number;
+  pressure?: number;
+  gas_resistance?: number;
+  battery_voltage?: number;
+  battery_health_percent?: number;
+  wifi_rssi?: number;
+}
+
+export type DeviceHistory = {
+  history_id: string;
+  device_id: string;
+  site_id: string | null;
+  program_id: string | null;
+  session_id: string | null;
+  event_category: DeviceEventCategory;
+  event_type: string;
+  severity: EventSeverity;
+  event_timestamp: string;
+  description: string | null;
+  event_data: Record<string, any>;
+  metadata: Record<string, any>;
+  user_id: string | null;
+  created_at: string;
+  // Joined data
+  device_mac?: string;
+  device_name?: string;
+  site_name?: string;
+  program_name?: string;
+  user_email?: string;
+};
+
+export type DeviceErrorCode = {
+  error_code: number;
+  error_category: string;
+  error_message: string;
+  severity: EventSeverity;
+  recommended_action: string | null;
+  created_at: string;
+};
+
+// Unified audit trail entry (combines program/site/device events)
+export type UnifiedAuditEntry = {
+  event_id: string;
+  event_source: 'device' | 'site' | 'program' | 'submission';
+  event_type: string;
+  event_category: string;
+  severity: string;
+  event_timestamp: string;
+  description: string;
+  site_id?: string | null;
+  site_name?: string | null;
+  device_id?: string | null;
+  device_name?: string | null;
+  user_email?: string | null;
+  event_data: Record<string, any>;
+};
