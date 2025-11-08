@@ -87,20 +87,76 @@ function getImageKey(deviceId: string, imageName: string): string {
   return `${deviceId}|${imageName}`;
 }
 
+async function generateDeviceCode(hardwareVersion: string = "ESP32-S3"): Promise<string> {
+  const prefix = hardwareVersion.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  const { count } = await supabase
+    .from("devices")
+    .select("device_id", { count: "exact", head: true })
+    .ilike("device_code", `DEVICE-${prefix}-%`);
+  const sequence = String((count || 0) + 1).padStart(3, "0");
+  return `DEVICE-${prefix}-${sequence}`;
+}
+
+async function autoProvisionDevice(deviceMac: string) {
+  console.log(`[AUTO-PROVISION] Attempting to provision new device: ${deviceMac}`);
+
+  try {
+    const deviceCode = await generateDeviceCode("ESP32-S3");
+
+    const { data: newDevice, error: insertError } = await supabase
+      .from("devices")
+      .insert({
+        device_mac: deviceMac,
+        device_code: deviceCode,
+        device_name: null,
+        hardware_version: "ESP32-S3",
+        provisioning_status: "pending_mapping",
+        provisioned_at: new Date().toISOString(),
+        is_active: false,
+        notes: "Auto-provisioned via MQTT connection",
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error(`[ERROR] Failed to auto-provision device:`, insertError);
+      return null;
+    }
+
+    console.log(`[SUCCESS] Auto-provisioned device ${deviceMac} with code ${deviceCode} and ID ${newDevice.device_id}`);
+    return newDevice;
+  } catch (error) {
+    console.error(`[ERROR] Auto-provision exception:`, error);
+    return null;
+  }
+}
+
 async function handleStatusMessage(payload: DeviceStatusMessage) {
   console.log(`[STATUS] Device ${payload.device_id} is alive, pending images: ${payload.pendingImg || 0}`);
 
-  const { data: device, error: deviceError } = await supabase
+  let { data: device, error: deviceError } = await supabase
     .from("devices")
     .select("*")
     .eq("device_mac", payload.device_id)
     .maybeSingle();
 
+  // Auto-provision if device doesn't exist
+  if (!device && !deviceError) {
+    console.log(`[AUTO-PROVISION] Device ${payload.device_id} not found, attempting auto-provision...`);
+    device = await autoProvisionDevice(payload.device_id);
+
+    if (!device) {
+      console.error(`[ERROR] Failed to auto-provision device ${payload.device_id}`);
+      return null;
+    }
+  }
+
   if (deviceError || !device) {
-    console.error(`[ERROR] Device ${payload.device_id} not found in registry:`, deviceError);
+    console.error(`[ERROR] Device ${payload.device_id} lookup failed:`, deviceError);
     return null;
   }
 
+  // Update device last seen and activate it
   await supabase
     .from("devices")
     .update({
@@ -108,6 +164,8 @@ async function handleStatusMessage(payload: DeviceStatusMessage) {
       is_active: true,
     })
     .eq("device_id", device.device_id);
+
+  console.log(`[STATUS] Device ${device.device_code || device.device_mac} updated (status: ${device.provisioning_status})`);
 
   return { device, pendingCount: payload.pendingImg || 0 };
 }
