@@ -103,10 +103,10 @@ class MockESP32Device:
         else:
             print(f"[MQTT] Connection failed with code {rc}")
 
-    def _on_disconnect(self, client, userdata, rc):
+    def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties=None):
         """MQTT disconnection callback"""
         self.connected = False
-        print(f"[MQTT] Disconnected with code {rc}")
+        print(f"[MQTT] Disconnected with reason code {reason_code}")
 
     def _on_message(self, client, userdata, msg):
         """Handle incoming MQTT messages from server"""

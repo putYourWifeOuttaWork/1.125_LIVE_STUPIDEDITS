@@ -396,7 +396,7 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
         is_device_generated: true,
         temperature: buffer.metadata?.temperature || 72,
         humidity: buffer.metadata?.humidity || 50,
-        airflow: 'Moderate',
+        airflow: 'moderate',
         odor_distance: '0-5 ft',
         weather: 'Clear',
         notes: `Auto-generated from ${device.device_code} at ${buffer.metadata?.capture_timestamp || new Date().toISOString()}`,
