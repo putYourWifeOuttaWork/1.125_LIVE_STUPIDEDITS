@@ -96,7 +96,7 @@ const DeviceDetailPage = () => {
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Provisioning Status</p>
                   <p className="font-medium capitalize">
-                    {device.provisioning_status.replace('_', ' ')}
+                    {device.provisioning_status?.replace('_', ' ') || 'Unknown'}
                   </p>
                 </div>
                 <div>

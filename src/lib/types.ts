@@ -1,4 +1,69 @@
-import { Database } from './supabaseClient';
+export type Database = {
+  public: {
+    Tables: {
+      pilot_programs: {
+        Row: {
+          program_id: string;
+          name: string;
+          company_id: string;
+          start_date: string;
+          end_date: string;
+          status: string;
+          created_at: string;
+          updated_at: string;
+          [key: string]: any;
+        };
+      };
+      sites: {
+        Row: {
+          site_id: string;
+          name: string;
+          type: string;
+          program_id: string;
+          created_at: string;
+          updated_at: string;
+          [key: string]: any;
+        };
+      };
+      submissions: {
+        Row: {
+          submission_id: string;
+          site_id: string;
+          created_at: string;
+          updated_at: string;
+          [key: string]: any;
+        };
+      };
+      petri_observations: {
+        Row: {
+          observation_id: string;
+          submission_id: string;
+          petri_code: string;
+          created_at: string;
+          [key: string]: any;
+        };
+      };
+      gasifier_observations: {
+        Row: {
+          observation_id: string;
+          submission_id: string;
+          gasifier_code: string;
+          created_at: string;
+          [key: string]: any;
+        };
+      };
+      pilot_program_history_staging: {
+        Row: {
+          history_id: string;
+          program_id: string;
+          update_type: string;
+          created_at: string;
+          [key: string]: any;
+        };
+      };
+    };
+  };
+};
 
 export type User = {
   id: string;
@@ -222,6 +287,8 @@ export interface OutdoorEnvironmentalData {
 // IoT DEVICE TYPES
 // ==========================================
 
+export type DeviceProvisioningStatus = 'pending_mapping' | 'mapped' | 'active' | 'inactive';
+
 export type Device = {
   device_id: string;
   device_mac: string;
@@ -231,6 +298,7 @@ export type Device = {
   firmware_version: string | null;
   hardware_version: string;
   is_active: boolean;
+  provisioning_status: DeviceProvisioningStatus;
   last_seen_at: string | null;
   last_wake_at: string | null;
   next_wake_at: string | null;
@@ -241,9 +309,24 @@ export type Device = {
   mqtt_client_id: string | null;
   provisioned_at: string | null;
   provisioned_by_user_id: string | null;
+  mapped_at: string | null;
+  mapped_by_user_id: string | null;
+  device_reported_site_id: string | null;
+  device_reported_location: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
+  sites?: {
+    site_id: string;
+    name: string;
+    type: string;
+    program_id?: string;
+  } | null;
+  pilot_programs?: {
+    program_id: string;
+    name: string;
+    company_id?: string;
+  } | null;
 };
 
 export type DeviceTelemetry = {
@@ -348,30 +431,6 @@ export interface DeviceCaptureMetadata {
   firmware_version?: string;
 }
 
-// IoT Device Types
-export type Device = Database['public']['Tables']['devices']['Row'];
-
-export type DeviceTelemetry = Database['public']['Tables']['device_telemetry']['Row'];
-
-export type DeviceImage = Database['public']['Tables']['device_images']['Row'];
-
-export type DeviceCommand = Database['public']['Tables']['device_commands']['Row'];
-
-export type DeviceAlert = Database['public']['Tables']['device_alerts']['Row'];
-
-export type DeviceImageStatus = 'pending' | 'receiving' | 'complete' | 'failed';
-
-export type DeviceCommandStatus = 'pending' | 'sent' | 'acknowledged' | 'failed' | 'expired';
-
-export type DeviceAlertSeverity = 'info' | 'warning' | 'error' | 'critical';
-
-export type DeviceAlertType =
-  | 'low_battery'
-  | 'offline'
-  | 'transmission_failure'
-  | 'sensor_anomaly'
-  | 'storage_full'
-  | 'firmware_update_required';
 
 export interface DeviceWithStats extends Device {
   total_images?: number;
