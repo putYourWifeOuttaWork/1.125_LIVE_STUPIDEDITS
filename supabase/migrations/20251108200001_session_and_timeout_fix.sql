@@ -1,60 +1,39 @@
 /*
-  # Add Session Management and Image Timeout Tracking
+  # Fix Session and Timeout Tracking Migration
 
-  1. New Concepts
-    - **Sessions**: Each wake window (wake to sleep cycle) is a session
-    - **Image Timeout**: Based on next_wake schedule, not fixed time
-    - **Retry Commands**: Published before device wakes for automatic retry
-
-  2. New Tables
-    - `device_sessions`
-      - Tracks each wake window as a discrete session
-      - Links history events to sessions
-      - Stores session metadata (duration, next_wake, status)
-
-    - `device_commands`
-      - Queue of commands for devices to process on next wake
-      - Commands like: retry_image, capture_image, update_config
-
-  3. Schema Changes
-    - Add `session_id` to device_history
-    - Add `retry_count` and `max_retries` to device_images
-    - Add `failed_at` timestamp for timeout tracking
-
-  4. Functions
-    - `create_device_session()`: Auto-create session on device wake
-    - `timeout_stale_images()`: Mark images as failed if not complete by next_wake
-    - `queue_image_retry()`: Queue retry command for failed images
-
-  5. Security
-    - Enable RLS on all new tables
-    - Policies for authenticated users and system operations
+  This migration safely adds all session and timeout tracking features.
+  It's designed to be idempotent and won't fail if tables already exist.
 */
 
 -- =====================================================
 -- 1. CREATE device_sessions TABLE
 -- =====================================================
-CREATE TABLE IF NOT EXISTS device_sessions (
-  session_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  device_id uuid NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
-  session_start_time timestamptz NOT NULL DEFAULT now(),
-  session_end_time timestamptz,
-  next_wake_time timestamptz,
-  session_duration_seconds integer,
-  session_status text NOT NULL DEFAULT 'active' CHECK (session_status IN ('active', 'completed', 'timeout', 'error')),
-  images_transmitted integer DEFAULT 0,
-  images_failed integer DEFAULT 0,
-  chunks_sent integer DEFAULT 0,
-  chunks_retried integer DEFAULT 0,
-  session_metadata jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'device_sessions') THEN
+    CREATE TABLE device_sessions (
+      session_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      device_id uuid NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+      session_start_time timestamptz NOT NULL DEFAULT now(),
+      session_end_time timestamptz,
+      next_wake_time timestamptz,
+      session_duration_seconds integer,
+      session_status text NOT NULL DEFAULT 'active' CHECK (session_status IN ('active', 'completed', 'timeout', 'error')),
+      images_transmitted integer DEFAULT 0,
+      images_failed integer DEFAULT 0,
+      chunks_sent integer DEFAULT 0,
+      chunks_retried integer DEFAULT 0,
+      session_metadata jsonb DEFAULT '{}'::jsonb,
+      created_at timestamptz DEFAULT now(),
+      updated_at timestamptz DEFAULT now()
+    );
 
-CREATE INDEX IF NOT EXISTS idx_device_sessions_device ON device_sessions(device_id);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_start_time ON device_sessions(session_start_time DESC);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_status ON device_sessions(session_status);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_next_wake ON device_sessions(next_wake_time);
+    CREATE INDEX idx_device_sessions_device ON device_sessions(device_id);
+    CREATE INDEX idx_device_sessions_start_time ON device_sessions(session_start_time DESC);
+    CREATE INDEX idx_device_sessions_status ON device_sessions(session_status);
+    CREATE INDEX idx_device_sessions_next_wake ON device_sessions(next_wake_time);
+  END IF;
+END $$;
 
 -- =====================================================
 -- 2. ADD session_id TO device_history
@@ -107,38 +86,49 @@ END $$;
 -- =====================================================
 -- 4. CREATE device_commands TABLE (Command Queue)
 -- =====================================================
-CREATE TABLE IF NOT EXISTS device_commands (
-  command_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  device_id uuid NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
-  command_type text NOT NULL CHECK (command_type IN ('retry_image', 'capture_image', 'update_config', 'resend_chunks')),
-  command_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  priority integer DEFAULT 5 CHECK (priority BETWEEN 1 AND 10),
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'acknowledged', 'completed', 'failed', 'cancelled')),
-  scheduled_for timestamptz,
-  published_at timestamptz,
-  acknowledged_at timestamptz,
-  completed_at timestamptz,
-  expires_at timestamptz,
-  retry_count integer DEFAULT 0,
-  max_retries integer DEFAULT 3,
-  error_message text,
-  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'device_commands') THEN
+    CREATE TABLE device_commands (
+      command_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      device_id uuid NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+      command_type text NOT NULL CHECK (command_type IN ('retry_image', 'capture_image', 'update_config', 'resend_chunks')),
+      command_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+      priority integer DEFAULT 5 CHECK (priority BETWEEN 1 AND 10),
+      status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'acknowledged', 'completed', 'failed', 'cancelled')),
+      scheduled_for timestamptz,
+      published_at timestamptz,
+      acknowledged_at timestamptz,
+      completed_at timestamptz,
+      expires_at timestamptz,
+      retry_count integer DEFAULT 0,
+      max_retries integer DEFAULT 3,
+      error_message text,
+      created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+      created_at timestamptz DEFAULT now(),
+      updated_at timestamptz DEFAULT now()
+    );
 
-CREATE INDEX IF NOT EXISTS idx_device_commands_device ON device_commands(device_id);
-CREATE INDEX IF NOT EXISTS idx_device_commands_status ON device_commands(status);
-CREATE INDEX IF NOT EXISTS idx_device_commands_scheduled ON device_commands(scheduled_for);
-CREATE INDEX IF NOT EXISTS idx_device_commands_priority ON device_commands(priority DESC);
+    CREATE INDEX idx_device_commands_device ON device_commands(device_id);
+    CREATE INDEX idx_device_commands_status ON device_commands(status);
+    CREATE INDEX idx_device_commands_scheduled ON device_commands(scheduled_for);
+    CREATE INDEX idx_device_commands_priority ON device_commands(priority DESC);
+  END IF;
+END $$;
 
 -- =====================================================
 -- 5. RLS POLICIES
 -- =====================================================
 
 -- device_sessions policies
-ALTER TABLE device_sessions ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  ALTER TABLE device_sessions ENABLE ROW LEVEL SECURITY;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
 
+DROP POLICY IF EXISTS "Users can view sessions for devices they have access to" ON device_sessions;
 CREATE POLICY "Users can view sessions for devices they have access to"
   ON device_sessions FOR SELECT
   TO authenticated
@@ -154,6 +144,7 @@ CREATE POLICY "Users can view sessions for devices they have access to"
     )
   );
 
+DROP POLICY IF EXISTS "System can manage all sessions" ON device_sessions;
 CREATE POLICY "System can manage all sessions"
   ON device_sessions FOR ALL
   TO authenticated
@@ -165,8 +156,14 @@ CREATE POLICY "System can manage all sessions"
   );
 
 -- device_commands policies
-ALTER TABLE device_commands ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  ALTER TABLE device_commands ENABLE ROW LEVEL SECURITY;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
 
+DROP POLICY IF EXISTS "Users can view commands for their devices" ON device_commands;
 CREATE POLICY "Users can view commands for their devices"
   ON device_commands FOR SELECT
   TO authenticated
@@ -182,6 +179,7 @@ CREATE POLICY "Users can view commands for their devices"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can create commands" ON device_commands;
 CREATE POLICY "Admins can create commands"
   ON device_commands FOR INSERT
   TO authenticated
@@ -192,6 +190,7 @@ CREATE POLICY "Admins can create commands"
     )
   );
 
+DROP POLICY IF EXISTS "System can update commands" ON device_commands;
 CREATE POLICY "System can update commands"
   ON device_commands FOR UPDATE
   TO authenticated
@@ -312,9 +311,9 @@ BEGIN
       'image_name', p_image_name,
       'action', 'resend_all_chunks'
     ),
-    8, -- High priority
-    v_next_wake - interval '5 minutes', -- Publish 5 min before wake
-    v_next_wake + interval '1 hour' -- Expire 1 hour after wake
+    8,
+    v_next_wake - interval '5 minutes',
+    v_next_wake + interval '1 hour'
   )
   RETURNING command_id INTO v_command_id;
 
@@ -363,24 +362,8 @@ CREATE TRIGGER trigger_create_session_on_hello
   EXECUTE FUNCTION handle_device_hello();
 
 -- =====================================================
--- 7. SCHEDULED JOB SETUP (Comments for edge function)
+-- 7. COMMENTS
 -- =====================================================
-
-/*
-  Edge Function: monitor_image_timeouts
-
-  Schedule: Every 5 minutes
-
-  Logic:
-  1. Call timeout_stale_images() to mark failed images
-  2. For each failed image, call queue_image_retry()
-  3. Create device_history event for timeout
-  4. Optionally create device_alert
-
-  Deployment:
-  - Deploy edge function: monitor_image_timeouts
-  - Set up pg_cron or external scheduler to call every 5 minutes
-*/
 
 COMMENT ON FUNCTION timeout_stale_images IS 'Called by edge function to timeout images that did not complete before next wake window';
 COMMENT ON FUNCTION queue_image_retry IS 'Queue retry command for failed image to be processed on next device wake';
