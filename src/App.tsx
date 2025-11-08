@@ -26,13 +26,15 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const PilotProgramsPage = lazy(() => import('./pages/PilotProgramsPage'));
 const SitesPage = lazy(() => import('./pages/SitesPage'));
 const SubmissionsPage = lazy(() => import('./pages/SubmissionsPage'));
-const SubmissionEditPage = lazy(() => import('./pages/SubmissionEditPage')); // Add this line
-const NewSubmissionPage = lazy(() => import('./pages/NewSubmissionPage')); // Add this line
+const SubmissionEditPage = lazy(() => import('./pages/SubmissionEditPage'));
+const NewSubmissionPage = lazy(() => import('./pages/NewSubmissionPage'));
 const SiteTemplateManagementPage = lazy(() => import('./pages/SiteTemplateManagementPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const CompanyManagementPage = lazy(() => import('./pages/CompanyManagementPage'));
 const UserAuditPage = lazy(() => import('./pages/UserAuditPage'));
+const DevicesPage = lazy(() => import('./pages/DevicesPage'));
+const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -382,6 +384,16 @@ function App() {
               <Route path="/company" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <CompanyManagementPage />
+                </Suspense>
+              } />
+              <Route path="/devices" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <DevicesPage />
+                </Suspense>
+              } />
+              <Route path="/devices/:deviceId" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <DeviceDetailPage />
                 </Suspense>
               } />
             </Route>

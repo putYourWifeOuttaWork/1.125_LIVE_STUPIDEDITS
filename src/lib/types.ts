@@ -40,6 +40,7 @@ export type Site = Database['public']['Tables']['sites']['Row'] & {
   has_dead_zones?: boolean;
   num_regularly_opened_ports?: number;
   ventilation_strategy?: VentilationStrategy;
+  device_count?: number;
 };
 export type Submission = Database['public']['Tables']['submissions']['Row'] & {
   global_submission_id?: number;

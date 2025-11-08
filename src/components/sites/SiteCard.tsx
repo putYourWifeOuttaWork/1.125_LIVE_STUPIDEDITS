@@ -1,4 +1,4 @@
-import { Leaf, Trash2, Settings, Eye, MoreVertical, Zap, History, Hash } from 'lucide-react';
+import { Leaf, Trash2, Settings, Eye, MoreVertical, Zap, History, Hash, Camera } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
 import { Site } from '../../lib/types';
@@ -87,6 +87,12 @@ const SiteCard = ({
                 <Zap className="h-5 w-5 text-accent-600" />
               </div>
               <span className="text-gray-500">{site.total_gasifiers} Gasifier samples</span>
+            </div>
+            <div className="flex items-center">
+              <div className="bg-gray-100 p-2 rounded-full mr-3">
+                <Camera className="h-5 w-5 text-gray-600" />
+              </div>
+              <span className="text-gray-500">{site.device_count || 0} IoT devices</span>
             </div>
           </div>
           

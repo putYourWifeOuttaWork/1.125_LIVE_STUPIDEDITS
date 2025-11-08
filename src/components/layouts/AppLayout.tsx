@@ -3,9 +3,9 @@ import { useAuthStore } from '../../stores/authStore';
 import { supabase } from '../../lib/supabaseClient';
 import { usePilotProgramStore } from '../../stores/pilotProgramStore';
 import useCompanies from '../../hooks/useCompanies';
-import { 
-  Home, 
-  User, 
+import {
+  Home,
+  User,
   LogOut,
   ChevronLeft,
   Menu,
@@ -13,7 +13,8 @@ import {
   History,
   Building,
   Leaf,
-  ClipboardList
+  ClipboardList,
+  Cpu
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -169,13 +170,23 @@ const AppLayout = () => {
               </button>
               
               {userCompany && (
-                <Link 
-                  to="/company" 
+                <Link
+                  to="/company"
                   className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
                   data-testid="company-link"
                 >
                   <Building size={18} />
                   <span className="hidden lg:inline">Company</span>
+                </Link>
+              )}
+              {isCompanyAdmin && (
+                <Link
+                  to="/devices"
+                  className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
+                  data-testid="devices-link"
+                >
+                  <Cpu size={18} />
+                  <span className="hidden lg:inline">Devices</span>
                 </Link>
               )}
               <Link 
@@ -255,8 +266,8 @@ const AppLayout = () => {
               </>
             )}
             {userCompany && (
-              <Link 
-                to="/company" 
+              <Link
+                to="/company"
                 className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
                 onClick={() => setIsMobileMenuOpen(false)}
                 data-testid="mobile-company-link"
@@ -264,6 +275,19 @@ const AppLayout = () => {
                 <div className="flex items-center space-x-2">
                   <Building size={18} />
                   <span>Company</span>
+                </div>
+              </Link>
+            )}
+            {isCompanyAdmin && (
+              <Link
+                to="/devices"
+                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                onClick={() => setIsMobileMenuOpen(false)}
+                data-testid="mobile-devices-link"
+              >
+                <div className="flex items-center space-x-2">
+                  <Cpu size={18} />
+                  <span>Devices</span>
                 </div>
               </Link>
             )}

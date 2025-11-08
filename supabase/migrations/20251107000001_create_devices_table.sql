@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS devices (
   firmware_version TEXT,
   hardware_version TEXT DEFAULT 'ESP32-S3',
   is_active BOOLEAN DEFAULT true,
+  provisioning_status TEXT DEFAULT 'pending_mapping' CHECK (provisioning_status IN ('pending_mapping', 'mapped', 'active', 'inactive')),
+  device_reported_site_id TEXT,
+  device_reported_location TEXT,
+  mapped_at TIMESTAMPTZ,
+  mapped_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   last_seen_at TIMESTAMPTZ,
   last_wake_at TIMESTAMPTZ,
   next_wake_at TIMESTAMPTZ,
@@ -69,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_devices_next_wake ON devices(next_wake_at);
 CREATE INDEX IF NOT EXISTS idx_devices_active ON devices(is_active);
 CREATE INDEX IF NOT EXISTS idx_devices_mac ON devices(device_mac);
+CREATE INDEX IF NOT EXISTS idx_devices_provisioning_status ON devices(provisioning_status);
 
 -- Enable Row Level Security
 ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
@@ -158,5 +164,9 @@ EXECUTE FUNCTION update_devices_updated_at();
 -- Add helpful comments
 COMMENT ON TABLE devices IS 'IoT ESP32-CAM devices for automatic petri dish image capture';
 COMMENT ON COLUMN devices.device_mac IS 'Device MAC address used as unique identifier in MQTT topics';
+COMMENT ON COLUMN devices.provisioning_status IS 'Device provisioning state: pending_mapping (awaiting admin assignment), mapped (assigned to site), active (operational), inactive (disabled)';
+COMMENT ON COLUMN devices.device_reported_site_id IS 'Site ID as reported by device firmware (may not match actual site_id)';
+COMMENT ON COLUMN devices.device_reported_location IS 'Location string as reported by device firmware';
+COMMENT ON COLUMN devices.mapped_at IS 'Timestamp when device was mapped to a site by an administrator';
 COMMENT ON COLUMN devices.wake_schedule_cron IS 'Cron expression for scheduled wake times (e.g., "0 8,16 * * *" for 8am & 4pm)';
 COMMENT ON COLUMN devices.battery_health_percent IS 'Battery health as percentage (0-100), triggers alerts when low';
