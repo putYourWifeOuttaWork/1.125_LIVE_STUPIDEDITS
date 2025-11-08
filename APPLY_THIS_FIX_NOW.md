@@ -1,170 +1,131 @@
-# APPLY THIS FIX NOW
+# 🔧 Apply This Fix Now - Audit Log Separation
 
-## The Error You're Seeing
-```
-ERROR: 42703: column d.mapped_at does not exist
-```
+## What Happened
 
-## The Fix (5 minutes)
+The unified audit log approach had type conflicts between device schemas and audit schemas. Instead of fighting PostgreSQL types, we **separated them completely**.
 
-### Go here right now:
-https://supabase.com/dashboard/project/jycxolmevsvrxmeinxff/sql/new
+## The Solution
 
-### Copy and paste this ENTIRE SQL script:
-
-```sql
-/*
-  # Add Missing Columns to Devices Table
-  Fixes: ERROR: 42703: column d.mapped_at does not exist
-*/
-
--- Add mapped_at column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'devices' AND column_name = 'mapped_at'
-  ) THEN
-    ALTER TABLE devices ADD COLUMN mapped_at TIMESTAMPTZ;
-    COMMENT ON COLUMN devices.mapped_at IS 'Timestamp when device was mapped to a site by an administrator';
-  END IF;
-END $$;
-
--- Add mapped_by_user_id column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'devices' AND column_name = 'mapped_by_user_id'
-  ) THEN
-    ALTER TABLE devices ADD COLUMN mapped_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
-    COMMENT ON COLUMN devices.mapped_by_user_id IS 'User who mapped the device to a site';
-  END IF;
-END $$;
-
--- Add provisioning_status column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'devices' AND column_name = 'provisioning_status'
-  ) THEN
-    ALTER TABLE devices ADD COLUMN provisioning_status TEXT DEFAULT 'pending_mapping';
-    ALTER TABLE devices ADD CONSTRAINT devices_provisioning_status_check
-      CHECK (provisioning_status IN ('pending_mapping', 'mapped', 'active', 'inactive'));
-    COMMENT ON COLUMN devices.provisioning_status IS 'Device provisioning state: pending_mapping (awaiting admin assignment), mapped (assigned to site), active (operational), inactive (disabled)';
-  END IF;
-END $$;
-
--- Add device_reported_site_id column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'devices' AND column_name = 'device_reported_site_id'
-  ) THEN
-    ALTER TABLE devices ADD COLUMN device_reported_site_id TEXT;
-    COMMENT ON COLUMN devices.device_reported_site_id IS 'Site ID as reported by device firmware (may not match actual site_id)';
-  END IF;
-END $$;
-
--- Add device_reported_location column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'devices' AND column_name = 'device_reported_location'
-  ) THEN
-    ALTER TABLE devices ADD COLUMN device_reported_location TEXT;
-    COMMENT ON COLUMN devices.device_reported_location IS 'Location string as reported by device firmware';
-  END IF;
-END $$;
-
--- Create index on provisioning_status
-CREATE INDEX IF NOT EXISTS idx_devices_provisioning_status ON devices(provisioning_status);
-
--- Update existing devices to set provisioning_status
-UPDATE devices
-SET provisioning_status = 'mapped',
-    mapped_at = created_at
-WHERE site_id IS NOT NULL
-  AND (provisioning_status IS NULL OR provisioning_status = 'pending_mapping');
-
-UPDATE devices
-SET provisioning_status = 'active'
-WHERE site_id IS NOT NULL
-  AND is_active = true
-  AND provisioning_status = 'mapped';
-
-UPDATE devices
-SET provisioning_status = 'inactive'
-WHERE is_active = false
-  AND (provisioning_status IS NULL OR provisioning_status != 'inactive');
-```
-
-### Click "RUN"
-
-That's it! The error should be fixed.
+**Activity History** (working now) and **Device History** (separate, for future) are now independent systems.
 
 ---
 
-## After Step 1 Works, Do This (Step 2)
+## ⚠️ ACTION REQUIRED ⚠️
 
-### Populate the junction tables:
+Apply this migration file:
 
-```sql
--- Add device_code column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'devices' AND column_name = 'device_code'
-  ) THEN
-    ALTER TABLE devices ADD COLUMN device_code TEXT UNIQUE;
-    CREATE INDEX IF NOT EXISTS idx_devices_device_code ON devices(device_code);
-  END IF;
-END $$;
-
--- Migrate device-site assignments
-INSERT INTO device_site_assignments (
-  device_id, site_id, program_id, is_primary, is_active, assigned_at, assigned_by_user_id
-)
-SELECT
-  d.device_id, d.site_id, d.program_id, true, d.is_active,
-  COALESCE(d.mapped_at, d.created_at), d.mapped_by_user_id
-FROM devices d
-WHERE d.site_id IS NOT NULL AND d.program_id IS NOT NULL
-ON CONFLICT DO NOTHING;
-
--- Migrate device-program assignments
-INSERT INTO device_program_assignments (
-  device_id, program_id, is_primary, is_active, assigned_at, assigned_by_user_id
-)
-SELECT
-  d.device_id, d.program_id, true, d.is_active,
-  COALESCE(d.mapped_at, d.created_at), d.mapped_by_user_id
-FROM devices d
-WHERE d.program_id IS NOT NULL
-ON CONFLICT DO NOTHING;
-
--- Migrate site-program assignments
-INSERT INTO site_program_assignments (
-  site_id, program_id, is_primary, is_active, assigned_at
-)
-SELECT s.site_id, s.program_id, true, true, s.created_at
-FROM sites s
-WHERE s.program_id IS NOT NULL
-ON CONFLICT DO NOTHING;
+```
+📁 supabase/migrations/20251108235959_separate_device_and_audit_history.sql
 ```
 
 ---
 
-## Verify It Worked
+## Quick Steps
 
-Run: `node verify-device-columns.mjs`
+### 1. Open Supabase Dashboard
+- Go to your project
+- Click **SQL Editor**
 
-You should see all ✅ checkmarks.
+### 2. Copy & Paste Migration
+- Open `supabase/migrations/20251108235959_separate_device_and_audit_history.sql`
+- Copy ALL contents
+- Paste into SQL Editor
+- Click **RUN**
+
+### 3. Test
+- Go to any program's audit log page
+- Should load without errors
+- Should show clean activity history
 
 ---
 
-**Questions?** See `FIX_DEVICE_SCHEMA_ERROR.md` for the full explanation.
+## What This Does
+
+✅ **Fixes**: "structure of query does not match" error
+✅ **Removes**: Broken device event integration
+✅ **Keeps**: All traditional audit trail functionality
+✅ **Creates**: Separate device history functions for future use
+
+---
+
+## What You'll See
+
+### Before (Broken):
+```
+❌ Failed to load audit logs: structure of query does not match function result type
+```
+
+### After (Fixed):
+```
+✅ Clean activity history showing:
+   - Program changes
+   - Site changes
+   - Submissions
+   - User actions
+   - All traditional audit events
+```
+
+---
+
+## Device History
+
+Device events (telemetry, wake sessions, images) are **intentionally excluded** for now.
+
+They're available via separate functions when you want to add them later:
+- `get_program_device_history()`
+- `get_site_device_history()`
+
+A hook is already created at `src/hooks/useAuditAndDeviceHistory.ts` for future use.
+
+---
+
+## Files Changed
+
+- ✅ `supabase/migrations/20251108235959_separate_device_and_audit_history.sql` - NEW
+- ✅ `src/hooks/useAuditLog.ts` - Updated to use separate functions
+- ✅ `src/pages/AuditLogPage.tsx` - Cleaned up, device UI removed
+- ✅ `src/hooks/useAuditAndDeviceHistory.ts` - NEW (for future use)
+
+---
+
+## Why This Approach?
+
+1. **No Type Conflicts** - Separate schemas stay separate
+2. **Cleaner Code** - No complex unions or type casting
+3. **Better UX** - Focus on activity without noise
+4. **Easy to Extend** - Add device tab later if needed
+5. **More Maintainable** - Each system independent
+
+---
+
+## Verification
+
+After applying:
+
+```bash
+# Build should succeed
+npm run build
+
+# Page should load
+Navigate to: /programs/{programId}/audit
+
+# Events should display
+- Program/Site/Submission events visible
+- No errors in console
+- Filtering works
+- CSV export works
+```
+
+---
+
+## Need Help?
+
+See `AUDIT_LOG_FINAL_FIX_SUMMARY.md` for complete details.
+
+---
+
+**Time to fix**: ~2 minutes
+**Risk**: Very low
+**Impact**: Restores audit log functionality
+
+**Status**: 🟡 Waiting for migration

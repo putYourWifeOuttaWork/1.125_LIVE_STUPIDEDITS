@@ -48,38 +48,28 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
     setError(null);
 
     try {
-      if (includeDeviceEvents && siteId) {
-        const { data, error } = await supabase
-          .rpc('get_site_history_with_devices', {
+      // Use the new separate audit history functions (no device events)
+      const functionName = siteId ? 'get_site_audit_history' : 'get_program_audit_history';
+      const params = siteId
+        ? {
             p_site_id: siteId,
             p_start_date: null,
             p_end_date: null,
             p_event_types: null,
-            p_device_categories: null,
             p_limit: 100
-          });
-
-        if (error) throw error;
-        setAuditLogs(data || []);
-      } else if (includeDeviceEvents && !siteId) {
-        const { data, error } = await supabase
-          .rpc('get_program_history_with_devices', {
+          }
+        : {
             p_program_id: programId,
             p_start_date: null,
             p_end_date: null,
             p_event_types: null,
-            p_device_categories: null,
             p_limit: 100
-          });
+          };
 
-        if (error) throw error;
-        setAuditLogs(data || []);
-      } else {
-        // Fallback to regular audit log query - for now just return empty
-        // This would need the original get_filtered_audit_history function
-        console.warn('Device events disabled, returning empty audit logs');
-        setAuditLogs([]);
-      }
+      const { data, error } = await supabase.rpc(functionName, params);
+
+      if (error) throw error;
+      setAuditLogs(data || []);
 
       setCurrentFilters({});
     } catch (err: any) {
@@ -109,37 +99,28 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
     setError(null);
 
     try {
-      if (includeDeviceEvents && siteId) {
-        const { data, error } = await supabase
-          .rpc('get_site_history_with_devices', {
+      // Use the new separate audit history functions (no device events)
+      const functionName = siteId ? 'get_site_audit_history' : 'get_program_audit_history';
+      const params = siteId
+        ? {
             p_site_id: siteId,
             p_start_date: startDate || null,
             p_end_date: endDate || null,
             p_event_types: eventType ? [eventType] : null,
-            p_device_categories: deviceCategories || null,
             p_limit: 100
-          });
-
-        if (error) throw error;
-        setAuditLogs(data || []);
-      } else if (includeDeviceEvents && !siteId) {
-        const { data, error } = await supabase
-          .rpc('get_program_history_with_devices', {
+          }
+        : {
             p_program_id: programId,
             p_start_date: startDate || null,
             p_end_date: endDate || null,
             p_event_types: eventType ? [eventType] : null,
-            p_device_categories: deviceCategories || null,
             p_limit: 100
-          });
+          };
 
-        if (error) throw error;
-        setAuditLogs(data || []);
-      } else {
-        // Fallback to regular audit log query - for now just return empty
-        console.warn('Device events disabled, filtering not supported without device events');
-        setAuditLogs([]);
-      }
+      const { data, error } = await supabase.rpc(functionName, params);
+
+      if (error) throw error;
+      setAuditLogs(data || []);
 
       setCurrentFilters({ objectType, eventType, userId, deviceCategories, startDate, endDate });
     } catch (err: any) {
