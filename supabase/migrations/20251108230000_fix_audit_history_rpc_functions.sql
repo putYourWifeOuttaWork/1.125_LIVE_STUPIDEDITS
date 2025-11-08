@@ -22,6 +22,14 @@
 */
 
 -- ============================================
+-- Drop existing functions first to allow signature changes
+-- ============================================
+
+DROP FUNCTION IF EXISTS get_site_history_with_devices(uuid, timestamptz, timestamptz, text[], device_event_category[], integer);
+DROP FUNCTION IF EXISTS get_program_history_with_devices(uuid, timestamptz, timestamptz, text[], device_event_category[], integer);
+DROP FUNCTION IF EXISTS export_filtered_audit_history_csv(uuid, uuid, text, text, uuid);
+
+-- ============================================
 -- FUNCTION 1: Get Site History with Devices (Fixed)
 -- ============================================
 
