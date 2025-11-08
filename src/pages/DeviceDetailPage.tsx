@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Radio, Camera, AlertCircle, Image, Edit } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -10,20 +10,25 @@ import DeviceSetupProgress from '../components/devices/DeviceSetupProgress';
 import DeviceUnassignModal from '../components/devices/DeviceUnassignModal';
 import DeviceReassignModal from '../components/devices/DeviceReassignModal';
 import DeviceHistoryPanel from '../components/devices/DeviceHistoryPanel';
-import DeviceSessionsView from '../components/devices/DeviceSessionsView';
 import DeviceImagesPanel from '../components/devices/DeviceImagesPanel';
 import DeviceEditModal from '../components/devices/DeviceEditModal';
-import { useDevice } from '../hooks/useDevice';
+import { useDevice, useDeviceImages } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
 
-type TabType = 'overview' | 'history' | 'sessions' | 'images';
+type TabType = 'overview' | 'history' | 'images';
 
 const DeviceDetailPage = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
   const navigate = useNavigate();
   const { isAdmin } = useCompanies();
   const { device, isLoading, activateDevice, deactivateDevice, unassignDevice, reassignDevice, updateDevice } = useDevice(deviceId);
+  const { images } = useDeviceImages(deviceId || '');
+
+  // Compute image counts from actual images
+  const totalImages = images?.length || 0;
+  const pendingImages = images?.filter(img => img.status === 'pending' || img.status === 'pending_retry').length || 0;
+  const failedImages = images?.filter(img => img.status === 'failed').length || 0;
   const [showUnassignModal, setShowUnassignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -96,6 +101,14 @@ const DeviceDetailPage = () => {
                   <Button
                     variant="outline"
                     size="sm"
+                    icon={<Edit size={14} />}
+                    onClick={() => setShowEditModal(true)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     icon={<RefreshCw size={14} />}
                     onClick={() => setShowReassignModal(true)}
                   >
@@ -158,17 +171,6 @@ const DeviceDetailPage = () => {
             >
               <FileText className="inline-block mr-2" size={18} />
               History
-            </button>
-            <button
-              onClick={() => setActiveTab('sessions')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === 'sessions'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Radio className="inline-block mr-2" size={18} />
-              Sessions
             </button>
             <button
               onClick={() => setActiveTab('images')}
@@ -366,20 +368,20 @@ const DeviceDetailPage = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Total Images</p>
-                  <p className="text-2xl font-bold text-gray-900">{device.total_images || 0}</p>
+                  <p className="text-2xl font-bold text-gray-900">{totalImages}</p>
                 </div>
                 <Camera size={32} className="text-gray-300" />
               </div>
-              {device.pending_images && device.pending_images > 0 && (
+              {pendingImages > 0 && (
                 <div className="pt-3 border-t border-gray-200">
                   <p className="text-sm text-gray-500">Pending Transfer</p>
-                  <p className="text-lg font-semibold text-warning-600">{device.pending_images}</p>
+                  <p className="text-lg font-semibold text-warning-600">{pendingImages}</p>
                   <p className="text-xs text-gray-500 mt-1">
                     Images currently being transmitted
                   </p>
                 </div>
               )}
-              {device.failed_images && device.failed_images > 0 && (
+              {failedImages > 0 && (
                 <div className="pt-3 border-t border-gray-200 bg-error-50 -mx-4 -mb-4 px-4 pb-4 rounded-b-lg">
                   <div className="flex items-center justify-between pt-3">
                     <div>
@@ -387,7 +389,7 @@ const DeviceDetailPage = () => {
                         <AlertCircle size={14} />
                         Failed Transfers
                       </p>
-                      <p className="text-2xl font-bold text-error-700 mt-1">{device.failed_images}</p>
+                      <p className="text-2xl font-bold text-error-700 mt-1">{failedImages}</p>
                       <p className="text-xs text-error-600 mt-1">
                         Images that failed to complete before wake window
                       </p>
@@ -427,10 +429,6 @@ const DeviceDetailPage = () => {
         <DeviceHistoryPanel deviceId={deviceId} />
       )}
 
-      {activeTab === 'sessions' && deviceId && (
-        <DeviceSessionsView deviceId={deviceId} />
-      )}
-
       {activeTab === 'images' && deviceId && (
         <DeviceImagesPanel deviceId={deviceId} />
       )}
@@ -450,6 +448,15 @@ const DeviceDetailPage = () => {
           onClose={() => setShowReassignModal(false)}
           device={device}
           onSubmit={handleReassign}
+        />
+      )}
+
+      {showEditModal && (
+        <DeviceEditModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          device={device}
+          onSubmit={handleUpdate}
         />
       )}
     </div>

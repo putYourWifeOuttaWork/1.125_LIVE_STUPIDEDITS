@@ -19,10 +19,20 @@ export const useDeviceImages = (deviceId: string) => {
     queryKey: ['device-images', deviceId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .rpc('get_device_images_with_status', { p_device_id: deviceId });
+        .from('device_images')
+        .select('*')
+        .eq('device_id', deviceId)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+
+      // Add can_retry field to each image
+      const imagesWithRetry = (data || []).map(img => ({
+        ...img,
+        can_retry: img.status === 'failed' && img.retry_count < img.max_retries
+      }));
+
+      return imagesWithRetry;
     },
     enabled: !!deviceId,
     refetchInterval: 15000,
@@ -30,33 +40,107 @@ export const useDeviceImages = (deviceId: string) => {
 
   const retryImageMutation = useMutation({
     mutationFn: async ({ imageId, imageName }: { imageId: string; imageName: string }) => {
+      // Create a device command to retry the image
       const { data, error } = await supabase
-        .rpc('queue_image_retry', {
-          p_device_id: deviceId,
-          p_image_id: imageId,
-          p_image_name: imageName
-        });
+        .from('device_commands')
+        .insert({
+          device_id: deviceId,
+          command_type: 'retry_image',
+          command_data: {
+            image_id: imageId,
+            image_name: imageName,
+            reason: 'Manual retry requested'
+          },
+          priority: 'high',
+          status: 'pending'
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Update the image status to pending_retry
+      const { error: updateError } = await supabase
+        .from('device_images')
+        .update({
+          status: 'pending_retry',
+          retry_count: supabase.sql`retry_count + 1`
+        })
+        .eq('image_id', imageId);
+
+      if (updateError) throw updateError;
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['device-images', deviceId] });
       queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
+      toast.success('Image retry queued successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to queue retry: ${error.message}`);
     }
   });
 
   const retryAllFailedMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase
-        .rpc('retry_failed_device_images', { p_device_id: deviceId });
+      // Get all failed images that can be retried
+      const { data: failedImages, error: fetchError } = await supabase
+        .from('device_images')
+        .select('image_id, image_name')
+        .eq('device_id', deviceId)
+        .eq('status', 'failed')
+        .lt('retry_count', supabase.sql`max_retries`);
 
-      if (error) throw error;
-      return data;
+      if (fetchError) throw fetchError;
+      if (!failedImages || failedImages.length === 0) {
+        return { count: 0 };
+      }
+
+      // Create retry commands for all failed images
+      const commands = failedImages.map(img => ({
+        device_id: deviceId,
+        command_type: 'retry_image',
+        command_data: {
+          image_id: img.image_id,
+          image_name: img.image_name,
+          reason: 'Batch retry requested'
+        },
+        priority: 'high',
+        status: 'pending'
+      }));
+
+      const { error: insertError } = await supabase
+        .from('device_commands')
+        .insert(commands);
+
+      if (insertError) throw insertError;
+
+      // Update all failed images to pending_retry
+      const imageIds = failedImages.map(img => img.image_id);
+      const { error: updateError } = await supabase
+        .from('device_images')
+        .update({
+          status: 'pending_retry',
+          retry_count: supabase.sql`retry_count + 1`
+        })
+        .in('image_id', imageIds);
+
+      if (updateError) throw updateError;
+
+      return { count: failedImages.length };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['device-images', deviceId] });
       queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
+      if (data.count > 0) {
+        toast.success(`Queued retry for ${data.count} failed image${data.count > 1 ? 's' : ''}`);
+      } else {
+        toast.info('No failed images to retry');
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to queue retries: ${error.message}`);
     }
   });
 
