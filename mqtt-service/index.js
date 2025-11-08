@@ -104,11 +104,16 @@ async function handleStatusMessage(payload, client) {
 async function handleMetadataMessage(payload, client) {
   console.log(`[METADATA] Received for image ${payload.image_name} from ${payload.device_id}`);
 
-  const { data: device } = await supabase
+  const { data: device, error: deviceError } = await supabase
     .from('devices')
     .select('*')
     .eq('device_mac', payload.device_id)
     .maybeSingle();
+
+  if (deviceError) {
+    console.error(`[ERROR] Device lookup error:`, deviceError);
+    return;
+  }
 
   if (!device) {
     console.error(`[ERROR] Device ${payload.device_id} not found`);
@@ -117,35 +122,45 @@ async function handleMetadataMessage(payload, client) {
 
   const imageKey = getImageKey(payload.device_id, payload.image_name);
 
+  // Build metadata object with all sensor data
+  const metadataObj = {
+    location: payload.location || 'Unknown',
+    temperature: payload.temperature,
+    humidity: payload.humidity,
+    pressure: payload.pressure,
+    gas_resistance: payload.gas_resistance,
+    error: payload.error || 0,
+  };
+
+  console.log(`[METADATA] Inserting image record with metadata:`, JSON.stringify(metadataObj));
+
   const { data: imageRecord, error: imageError } = await supabase
     .from('device_images')
     .insert({
       device_id: device.device_id,
       image_name: payload.image_name,
-      image_size: payload.image_size,
+      image_size: payload.image_size || 0,
       captured_at: payload.capture_timestamp,
       total_chunks: payload.total_chunks_count,
       received_chunks: 0,
       status: 'receiving',
-      error_code: payload.error,
-      metadata: {
-        location: payload.location,
-        temperature: payload.temperature,
-        humidity: payload.humidity,
-        pressure: payload.pressure,
-        gas_resistance: payload.gas_resistance,
-      },
+      error_code: payload.error || 0,
+      metadata: metadataObj,
     })
     .select()
     .single();
 
   if (imageError) {
     console.error(`[ERROR] Failed to create image record:`, imageError);
+    console.error(`[ERROR] Payload was:`, JSON.stringify(payload));
     return;
   }
 
+  console.log(`[SUCCESS] Created image record ${imageRecord.image_id}`);
+
+  // Create telemetry record if we have sensor data
   if (payload.temperature !== undefined) {
-    await supabase.from('device_telemetry').insert({
+    const { error: telemetryError } = await supabase.from('device_telemetry').insert({
       device_id: device.device_id,
       captured_at: payload.capture_timestamp,
       temperature: payload.temperature,
@@ -154,13 +169,21 @@ async function handleMetadataMessage(payload, client) {
       gas_resistance: payload.gas_resistance,
       battery_voltage: device.battery_voltage,
     });
+
+    if (telemetryError) {
+      console.error(`[ERROR] Failed to create telemetry record:`, telemetryError);
+    } else {
+      console.log(`[SUCCESS] Created telemetry record for device ${device.device_code}`);
+    }
   }
 
+  // Store in memory buffer for chunk reassembly
   imageBuffers.set(imageKey, {
     metadata: payload,
     chunks: new Map(),
     totalChunks: payload.total_chunks_count,
     imageRecord,
+    device,
   });
 
   console.log(`[METADATA] Ready to receive ${payload.total_chunks_count} chunks for ${payload.image_name}`);
@@ -172,28 +195,43 @@ async function handleChunkMessage(payload, client) {
 
   if (!buffer) {
     console.error(`[ERROR] No metadata found for ${payload.image_name}`);
+    console.error(`[ERROR] Available keys:`, Array.from(imageBuffers.keys()));
     return;
   }
 
+  // Convert payload to Uint8Array
   const chunkBytes = new Uint8Array(payload.payload);
   buffer.chunks.set(payload.chunk_id, chunkBytes);
 
   const receivedCount = buffer.chunks.size;
-  console.log(`[CHUNK] Received chunk ${payload.chunk_id + 1}/${buffer.totalChunks} for ${payload.image_name} (${receivedCount} total)`);
+  const progress = ((receivedCount / buffer.totalChunks) * 100).toFixed(1);
+  console.log(`[CHUNK] Received chunk ${payload.chunk_id + 1}/${buffer.totalChunks} for ${payload.image_name} (${receivedCount} total, ${progress}% complete)`);
 
-  await supabase
+  // Update progress in database
+  const { error: updateError } = await supabase
     .from('device_images')
-    .update({ received_chunks: receivedCount })
+    .update({
+      received_chunks: receivedCount,
+      updated_at: new Date().toISOString(),
+    })
     .eq('image_id', buffer.imageRecord.image_id);
 
+  if (updateError) {
+    console.error(`[ERROR] Failed to update chunk count:`, updateError);
+  }
+
+  // Check if all chunks received
   if (receivedCount === buffer.totalChunks) {
-    console.log(`[COMPLETE] All chunks received for ${payload.image_name}`);
+    console.log(`[COMPLETE] All ${buffer.totalChunks} chunks received for ${payload.image_name}`);
     await reassembleAndUploadImage(payload.device_id, payload.image_name, buffer, client);
   }
 }
 
 async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
   try {
+    console.log(`[REASSEMBLE] Starting reassembly for ${imageName}`);
+
+    // Check for missing chunks
     const missingChunks = [];
     for (let i = 0; i < buffer.totalChunks; i++) {
       if (!buffer.chunks.has(i)) {
@@ -202,16 +240,28 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
     }
 
     if (missingChunks.length > 0) {
-      console.log(`[MISSING] Requesting ${missingChunks.length} missing chunks for ${imageName}`);
+      console.log(`[MISSING] Requesting ${missingChunks.length} missing chunks: [${missingChunks.join(', ')}]`);
       const missingRequest = {
         device_id: deviceId,
         image_name: imageName,
         missing_chunks: missingChunks,
       };
       client.publish(`device/${deviceId}/ack`, JSON.stringify(missingRequest));
+
+      // Update status to show we're waiting for retransmission
+      await supabase
+        .from('device_images')
+        .update({
+          status: 'receiving',
+          retry_count: (buffer.imageRecord.retry_count || 0) + 1,
+        })
+        .eq('image_id', buffer.imageRecord.image_id);
+
       return;
     }
 
+    // Sort chunks in correct order
+    console.log(`[REASSEMBLE] All chunks present, sorting and merging...`);
     const sortedChunks = [];
     for (let i = 0; i < buffer.totalChunks; i++) {
       const chunk = buffer.chunks.get(i);
@@ -220,7 +270,10 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
       }
     }
 
+    // Merge all chunks into single image
     const totalLength = sortedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    console.log(`[REASSEMBLE] Merging ${sortedChunks.length} chunks, total size: ${totalLength} bytes`);
+
     const mergedImage = new Uint8Array(totalLength);
     let offset = 0;
     for (const chunk of sortedChunks) {
@@ -228,8 +281,13 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
       offset += chunk.length;
     }
 
+    // Upload to Supabase Storage
     const timestamp = Date.now();
-    const fileName = `device_${deviceId}_${timestamp}_${imageName}`;
+    const deviceCode = buffer.device?.device_code || deviceId;
+    const fileName = `${deviceCode}/${timestamp}_${imageName}`;
+
+    console.log(`[UPLOAD] Uploading to storage: ${fileName}`);
+
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('petri-images')
       .upload(fileName, mergedImage, {
@@ -241,16 +299,23 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
       console.error(`[ERROR] Failed to upload image:`, uploadError);
       await supabase
         .from('device_images')
-        .update({ status: 'failed', error_code: 1 })
+        .update({
+          status: 'failed',
+          error_code: 1,
+        })
         .eq('image_id', buffer.imageRecord.image_id);
       return;
     }
 
+    // Get public URL
     const { data: urlData } = supabase.storage
       .from('petri-images')
       .getPublicUrl(fileName);
 
-    await supabase
+    console.log(`[SUCCESS] Image uploaded successfully: ${urlData.publicUrl}`);
+
+    // Update image record with completion status
+    const { error: updateError } = await supabase
       .from('device_images')
       .update({
         status: 'complete',
@@ -259,45 +324,69 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
       })
       .eq('image_id', buffer.imageRecord.image_id);
 
-    console.log(`[SUCCESS] Image uploaded: ${fileName}`);
+    if (updateError) {
+      console.error(`[ERROR] Failed to update image record:`, updateError);
+    }
 
+    // Create submission and observation if device is mapped
     await createSubmissionAndObservation(buffer, urlData.publicUrl);
 
+    // Send acknowledgment to device
     const nextWakeTime = calculateNextWakeTime();
     const ackMessage = {
       device_id: deviceId,
       image_name: imageName,
       ACK_OK: {
         next_wake_time: nextWakeTime,
+        status: 'success',
+        image_url: urlData.publicUrl,
       },
     };
 
     client.publish(`device/${deviceId}/ack`, JSON.stringify(ackMessage));
-    console.log(`[ACK] Sent ACK_OK with next wake: ${nextWakeTime}`);
+    console.log(`[ACK] Sent ACK_OK to ${deviceId} with next wake: ${nextWakeTime}`);
 
+    // Clean up buffer
     imageBuffers.delete(getImageKey(deviceId, imageName));
+    console.log(`[CLEANUP] Removed buffer for ${imageName}`);
+
   } catch (error) {
     console.error(`[ERROR] Failed to reassemble image:`, error);
+    console.error(`[ERROR] Stack trace:`, error.stack);
+
     await supabase
       .from('device_images')
-      .update({ status: 'failed', error_code: 2 })
+      .update({
+        status: 'failed',
+        error_code: 2,
+      })
       .eq('image_id', buffer.imageRecord.image_id);
   }
 }
 
 async function createSubmissionAndObservation(buffer, imageUrl) {
   try {
-    const { data: device } = await supabase
+    console.log(`[SUBMISSION] Checking if device is mapped to site...`);
+
+    const { data: device, error: deviceError } = await supabase
       .from('devices')
-      .select('device_id, site_id, program_id')
+      .select('device_id, device_code, site_id, program_id')
       .eq('device_id', buffer.imageRecord.device_id)
       .single();
 
-    if (!device || !device.site_id) {
-      console.log(`[INFO] Device not mapped to site yet - image stored for later association`);
+    if (deviceError) {
+      console.error(`[ERROR] Failed to fetch device for submission:`, deviceError);
       return;
     }
 
+    if (!device || !device.site_id) {
+      console.log(`[INFO] Device ${device?.device_code || buffer.imageRecord.device_id} not mapped to site - image stored without submission`);
+      return;
+    }
+
+    console.log(`[SUBMISSION] Device mapped to site ${device.site_id}, creating submission...`);
+
+    // Create submission with device metadata
     const { data: submission, error: submissionError } = await supabase
       .from('submissions')
       .insert({
@@ -310,7 +399,7 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
         airflow: 'Moderate',
         odor_distance: '0-5 ft',
         weather: 'Clear',
-        notes: 'Auto-generated from device capture',
+        notes: `Auto-generated from ${device.device_code} at ${buffer.metadata?.capture_timestamp || new Date().toISOString()}`,
       })
       .select()
       .single();
@@ -320,6 +409,9 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
       return;
     }
 
+    console.log(`[SUCCESS] Created submission ${submission.submission_id}`);
+
+    // Create petri observation linked to submission
     const { data: observation, error: observationError } = await supabase
       .from('petri_observations')
       .insert({
@@ -341,7 +433,10 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
       return;
     }
 
-    await supabase
+    console.log(`[SUCCESS] Created observation ${observation.observation_id}`);
+
+    // Link image record to submission and observation
+    const { error: linkError } = await supabase
       .from('device_images')
       .update({
         submission_id: submission.submission_id,
@@ -350,9 +445,15 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
       })
       .eq('image_id', buffer.imageRecord.image_id);
 
-    console.log(`[SUCCESS] Created submission ${submission.submission_id} and observation ${observation.observation_id}`);
+    if (linkError) {
+      console.error(`[ERROR] Failed to link image to submission:`, linkError);
+    } else {
+      console.log(`[SUCCESS] Linked image ${buffer.imageRecord.image_id} to submission and observation`);
+    }
+
   } catch (error) {
     console.error(`[ERROR] Failed to create submission/observation:`, error);
+    console.error(`[ERROR] Stack trace:`, error.stack);
   }
 }
 
