@@ -99,6 +99,7 @@ const DevicesPage = () => {
 
     const matchesSearch = debouncedSearchQuery
       ? device.device_name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        device.device_code?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
         device.device_mac.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
         device.sites?.name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
       : true;
@@ -208,7 +209,7 @@ const DevicesPage = () => {
           </div>
           <Input
             type="text"
-            placeholder="Search devices by name, MAC address, or site..."
+            placeholder="Search devices by name, code, MAC, or site..."
             value={searchQuery}
             onChange={handleSearchChange}
             className="pl-10"

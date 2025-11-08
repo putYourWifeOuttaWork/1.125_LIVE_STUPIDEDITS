@@ -55,10 +55,13 @@ const DeviceCard = ({
         <CardHeader>
           <div className="flex justify-between items-start">
             <div className="flex-1 min-w-0">
-              <h3 className="text-lg font-semibold text-gray-900 truncate" title={device.device_name || device.device_mac}>
-                {device.device_name || device.device_mac}
+              <h3 className="text-lg font-semibold text-gray-900 truncate" title={device.device_name || device.device_code || device.device_mac}>
+                {device.device_name || device.device_code || device.device_mac}
               </h3>
-              {device.device_name && (
+              {device.device_code && (
+                <p className="text-xs text-gray-600 font-mono mt-0.5">{device.device_code}</p>
+              )}
+              {device.device_name && device.device_mac && (
                 <p className="text-xs text-gray-500 font-mono mt-0.5">{device.device_mac}</p>
               )}
             </div>

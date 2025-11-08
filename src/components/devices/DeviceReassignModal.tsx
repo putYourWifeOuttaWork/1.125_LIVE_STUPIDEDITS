@@ -87,9 +87,9 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Reassign Device" size="lg">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <Modal isOpen={isOpen} onClose={onClose} title="Reassign Device" maxWidth="lg">
+      <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
           <div className="flex items-start">
             <Info size={18} className="text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-blue-800">
@@ -102,12 +102,18 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
         </div>
 
         <div>
-          <p className="text-sm font-medium text-gray-700 mb-3">Current Assignment</p>
+          <p className="text-sm font-medium text-gray-700 mb-2 sm:mb-3">Current Assignment</p>
           <div className="bg-gray-50 border border-gray-200 rounded-md p-3 space-y-1">
             <p className="text-sm">
               <span className="text-gray-600">Device:</span>{' '}
               <span className="font-medium">{device.device_name || device.device_mac}</span>
             </p>
+            {device.device_code && (
+              <p className="text-sm">
+                <span className="text-gray-600">Code:</span>{' '}
+                <span className="font-medium font-mono">{device.device_code}</span>
+              </p>
+            )}
             <p className="text-sm">
               <span className="text-gray-600">Site:</span>{' '}
               <span className="font-medium">{oldSiteName}</span>
@@ -119,7 +125,7 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
           </div>
         </div>
 
-        <div className="flex items-center justify-center py-2">
+        <div className="flex items-center justify-center py-2 hidden sm:flex">
           <ArrowRight size={20} className="text-gray-400" />
         </div>
 
@@ -129,7 +135,7 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
           </label>
           <select
             id="reason"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full px-3 py-2 min-h-[44px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm sm:text-base"
             value={selectedReason}
             onChange={(e) => setSelectedReason(e.target.value)}
           >
@@ -147,73 +153,76 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
                 placeholder="Describe the reason for reassignment"
                 value={customReason}
                 onChange={(e) => setCustomReason(e.target.value)}
+                className="text-sm sm:text-base"
               />
             </div>
           )}
         </div>
 
-        <div>
-          <label htmlFor="program" className="block text-sm font-medium text-gray-700 mb-2">
-            New Program <span className="text-red-500">*</span>
-          </label>
-          <select
-            id="program"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={selectedProgramId}
-            onChange={(e) => {
-              setSelectedProgramId(e.target.value);
-              if (e.target.value !== device.program_id) {
-                setSelectedSiteId('');
-              }
-            }}
-            required
-            disabled={programsLoading}
-          >
-            <option value="">Select a program</option>
-            {programs.map((program) => (
-              <option key={program.program_id} value={program.program_id}>
-                {program.name}
-              </option>
-            ))}
-          </select>
-          {isChangingProgram && selectedProgram && (
-            <p className="mt-1 text-xs text-yellow-600">
-              Changing to a different program. Site selection will be updated.
-            </p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="site" className="block text-sm font-medium text-gray-700 mb-2">
-            New Site <span className="text-red-500">*</span>
-          </label>
-          <select
-            id="site"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={selectedSiteId}
-            onChange={(e) => setSelectedSiteId(e.target.value)}
-            required
-            disabled={!selectedProgramId || sitesLoading}
-          >
-            <option value="">Select a site</option>
-            {sites.map((site) => (
-              <option key={site.site_id} value={site.site_id}>
-                {site.name} ({site.type})
-              </option>
-            ))}
-          </select>
-          {selectedProgramId && sites.length === 0 && !sitesLoading && (
-            <p className="mt-1 text-xs text-yellow-600">
-              No sites available for this program.
-            </p>
-          )}
-          {isChangingSite && selectedSite && (
-            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-xs text-green-700">
-                Device will be reassigned to: <span className="font-medium">{selectedSite.name}</span>
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="program" className="block text-sm font-medium text-gray-700 mb-2">
+              New Program <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="program"
+              className="w-full px-3 py-2 min-h-[44px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm sm:text-base"
+              value={selectedProgramId}
+              onChange={(e) => {
+                setSelectedProgramId(e.target.value);
+                if (e.target.value !== device.program_id) {
+                  setSelectedSiteId('');
+                }
+              }}
+              required
+              disabled={programsLoading}
+            >
+              <option value="">Select a program</option>
+              {programs.map((program) => (
+                <option key={program.program_id} value={program.program_id}>
+                  {program.name}
+                </option>
+              ))}
+            </select>
+            {isChangingProgram && selectedProgram && (
+              <p className="mt-1 text-xs text-yellow-600">
+                Changing to a different program. Site selection will be updated.
               </p>
-            </div>
-          )}
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="site" className="block text-sm font-medium text-gray-700 mb-2">
+              New Site <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="site"
+              className="w-full px-3 py-2 min-h-[44px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm sm:text-base"
+              value={selectedSiteId}
+              onChange={(e) => setSelectedSiteId(e.target.value)}
+              required
+              disabled={!selectedProgramId || sitesLoading}
+            >
+              <option value="">Select a site</option>
+              {sites.map((site) => (
+                <option key={site.site_id} value={site.site_id}>
+                  {site.name} ({site.type}){site.site_code ? ` [${site.site_code}]` : ''}
+                </option>
+              ))}
+            </select>
+            {selectedProgramId && sites.length === 0 && !sitesLoading && (
+              <p className="mt-1 text-xs text-yellow-600">
+                No sites available for this program.
+              </p>
+            )}
+            {isChangingSite && selectedSite && (
+              <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                <p className="text-xs text-green-700">
+                  Device will be reassigned to: <span className="font-medium">{selectedSite.name}</span>
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         <div>
@@ -226,6 +235,7 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
             placeholder={`e.g., ${selectedSite?.name || 'New Site'} - Camera 1`}
             value={deviceName}
             onChange={(e) => setDeviceName(e.target.value)}
+            className="text-sm sm:text-base"
           />
         </div>
 
@@ -235,7 +245,7 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
           </label>
           <select
             id="schedule"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full px-3 py-2 min-h-[44px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm sm:text-base"
             value={selectedSchedule}
             onChange={(e) => setSelectedSchedule(e.target.value)}
           >
@@ -254,6 +264,7 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
                 placeholder="e.g., 0 8,16 * * * (cron expression)"
                 value={customSchedule}
                 onChange={(e) => setCustomSchedule(e.target.value)}
+                className="text-sm sm:text-base font-mono"
               />
             </div>
           )}
@@ -266,19 +277,20 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
           <textarea
             id="notes"
             rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm sm:text-base"
             placeholder="Add any notes about this reassignment"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
         </div>
 
-        <div className="flex justify-end space-x-3 pt-4 border-t">
+        <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
           <Button
             type="button"
             variant="outline"
             onClick={onClose}
             disabled={isSubmitting}
+            className="w-full sm:w-auto order-2 sm:order-1"
           >
             Cancel
           </Button>
@@ -287,6 +299,7 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
             variant="primary"
             isLoading={isSubmitting}
             disabled={!selectedSiteId || !selectedProgramId}
+            className="w-full sm:w-auto order-1 sm:order-2"
           >
             Reassign Device
           </Button>

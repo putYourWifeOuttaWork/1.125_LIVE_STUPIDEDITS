@@ -7,6 +7,7 @@ const logger = createLogger('DeviceService');
 
 export interface DeviceRegistrationData {
   deviceMac: string;
+  deviceCode?: string;
   deviceName?: string;
   hardwareVersion?: string;
   firmwareVersion?: string;
@@ -29,6 +30,52 @@ export interface BulkDeviceImport {
 
 export class DeviceService {
   /**
+   * Generate a unique device code
+   */
+  static async generateDeviceCode(hardwareVersion: string = 'ESP32-S3'): Promise<string> {
+    // Format: DEVICE-{HARDWARE}-{SEQUENCE}
+    const prefix = hardwareVersion.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+
+    // Get the count of existing devices with this hardware version
+    const { count } = await supabase
+      .from('devices')
+      .select('device_id', { count: 'exact', head: true })
+      .ilike('device_code', `DEVICE-${prefix}-%`);
+
+    const sequence = String((count || 0) + 1).padStart(3, '0');
+    return `DEVICE-${prefix}-${sequence}`;
+  }
+
+  /**
+   * Validate device code format and uniqueness
+   */
+  static async validateDeviceCode(deviceCode: string): Promise<{ valid: boolean; error?: string }> {
+    // Check format: must be alphanumeric with hyphens, no spaces
+    if (!/^[A-Z0-9-]+$/i.test(deviceCode)) {
+      return {
+        valid: false,
+        error: 'Device code must contain only letters, numbers, and hyphens'
+      };
+    }
+
+    // Check uniqueness
+    const { data: existingDevice } = await supabase
+      .from('devices')
+      .select('device_id')
+      .eq('device_code', deviceCode)
+      .maybeSingle();
+
+    if (existingDevice) {
+      return {
+        valid: false,
+        error: 'Device code already exists'
+      };
+    }
+
+    return { valid: true };
+  }
+
+  /**
    * Register a new device (manual provisioning)
    */
   static async registerDevice(data: DeviceRegistrationData): Promise<{ device: Device | null; error: string | null }> {
@@ -49,6 +96,17 @@ export class DeviceService {
         };
       }
 
+      // Generate or validate device code
+      let deviceCode = data.deviceCode;
+      if (deviceCode) {
+        const validation = await this.validateDeviceCode(deviceCode);
+        if (!validation.valid) {
+          return { device: null, error: validation.error || 'Invalid device code' };
+        }
+      } else {
+        deviceCode = await this.generateDeviceCode(data.hardwareVersion || 'ESP32-S3');
+      }
+
       // Get current user for provisioning tracking
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -58,6 +116,7 @@ export class DeviceService {
           .from('devices')
           .insert({
             device_mac: data.deviceMac,
+            device_code: deviceCode,
             device_name: data.deviceName || null,
             hardware_version: data.hardwareVersion || 'ESP32-S3',
             firmware_version: data.firmwareVersion || null,
@@ -76,7 +135,7 @@ export class DeviceService {
         return { device: null, error: result.error.message };
       }
 
-      logger.info('Device registered successfully', { deviceId: result.data.device_id });
+      logger.info('Device registered successfully', { deviceId: result.data.device_id, deviceCode });
       return { device: result.data as Device, error: null };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -375,5 +434,129 @@ export class DeviceService {
     const percentage = Math.round((completedRequired / requiredSteps.length) * 100);
 
     return { percentage, steps };
+  }
+
+  /**
+   * Assign device to a site (creates junction table entry)
+   */
+  static async assignDeviceToSite(params: {
+    deviceId: string;
+    siteId: string;
+    programId: string;
+    isPrimary?: boolean;
+    reason?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    logger.debug('Assigning device to site', params);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { error } = await supabase
+        .from('device_site_assignments')
+        .insert({
+          device_id: params.deviceId,
+          site_id: params.siteId,
+          program_id: params.programId,
+          is_primary: params.isPrimary ?? true,
+          is_active: true,
+          assigned_by_user_id: user?.id || null,
+          reason: params.reason || null,
+          notes: params.notes || null
+        });
+
+      if (error) {
+        logger.error('Failed to assign device to site', error);
+        return { success: false, error: error.message };
+      }
+
+      logger.info('Device assigned to site successfully', params);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error in assignDeviceToSite', { error: errorMessage });
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Unassign device from a site (marks assignment as inactive)
+   */
+  static async unassignDeviceFromSite(params: {
+    assignmentId: string;
+    reason?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    logger.debug('Unassigning device from site', params);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { error } = await supabase
+        .from('device_site_assignments')
+        .update({
+          is_active: false,
+          unassigned_at: new Date().toISOString(),
+          unassigned_by_user_id: user?.id || null,
+          reason: params.reason || null
+        })
+        .eq('assignment_id', params.assignmentId);
+
+      if (error) {
+        logger.error('Failed to unassign device from site', error);
+        return { success: false, error: error.message };
+      }
+
+      logger.info('Device unassigned from site successfully', params);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error in unassignDeviceFromSite', { error: errorMessage });
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Get all assignments for a device
+   */
+  static async getDeviceAssignments(deviceId: string): Promise<{
+    siteAssignments: any[];
+    programAssignments: any[];
+    error?: string;
+  }> {
+    logger.debug('Getting device assignments', { deviceId });
+
+    try {
+      const [siteResult, programResult] = await Promise.all([
+        supabase
+          .from('device_site_assignments')
+          .select('*, sites(site_id, name, type, site_code), pilot_programs(program_id, name)')
+          .eq('device_id', deviceId)
+          .order('assigned_at', { ascending: false }),
+        supabase
+          .from('device_program_assignments')
+          .select('*, pilot_programs(program_id, name)')
+          .eq('device_id', deviceId)
+          .order('assigned_at', { ascending: false })
+      ]);
+
+      if (siteResult.error) {
+        logger.error('Failed to get site assignments', siteResult.error);
+        return { siteAssignments: [], programAssignments: [], error: siteResult.error.message };
+      }
+
+      if (programResult.error) {
+        logger.error('Failed to get program assignments', programResult.error);
+        return { siteAssignments: [], programAssignments: [], error: programResult.error.message };
+      }
+
+      return {
+        siteAssignments: siteResult.data || [],
+        programAssignments: programResult.data || []
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error in getDeviceAssignments', { error: errorMessage });
+      return { siteAssignments: [], programAssignments: [], error: errorMessage };
+    }
   }
 }

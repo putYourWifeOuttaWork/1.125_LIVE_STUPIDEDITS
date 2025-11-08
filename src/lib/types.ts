@@ -93,6 +93,7 @@ export type ProgramPhase = {
 };
 
 export type Site = Database['public']['Tables']['sites']['Row'] & {
+  site_code?: string;
   interior_working_surface_types?: InteriorWorkingSurfaceType[];
   microbial_risk_zone?: MicrobialRiskZone;
   quantity_deadzones?: number;
@@ -292,6 +293,7 @@ export type DeviceProvisioningStatus = 'pending_mapping' | 'mapped' | 'active' |
 export type Device = {
   device_id: string;
   device_mac: string;
+  device_code: string | null;
   device_name: string | null;
   site_id: string | null;
   program_id: string | null;
@@ -320,6 +322,7 @@ export type Device = {
     site_id: string;
     name: string;
     type: string;
+    site_code?: string;
     program_id?: string;
   } | null;
   pilot_programs?: {
@@ -438,4 +441,94 @@ export interface DeviceWithStats extends Device {
   failed_images?: number;
   last_telemetry?: DeviceTelemetry;
   active_alerts?: number;
+  current_site_assignments?: DeviceSiteAssignment[];
+  current_program_assignments?: DeviceProgramAssignment[];
 }
+
+// ==========================================
+// JUNCTION TABLE TYPES FOR MANY-TO-MANY RELATIONSHIPS
+// ==========================================
+
+export type DeviceSiteAssignment = {
+  assignment_id: string;
+  device_id: string;
+  site_id: string;
+  program_id: string;
+  is_primary: boolean;
+  is_active: boolean;
+  assigned_at: string;
+  assigned_by_user_id: string | null;
+  unassigned_at: string | null;
+  unassigned_by_user_id: string | null;
+  reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  sites?: {
+    site_id: string;
+    name: string;
+    type: string;
+    site_code?: string;
+  };
+  devices?: {
+    device_id: string;
+    device_code: string | null;
+    device_name: string | null;
+    device_mac: string;
+  };
+  pilot_programs?: {
+    program_id: string;
+    name: string;
+  };
+};
+
+export type DeviceProgramAssignment = {
+  assignment_id: string;
+  device_id: string;
+  program_id: string;
+  is_primary: boolean;
+  is_active: boolean;
+  assigned_at: string;
+  assigned_by_user_id: string | null;
+  unassigned_at: string | null;
+  unassigned_by_user_id: string | null;
+  reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  devices?: {
+    device_id: string;
+    device_code: string | null;
+    device_name: string | null;
+    device_mac: string;
+  };
+  pilot_programs?: {
+    program_id: string;
+    name: string;
+  };
+};
+
+export type SiteProgramAssignment = {
+  assignment_id: string;
+  site_id: string;
+  program_id: string;
+  is_primary: boolean;
+  is_active: boolean;
+  assigned_at: string;
+  assigned_by_user_id: string | null;
+  unassigned_at: string | null;
+  unassigned_by_user_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  sites?: {
+    site_id: string;
+    name: string;
+    type: string;
+    site_code?: string;
+  };
+  pilot_programs?: {
+    program_id: string;
+    name: string;
+  };
+};

@@ -71,18 +71,18 @@ const Modal = ({
   };
 
   return (
-   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-fade-in modal-backdrop" data-testid={testId}>
-      <div 
+   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in modal-backdrop" data-testid={testId}>
+      <div
         ref={modalRef}
-        className={`bg-white rounded-lg shadow-lg w-full ${maxWidthClasses[maxWidth]} max-h-[90vh] overflow-y-auto`}
+        className={`bg-white rounded-lg shadow-lg w-full ${maxWidthClasses[maxWidth]} max-h-[85vh] sm:max-h-[90vh] overflow-y-auto`}
       >
         {title && (
-          <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
-            {typeof title === 'string' ? <h2 className="text-xl font-semibold">{title}</h2> : title}
+          <div className="flex justify-between items-center p-3 sm:p-4 border-b sticky top-0 bg-white z-10">
+            {typeof title === 'string' ? <h2 className="text-lg sm:text-xl font-semibold">{title}</h2> : title}
             {showCloseButton && (
-              <button 
+              <button
                 onClick={onClose}
-                className="text-gray-500 hover:text-gray-700 transition-colors"
+                className="text-gray-500 hover:text-gray-700 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2"
                 aria-label="Close modal"
               >
                 <X size={24} />

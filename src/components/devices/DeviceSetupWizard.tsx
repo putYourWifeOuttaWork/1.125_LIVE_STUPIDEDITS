@@ -130,12 +130,12 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
   };
 
   const renderStepIndicator = () => (
-    <div className="flex items-center justify-between mb-8 px-4">
+    <div className="flex items-center justify-between mb-6 sm:mb-8 px-2 sm:px-4">
       {steps.map((step, index) => (
         <div key={step.id} className="flex items-center flex-1">
           <div className="flex flex-col items-center flex-1">
             <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-colors ${
+              className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-sm sm:text-base font-semibold transition-colors ${
                 index < currentStepIndex
                   ? 'bg-green-500 text-white'
                   : index === currentStepIndex
@@ -144,22 +144,22 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
               }`}
             >
               {index < currentStepIndex ? (
-                <Check size={20} />
+                <Check size={16} className="sm:w-5 sm:h-5" />
               ) : (
                 <span>{index + 1}</span>
               )}
             </div>
-            <div className="mt-2 text-center">
+            <div className="mt-1 sm:mt-2 text-center">
               <div className={`text-xs font-medium ${
                 index <= currentStepIndex ? 'text-gray-900' : 'text-gray-500'
               }`}>
                 {step.label}
               </div>
-              <div className="text-xs text-gray-500 hidden sm:block">{step.description}</div>
+              <div className="text-xs text-gray-500 hidden md:block">{step.description}</div>
             </div>
           </div>
           {index < steps.length - 1 && (
-            <div className={`h-0.5 flex-1 mx-2 mt-[-2.5rem] ${
+            <div className={`h-0.5 flex-1 mx-1 sm:mx-2 mt-[-2rem] sm:mt-[-2.5rem] ${
               index < currentStepIndex ? 'bg-green-500' : 'bg-gray-200'
             }`} />
           )}
@@ -169,8 +169,8 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
   );
 
   const renderProgramStep = () => (
-    <div className="space-y-4">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
         <div className="flex items-start">
           <Info size={18} className="text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-blue-800">
@@ -186,7 +186,7 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
         </label>
         <select
           id="program"
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full px-3 py-2 min-h-[44px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm sm:text-base"
           value={selectedProgramId}
           onChange={(e) => {
             setSelectedProgramId(e.target.value);
@@ -532,19 +532,20 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Device Setup Wizard" size="lg">
-      <div className="space-y-6">
+    <Modal isOpen={isOpen} onClose={onClose} title="Device Setup Wizard" maxWidth="lg">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {renderStepIndicator()}
 
-        <div className="min-h-[400px]">
+        <div className="min-h-[300px] sm:min-h-[400px]">
           {renderCurrentStep()}
         </div>
 
-        <div className="flex justify-between pt-4 border-t">
+        <div className="flex flex-col sm:flex-row justify-between gap-3 pt-4 border-t">
           <Button
             type="button"
             variant="outline"
             onClick={currentStepIndex === 0 ? onClose : handleBack}
+            className="w-full sm:w-auto order-2 sm:order-1"
           >
             {currentStepIndex === 0 ? 'Cancel' : 'Back'}
           </Button>
@@ -557,6 +558,7 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
               isLoading={isSubmitting}
               icon={<Check size={16} />}
               disabled={!canProceed()}
+              className="w-full sm:w-auto order-1 sm:order-2"
             >
               Complete Setup
             </Button>
@@ -566,6 +568,7 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
               variant="primary"
               onClick={handleNext}
               disabled={!canProceed()}
+              className="w-full sm:w-auto order-1 sm:order-2"
             >
               Next
             </Button>
