@@ -69,6 +69,75 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
 
       logger.debug('Mapping device', { deviceId, mapping });
 
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+
+      // Step 1: Mark any existing assignments as inactive
+      const { error: deactivateError } = await supabase
+        .from('device_site_assignments')
+        .update({
+          is_active: false,
+          unassigned_at: new Date().toISOString(),
+          unassigned_by_user_id: userId,
+        })
+        .eq('device_id', deviceId)
+        .eq('is_active', true);
+
+      if (deactivateError) {
+        logger.error('Error deactivating old site assignments:', deactivateError);
+        throw deactivateError;
+      }
+
+      const { error: deactivateProgramError } = await supabase
+        .from('device_program_assignments')
+        .update({
+          is_active: false,
+          unassigned_at: new Date().toISOString(),
+          unassigned_by_user_id: userId,
+        })
+        .eq('device_id', deviceId)
+        .eq('is_active', true);
+
+      if (deactivateProgramError) {
+        logger.error('Error deactivating old program assignments:', deactivateProgramError);
+        throw deactivateProgramError;
+      }
+
+      // Step 2: Create new junction table records
+      const { error: siteAssignmentError } = await supabase
+        .from('device_site_assignments')
+        .insert({
+          device_id: deviceId,
+          site_id: mapping.siteId,
+          program_id: mapping.programId,
+          is_primary: true,
+          is_active: true,
+          assigned_by_user_id: userId,
+          notes: mapping.notes,
+        });
+
+      if (siteAssignmentError) {
+        logger.error('Error creating site assignment:', siteAssignmentError);
+        throw siteAssignmentError;
+      }
+
+      const { error: programAssignmentError } = await supabase
+        .from('device_program_assignments')
+        .insert({
+          device_id: deviceId,
+          program_id: mapping.programId,
+          is_primary: true,
+          is_active: true,
+          assigned_by_user_id: userId,
+          notes: mapping.notes,
+        });
+
+      if (programAssignmentError) {
+        logger.error('Error creating program assignment:', programAssignmentError);
+        throw programAssignmentError;
+      }
+
+      // Step 3: Update device record
       const { data, error } = await supabase
         .from('devices')
         .update({
@@ -78,18 +147,20 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
           wake_schedule_cron: mapping.wakeScheduleCron,
           provisioning_status: 'mapped',
           mapped_at: new Date().toISOString(),
-          mapped_by_user_id: (await supabase.auth.getUser()).data.user?.id,
+          mapped_by_user_id: userId,
           notes: mapping.notes,
+          is_active: true,
         })
         .eq('device_id', deviceId)
         .select()
         .single();
 
       if (error) {
-        logger.error('Error mapping device:', error);
+        logger.error('Error updating device:', error);
         throw error;
       }
 
+      logger.debug('Device mapped successfully with junction records');
       return data;
     },
     onSuccess: () => {
@@ -219,10 +290,83 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
 
       logger.debug('Reassigning device', { deviceId, mapping });
 
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+
       const notesWithReason = mapping.reason
         ? `Reassigned: ${mapping.reason}\n\n${mapping.notes || device?.notes || ''}`
         : mapping.notes;
 
+      // Step 1: Mark existing assignments as inactive (preserve history)
+      const { error: deactivateError } = await supabase
+        .from('device_site_assignments')
+        .update({
+          is_active: false,
+          unassigned_at: new Date().toISOString(),
+          unassigned_by_user_id: userId,
+          reason: mapping.reason,
+        })
+        .eq('device_id', deviceId)
+        .eq('is_active', true);
+
+      if (deactivateError) {
+        logger.error('Error deactivating old site assignments:', deactivateError);
+        throw deactivateError;
+      }
+
+      const { error: deactivateProgramError } = await supabase
+        .from('device_program_assignments')
+        .update({
+          is_active: false,
+          unassigned_at: new Date().toISOString(),
+          unassigned_by_user_id: userId,
+          reason: mapping.reason,
+        })
+        .eq('device_id', deviceId)
+        .eq('is_active', true);
+
+      if (deactivateProgramError) {
+        logger.error('Error deactivating old program assignments:', deactivateProgramError);
+        throw deactivateProgramError;
+      }
+
+      // Step 2: Create new assignment records
+      const { error: siteAssignmentError } = await supabase
+        .from('device_site_assignments')
+        .insert({
+          device_id: deviceId,
+          site_id: mapping.siteId,
+          program_id: mapping.programId,
+          is_primary: true,
+          is_active: true,
+          assigned_by_user_id: userId,
+          notes: notesWithReason,
+          reason: mapping.reason,
+        });
+
+      if (siteAssignmentError) {
+        logger.error('Error creating site assignment:', siteAssignmentError);
+        throw siteAssignmentError;
+      }
+
+      const { error: programAssignmentError } = await supabase
+        .from('device_program_assignments')
+        .insert({
+          device_id: deviceId,
+          program_id: mapping.programId,
+          is_primary: true,
+          is_active: true,
+          assigned_by_user_id: userId,
+          notes: notesWithReason,
+          reason: mapping.reason,
+        });
+
+      if (programAssignmentError) {
+        logger.error('Error creating program assignment:', programAssignmentError);
+        throw programAssignmentError;
+      }
+
+      // Step 3: Update device record
       const { data, error } = await supabase
         .from('devices')
         .update({
@@ -232,18 +376,20 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
           wake_schedule_cron: mapping.wakeScheduleCron,
           provisioning_status: 'mapped',
           mapped_at: new Date().toISOString(),
-          mapped_by_user_id: (await supabase.auth.getUser()).data.user?.id,
+          mapped_by_user_id: userId,
           notes: notesWithReason,
+          is_active: true,
         })
         .eq('device_id', deviceId)
         .select()
         .single();
 
       if (error) {
-        logger.error('Error reassigning device:', error);
+        logger.error('Error updating device:', error);
         throw error;
       }
 
+      logger.debug('Device reassigned successfully with new junction records');
       return data;
     },
     onSuccess: () => {
