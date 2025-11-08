@@ -119,20 +119,21 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_devices_provisioning_status ON devices(provisioning_status);
 
 -- Update existing devices
-DO $$
-BEGIN
-  UPDATE devices
-  SET provisioning_status = 'mapped', mapped_at = created_at
-  WHERE site_id IS NOT NULL AND (provisioning_status IS NULL OR provisioning_status = 'pending_mapping');
+UPDATE devices
+SET provisioning_status = 'mapped', mapped_at = created_at
+WHERE site_id IS NOT NULL
+  AND (provisioning_status IS NULL OR provisioning_status = 'pending_mapping');
 
-  UPDATE devices
-  SET provisioning_status = 'active'
-  WHERE site_id IS NOT NULL AND is_active = true AND provisioning_status = 'mapped';
+UPDATE devices
+SET provisioning_status = 'active'
+WHERE site_id IS NOT NULL
+  AND is_active = true
+  AND provisioning_status = 'mapped';
 
-  UPDATE devices
-  SET provisioning_status = 'inactive'
-  WHERE is_active = false;
-END $$;
+UPDATE devices
+SET provisioning_status = 'inactive'
+WHERE is_active = false
+  AND (provisioning_status IS NULL OR provisioning_status != 'inactive');
 ```
 
 ### Step 2: Re-run Junction Tables Data Migration

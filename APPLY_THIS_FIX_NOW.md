@@ -1,27 +1,21 @@
+# APPLY THIS FIX NOW
+
+## The Error You're Seeing
+```
+ERROR: 42703: column d.mapped_at does not exist
+```
+
+## The Fix (5 minutes)
+
+### Go here right now:
+https://supabase.com/dashboard/project/jycxolmevsvrxmeinxff/sql/new
+
+### Copy and paste this ENTIRE SQL script:
+
+```sql
 /*
   # Add Missing Columns to Devices Table
-
-  1. Problem
-    - The devices table is missing 5 columns that are defined in the migration files but were never applied to the database
-    - This causes the junction tables migration (20251108120000) to fail when referencing mapped_at and mapped_by_user_id
-
-  2. Missing Columns
-    - `mapped_at` (timestamptz) - Timestamp when device was mapped to a site by an administrator
-    - `mapped_by_user_id` (uuid) - User who mapped the device to a site
-    - `provisioning_status` (text) - Device provisioning state with CHECK constraint
-    - `device_reported_site_id` (text) - Site ID as reported by device firmware
-    - `device_reported_location` (text) - Location string as reported by device firmware
-
-  3. Changes
-    - Add all 5 missing columns using conditional DDL (IF NOT EXISTS pattern)
-    - Add appropriate constraints, foreign keys, and default values
-    - Create index on provisioning_status for filtering queries
-    - Add column comments for documentation
-
-  4. Data Safety
-    - Uses conditional DDL to prevent errors if columns already exist
-    - All columns are nullable to avoid breaking existing records
-    - No data deletion or modification occurs
+  Fixes: ERROR: 42703: column d.mapped_at does not exist
 */
 
 -- Add mapped_at column
@@ -56,11 +50,8 @@ BEGIN
     WHERE table_name = 'devices' AND column_name = 'provisioning_status'
   ) THEN
     ALTER TABLE devices ADD COLUMN provisioning_status TEXT DEFAULT 'pending_mapping';
-
-    -- Add CHECK constraint for provisioning_status
     ALTER TABLE devices ADD CONSTRAINT devices_provisioning_status_check
       CHECK (provisioning_status IN ('pending_mapping', 'mapped', 'active', 'inactive'));
-
     COMMENT ON COLUMN devices.provisioning_status IS 'Device provisioning state: pending_mapping (awaiting admin assignment), mapped (assigned to site), active (operational), inactive (disabled)';
   END IF;
 END $$;
@@ -89,26 +80,91 @@ BEGIN
   END IF;
 END $$;
 
--- Create index on provisioning_status if it doesn't exist
+-- Create index on provisioning_status
 CREATE INDEX IF NOT EXISTS idx_devices_provisioning_status ON devices(provisioning_status);
 
--- Update existing devices to set provisioning_status based on whether they have a site_id
--- These updates run outside the DO block to ensure column visibility
+-- Update existing devices to set provisioning_status
 UPDATE devices
 SET provisioning_status = 'mapped',
     mapped_at = created_at
 WHERE site_id IS NOT NULL
   AND (provisioning_status IS NULL OR provisioning_status = 'pending_mapping');
 
--- Active devices with site_id should be marked as 'active'
 UPDATE devices
 SET provisioning_status = 'active'
 WHERE site_id IS NOT NULL
   AND is_active = true
   AND provisioning_status = 'mapped';
 
--- Inactive devices should be marked as 'inactive'
 UPDATE devices
 SET provisioning_status = 'inactive'
 WHERE is_active = false
   AND (provisioning_status IS NULL OR provisioning_status != 'inactive');
+```
+
+### Click "RUN"
+
+That's it! The error should be fixed.
+
+---
+
+## After Step 1 Works, Do This (Step 2)
+
+### Populate the junction tables:
+
+```sql
+-- Add device_code column
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'devices' AND column_name = 'device_code'
+  ) THEN
+    ALTER TABLE devices ADD COLUMN device_code TEXT UNIQUE;
+    CREATE INDEX IF NOT EXISTS idx_devices_device_code ON devices(device_code);
+  END IF;
+END $$;
+
+-- Migrate device-site assignments
+INSERT INTO device_site_assignments (
+  device_id, site_id, program_id, is_primary, is_active, assigned_at, assigned_by_user_id
+)
+SELECT
+  d.device_id, d.site_id, d.program_id, true, d.is_active,
+  COALESCE(d.mapped_at, d.created_at), d.mapped_by_user_id
+FROM devices d
+WHERE d.site_id IS NOT NULL AND d.program_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+-- Migrate device-program assignments
+INSERT INTO device_program_assignments (
+  device_id, program_id, is_primary, is_active, assigned_at, assigned_by_user_id
+)
+SELECT
+  d.device_id, d.program_id, true, d.is_active,
+  COALESCE(d.mapped_at, d.created_at), d.mapped_by_user_id
+FROM devices d
+WHERE d.program_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+-- Migrate site-program assignments
+INSERT INTO site_program_assignments (
+  site_id, program_id, is_primary, is_active, assigned_at
+)
+SELECT s.site_id, s.program_id, true, true, s.created_at
+FROM sites s
+WHERE s.program_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+```
+
+---
+
+## Verify It Worked
+
+Run: `node verify-device-columns.mjs`
+
+You should see all ✅ checkmarks.
+
+---
+
+**Questions?** See `FIX_DEVICE_SCHEMA_ERROR.md` for the full explanation.
