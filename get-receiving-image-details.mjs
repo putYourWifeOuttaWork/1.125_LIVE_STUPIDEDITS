@@ -1,0 +1,15 @@
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+dotenv.config();
+const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
+const { data: img } = await supabase.from('device_images').select('*, devices(device_name, next_wake_at)').eq('image_name', 'image_1762625082788.jpg').single();
+console.log('Image Details:');
+console.log('  Name:', img.image_name);
+console.log('  Status:', img.status);
+console.log('  Device:', img.devices.device_name);
+console.log('  Device Next Wake:', img.devices.next_wake_at);
+console.log('  Chunks:', img.received_chunks + '/' + img.total_chunks);
+console.log('  Retry Count:', img.retry_count || 0);
+console.log('  Max Retries:', img.max_retries || 3);
+console.log('  Captured:', img.captured_at);
+console.log('  Failed At:', img.failed_at || 'Not failed yet');
