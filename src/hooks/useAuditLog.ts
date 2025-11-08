@@ -82,9 +82,10 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
       }
 
       setCurrentFilters({});
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching audit logs:', err);
-      setError('Failed to load audit logs');
+      const errorMessage = err?.message || err?.details || 'Failed to load audit logs';
+      setError(`Failed to load audit logs: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -141,9 +142,10 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
       }
 
       setCurrentFilters({ objectType, eventType, userId, deviceCategories, startDate, endDate });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error filtering audit logs:', err);
-      setError('Failed to filter audit logs');
+      const errorMessage = err?.message || err?.details || 'Failed to filter audit logs';
+      setError(`Failed to filter audit logs: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -169,9 +171,10 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
 
       if (error) throw error;
       return data;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error exporting audit logs:', err);
-      setError('Failed to export audit logs');
+      const errorMessage = err?.message || err?.details || 'Failed to export audit logs';
+      setError(`Failed to export audit logs: ${errorMessage}`);
       return null;
     } finally {
       setLoading(false);
