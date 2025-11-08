@@ -1,0 +1,562 @@
+import { createClient } from '@supabase/supabase-js';
+import mqtt from 'mqtt';
+import express from 'express';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+const MQTT_HOST = process.env.MQTT_HOST || '1305ceddedc94b9fa7fba9428fe4624e.s1.eu.hivemq.cloud';
+const MQTT_PORT = parseInt(process.env.MQTT_PORT || '8883');
+const MQTT_USERNAME = process.env.MQTT_USERNAME || 'BrainlyTesting';
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD || 'BrainlyTest@1234';
+
+const imageBuffers = new Map();
+
+function getImageKey(deviceId, imageName) {
+  return `${deviceId}|${imageName}`;
+}
+
+async function generateDeviceCode(hardwareVersion = 'ESP32-S3') {
+  const prefix = hardwareVersion.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const { count } = await supabase
+    .from('devices')
+    .select('device_id', { count: 'exact', head: true })
+    .ilike('device_code', `DEVICE-${prefix}-%`);
+  const sequence = String((count || 0) + 1).padStart(3, '0');
+  return `DEVICE-${prefix}-${sequence}`;
+}
+
+async function autoProvisionDevice(deviceMac) {
+  console.log(`[AUTO-PROVISION] Attempting to provision new device: ${deviceMac}`);
+
+  try {
+    const deviceCode = await generateDeviceCode('ESP32-S3');
+
+    const { data: newDevice, error: insertError } = await supabase
+      .from('devices')
+      .insert({
+        device_mac: deviceMac,
+        device_code: deviceCode,
+        device_name: null,
+        hardware_version: 'ESP32-S3',
+        provisioning_status: 'pending_mapping',
+        provisioned_at: new Date().toISOString(),
+        is_active: false,
+        notes: 'Auto-provisioned via MQTT connection',
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error(`[ERROR] Failed to auto-provision device:`, insertError);
+      return null;
+    }
+
+    console.log(`[SUCCESS] Auto-provisioned device ${deviceMac} with code ${deviceCode} and ID ${newDevice.device_id}`);
+    return newDevice;
+  } catch (error) {
+    console.error(`[ERROR] Auto-provision exception:`, error);
+    return null;
+  }
+}
+
+async function handleStatusMessage(payload, client) {
+  console.log(`[STATUS] Device ${payload.device_id} is alive, pending images: ${payload.pendingImg || 0}`);
+
+  let { data: device, error: deviceError } = await supabase
+    .from('devices')
+    .select('*')
+    .eq('device_mac', payload.device_id)
+    .maybeSingle();
+
+  if (!device && !deviceError) {
+    console.log(`[AUTO-PROVISION] Device ${payload.device_id} not found, attempting auto-provision...`);
+    device = await autoProvisionDevice(payload.device_id);
+
+    if (!device) {
+      console.error(`[ERROR] Failed to auto-provision device ${payload.device_id}`);
+      return null;
+    }
+  }
+
+  if (deviceError || !device) {
+    console.error(`[ERROR] Device ${payload.device_id} lookup failed:`, deviceError);
+    return null;
+  }
+
+  await supabase
+    .from('devices')
+    .update({
+      last_seen_at: new Date().toISOString(),
+      is_active: true,
+    })
+    .eq('device_id', device.device_id);
+
+  console.log(`[STATUS] Device ${device.device_code || device.device_mac} updated (status: ${device.provisioning_status})`);
+
+  return { device, pendingCount: payload.pendingImg || 0 };
+}
+
+async function handleMetadataMessage(payload, client) {
+  console.log(`[METADATA] Received for image ${payload.image_name} from ${payload.device_id}`);
+
+  const { data: device } = await supabase
+    .from('devices')
+    .select('*')
+    .eq('device_mac', payload.device_id)
+    .maybeSingle();
+
+  if (!device) {
+    console.error(`[ERROR] Device ${payload.device_id} not found`);
+    return;
+  }
+
+  const imageKey = getImageKey(payload.device_id, payload.image_name);
+
+  const { data: imageRecord, error: imageError } = await supabase
+    .from('device_images')
+    .insert({
+      device_id: device.device_id,
+      image_name: payload.image_name,
+      image_size: payload.image_size,
+      captured_at: payload.capture_timestamp,
+      total_chunks: payload.total_chunks_count,
+      received_chunks: 0,
+      status: 'receiving',
+      error_code: payload.error,
+      metadata: {
+        location: payload.location,
+        temperature: payload.temperature,
+        humidity: payload.humidity,
+        pressure: payload.pressure,
+        gas_resistance: payload.gas_resistance,
+      },
+    })
+    .select()
+    .single();
+
+  if (imageError) {
+    console.error(`[ERROR] Failed to create image record:`, imageError);
+    return;
+  }
+
+  if (payload.temperature !== undefined) {
+    await supabase.from('device_telemetry').insert({
+      device_id: device.device_id,
+      captured_at: payload.capture_timestamp,
+      temperature: payload.temperature,
+      humidity: payload.humidity,
+      pressure: payload.pressure,
+      gas_resistance: payload.gas_resistance,
+      battery_voltage: device.battery_voltage,
+    });
+  }
+
+  imageBuffers.set(imageKey, {
+    metadata: payload,
+    chunks: new Map(),
+    totalChunks: payload.total_chunks_count,
+    imageRecord,
+  });
+
+  console.log(`[METADATA] Ready to receive ${payload.total_chunks_count} chunks for ${payload.image_name}`);
+}
+
+async function handleChunkMessage(payload, client) {
+  const imageKey = getImageKey(payload.device_id, payload.image_name);
+  const buffer = imageBuffers.get(imageKey);
+
+  if (!buffer) {
+    console.error(`[ERROR] No metadata found for ${payload.image_name}`);
+    return;
+  }
+
+  const chunkBytes = new Uint8Array(payload.payload);
+  buffer.chunks.set(payload.chunk_id, chunkBytes);
+
+  const receivedCount = buffer.chunks.size;
+  console.log(`[CHUNK] Received chunk ${payload.chunk_id + 1}/${buffer.totalChunks} for ${payload.image_name} (${receivedCount} total)`);
+
+  await supabase
+    .from('device_images')
+    .update({ received_chunks: receivedCount })
+    .eq('image_id', buffer.imageRecord.image_id);
+
+  if (receivedCount === buffer.totalChunks) {
+    console.log(`[COMPLETE] All chunks received for ${payload.image_name}`);
+    await reassembleAndUploadImage(payload.device_id, payload.image_name, buffer, client);
+  }
+}
+
+async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
+  try {
+    const missingChunks = [];
+    for (let i = 0; i < buffer.totalChunks; i++) {
+      if (!buffer.chunks.has(i)) {
+        missingChunks.push(i);
+      }
+    }
+
+    if (missingChunks.length > 0) {
+      console.log(`[MISSING] Requesting ${missingChunks.length} missing chunks for ${imageName}`);
+      const missingRequest = {
+        device_id: deviceId,
+        image_name: imageName,
+        missing_chunks: missingChunks,
+      };
+      client.publish(`device/${deviceId}/ack`, JSON.stringify(missingRequest));
+      return;
+    }
+
+    const sortedChunks = [];
+    for (let i = 0; i < buffer.totalChunks; i++) {
+      const chunk = buffer.chunks.get(i);
+      if (chunk) {
+        sortedChunks.push(chunk);
+      }
+    }
+
+    const totalLength = sortedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const mergedImage = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of sortedChunks) {
+      mergedImage.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const timestamp = Date.now();
+    const fileName = `device_${deviceId}_${timestamp}_${imageName}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('petri-images')
+      .upload(fileName, mergedImage, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error(`[ERROR] Failed to upload image:`, uploadError);
+      await supabase
+        .from('device_images')
+        .update({ status: 'failed', error_code: 1 })
+        .eq('image_id', buffer.imageRecord.image_id);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('petri-images')
+      .getPublicUrl(fileName);
+
+    await supabase
+      .from('device_images')
+      .update({
+        status: 'complete',
+        image_url: urlData.publicUrl,
+        received_at: new Date().toISOString(),
+      })
+      .eq('image_id', buffer.imageRecord.image_id);
+
+    console.log(`[SUCCESS] Image uploaded: ${fileName}`);
+
+    await createSubmissionAndObservation(buffer, urlData.publicUrl);
+
+    const nextWakeTime = calculateNextWakeTime();
+    const ackMessage = {
+      device_id: deviceId,
+      image_name: imageName,
+      ACK_OK: {
+        next_wake_time: nextWakeTime,
+      },
+    };
+
+    client.publish(`device/${deviceId}/ack`, JSON.stringify(ackMessage));
+    console.log(`[ACK] Sent ACK_OK with next wake: ${nextWakeTime}`);
+
+    imageBuffers.delete(getImageKey(deviceId, imageName));
+  } catch (error) {
+    console.error(`[ERROR] Failed to reassemble image:`, error);
+    await supabase
+      .from('device_images')
+      .update({ status: 'failed', error_code: 2 })
+      .eq('image_id', buffer.imageRecord.image_id);
+  }
+}
+
+async function createSubmissionAndObservation(buffer, imageUrl) {
+  try {
+    const { data: device } = await supabase
+      .from('devices')
+      .select('device_id, site_id, program_id')
+      .eq('device_id', buffer.imageRecord.device_id)
+      .single();
+
+    if (!device || !device.site_id) {
+      console.log(`[INFO] Device not mapped to site yet - image stored for later association`);
+      return;
+    }
+
+    const { data: submission, error: submissionError } = await supabase
+      .from('submissions')
+      .insert({
+        site_id: device.site_id,
+        program_id: device.program_id,
+        created_by_device_id: device.device_id,
+        is_device_generated: true,
+        temperature: buffer.metadata?.temperature || 72,
+        humidity: buffer.metadata?.humidity || 50,
+        airflow: 'Moderate',
+        odor_distance: '0-5 ft',
+        weather: 'Clear',
+        notes: 'Auto-generated from device capture',
+      })
+      .select()
+      .single();
+
+    if (submissionError) {
+      console.error(`[ERROR] Failed to create submission:`, submissionError);
+      return;
+    }
+
+    const { data: observation, error: observationError } = await supabase
+      .from('petri_observations')
+      .insert({
+        submission_id: submission.submission_id,
+        site_id: device.site_id,
+        program_id: device.program_id,
+        petri_code: 'AUTO',
+        image_url: imageUrl,
+        fungicide_used: 'None',
+        surrounding_water_schedule: 'None',
+        is_device_generated: true,
+        device_capture_metadata: buffer.metadata,
+      })
+      .select()
+      .single();
+
+    if (observationError) {
+      console.error(`[ERROR] Failed to create observation:`, observationError);
+      return;
+    }
+
+    await supabase
+      .from('device_images')
+      .update({
+        submission_id: submission.submission_id,
+        observation_id: observation.observation_id,
+        observation_type: 'petri',
+      })
+      .eq('image_id', buffer.imageRecord.image_id);
+
+    console.log(`[SUCCESS] Created submission ${submission.submission_id} and observation ${observation.observation_id}`);
+  } catch (error) {
+    console.error(`[ERROR] Failed to create submission/observation:`, error);
+  }
+}
+
+function calculateNextWakeTime() {
+  const now = new Date();
+  now.setHours(now.getHours() + 12);
+  return now.toISOString();
+}
+
+function connectToMQTT() {
+  return new Promise((resolve, reject) => {
+    console.log(`[MQTT] Connecting to ${MQTT_HOST}:${MQTT_PORT}...`);
+
+    const client = mqtt.connect(`mqtts://${MQTT_HOST}:${MQTT_PORT}`, {
+      username: MQTT_USERNAME,
+      password: MQTT_PASSWORD,
+      protocol: 'mqtts',
+      rejectUnauthorized: false,
+      keepalive: 60,
+      reconnectPeriod: 5000,
+    });
+
+    client.on('connect', () => {
+      console.log('[MQTT] ✅ Connected to HiveMQ Cloud');
+
+      client.subscribe('ESP32CAM/+/data', (err) => {
+        if (err) {
+          console.error('[MQTT] ❌ Subscription error (ESP32CAM):', err);
+        } else {
+          console.log('[MQTT] ✅ Subscribed to ESP32CAM/+/data');
+        }
+      });
+
+      client.subscribe('device/+/status', (err) => {
+        if (err) {
+          console.error('[MQTT] ❌ Subscription error (device):', err);
+        } else {
+          console.log('[MQTT] ✅ Subscribed to device/+/status');
+        }
+      });
+
+      resolve(client);
+    });
+
+    client.on('error', (error) => {
+      console.error('[MQTT] ❌ Connection error:', error);
+      reject(error);
+    });
+
+    client.on('reconnect', () => {
+      console.log('[MQTT] 🔄 Reconnecting...');
+    });
+
+    client.on('offline', () => {
+      console.log('[MQTT] ⚠️  Client offline');
+    });
+
+    client.on('message', async (topic, message) => {
+      try {
+        const payload = JSON.parse(message.toString());
+        console.log(`[MQTT] 📨 Message on ${topic}:`, JSON.stringify(payload).substring(0, 200));
+
+        if (topic.includes('/status')) {
+          const result = await handleStatusMessage(payload, client);
+          if (result && result.pendingCount > 0) {
+            const captureCmd = {
+              device_id: payload.device_id,
+              capture_image: true,
+            };
+            client.publish(`device/${payload.device_id}/cmd`, JSON.stringify(captureCmd));
+            console.log(`[CMD] Sent capture command to ${payload.device_id}`);
+          }
+        } else if (topic.includes('/data')) {
+          if (payload.total_chunks_count !== undefined && payload.chunk_id === undefined) {
+            await handleMetadataMessage(payload, client);
+          } else if (payload.chunk_id !== undefined) {
+            await handleChunkMessage(payload, client);
+          }
+        }
+      } catch (error) {
+        console.error('[MQTT] ❌ Message processing error:', error);
+      }
+    });
+  });
+}
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+let mqttClient = null;
+let connectionStatus = {
+  connected: false,
+  lastError: null,
+  startedAt: new Date().toISOString(),
+  messagesReceived: 0,
+  devicesProvisioned: 0,
+};
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: mqttClient?.connected ? 'healthy' : 'disconnected',
+    mqtt: {
+      connected: mqttClient?.connected || false,
+      host: MQTT_HOST,
+      port: MQTT_PORT,
+    },
+    supabase: {
+      url: supabaseUrl,
+      configured: !!supabaseUrl && !!supabaseServiceKey,
+    },
+    stats: connectionStatus,
+    uptime: process.uptime(),
+  });
+});
+
+app.get('/', (req, res) => {
+  res.json({
+    service: 'MQTT Device Handler',
+    version: '1.0.0',
+    status: mqttClient?.connected ? 'running' : 'disconnected',
+    endpoints: {
+      health: '/health',
+      docs: '/docs',
+    },
+  });
+});
+
+app.get('/docs', (req, res) => {
+  res.json({
+    service: 'MQTT Device Handler for BrainlyTree IoT Devices',
+    description: 'Persistent MQTT connection handler for ESP32-CAM device auto-provisioning',
+    features: [
+      'Auto-provisions new devices on first connection',
+      'Receives and reassembles chunked images',
+      'Creates submissions and observations automatically',
+      'Tracks device telemetry and battery status',
+      'Handles device commands and wake schedules',
+    ],
+    topics: {
+      subscribed: [
+        'device/+/status - Device heartbeat and status updates',
+        'ESP32CAM/+/data - Image metadata and chunks',
+      ],
+      published: [
+        'device/{MAC}/cmd - Device commands (capture, wake schedule)',
+        'device/{MAC}/ack - Acknowledgments and missing chunk requests',
+      ],
+    },
+    database_tables: [
+      'devices - Auto-provisioned device registry',
+      'device_images - Image reception tracking',
+      'device_telemetry - Environmental sensor data',
+      'submissions - Auto-generated submissions',
+      'petri_observations - Device-captured observations',
+    ],
+  });
+});
+
+async function startService() {
+  try {
+    console.log('\n╔════════════════════════════════════════════════════════╗');
+    console.log('║   MQTT Device Handler - Production Service           ║');
+    console.log('╚════════════════════════════════════════════════════════╝\n');
+
+    console.log('[CONFIG] Supabase URL:', supabaseUrl);
+    console.log('[CONFIG] MQTT Host:', MQTT_HOST);
+    console.log('[CONFIG] MQTT Port:', MQTT_PORT);
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    }
+
+    mqttClient = await connectToMQTT();
+    connectionStatus.connected = true;
+    connectionStatus.lastError = null;
+
+    app.listen(PORT, () => {
+      console.log(`\n[HTTP] ✅ Health check server running on port ${PORT}`);
+      console.log(`[HTTP] Health endpoint: http://localhost:${PORT}/health`);
+      console.log(`[HTTP] Docs endpoint: http://localhost:${PORT}/docs`);
+      console.log('\n[SERVICE] 🚀 MQTT Device Handler is ready!\n');
+    });
+  } catch (error) {
+    console.error('[ERROR] ❌ Failed to start service:', error);
+    connectionStatus.connected = false;
+    connectionStatus.lastError = error.message;
+    process.exit(1);
+  }
+}
+
+process.on('SIGTERM', () => {
+  console.log('[SHUTDOWN] Received SIGTERM, closing connections...');
+  if (mqttClient) {
+    mqttClient.end();
+  }
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('\n[SHUTDOWN] Received SIGINT, closing connections...');
+  if (mqttClient) {
+    mqttClient.end();
+  }
+  process.exit(0);
+});
+
+startService();
