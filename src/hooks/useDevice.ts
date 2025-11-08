@@ -168,6 +168,94 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
     }
   });
 
+  const unassignDeviceMutation = useMutation({
+    mutationFn: async (reason?: string) => {
+      if (!deviceId) throw new Error('Device ID is required');
+
+      logger.debug('Unassigning device', { deviceId, reason });
+
+      const { data, error } = await supabase
+        .from('devices')
+        .update({
+          site_id: null,
+          program_id: null,
+          provisioning_status: 'pending_mapping',
+          is_active: false,
+          mapped_at: null,
+          mapped_by_user_id: null,
+          notes: reason ? `Unassigned: ${reason}\n\n${device?.notes || ''}` : device?.notes,
+        })
+        .eq('device_id', deviceId)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('Error unassigning device:', error);
+        throw error;
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
+      toast.success('Device unassigned successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to unassign device: ${error.message}`);
+    }
+  });
+
+  const reassignDeviceMutation = useMutation({
+    mutationFn: async (mapping: {
+      siteId: string;
+      programId: string;
+      deviceName?: string;
+      wakeScheduleCron?: string;
+      notes?: string;
+      reason?: string;
+    }) => {
+      if (!deviceId) throw new Error('Device ID is required');
+
+      logger.debug('Reassigning device', { deviceId, mapping });
+
+      const notesWithReason = mapping.reason
+        ? `Reassigned: ${mapping.reason}\n\n${mapping.notes || device?.notes || ''}`
+        : mapping.notes;
+
+      const { data, error } = await supabase
+        .from('devices')
+        .update({
+          site_id: mapping.siteId,
+          program_id: mapping.programId,
+          device_name: mapping.deviceName,
+          wake_schedule_cron: mapping.wakeScheduleCron,
+          provisioning_status: 'mapped',
+          mapped_at: new Date().toISOString(),
+          mapped_by_user_id: (await supabase.auth.getUser()).data.user?.id,
+          notes: notesWithReason,
+        })
+        .eq('device_id', deviceId)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('Error reassigning device:', error);
+        throw error;
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
+      toast.success('Device reassigned successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to reassign device: ${error.message}`);
+    }
+  });
+
   return {
     device,
     isLoading,
@@ -176,8 +264,12 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
     mapDevice: mapDeviceMutation.mutateAsync,
     activateDevice: activateDeviceMutation.mutateAsync,
     deactivateDevice: deactivateDeviceMutation.mutateAsync,
+    unassignDevice: unassignDeviceMutation.mutateAsync,
+    reassignDevice: reassignDeviceMutation.mutateAsync,
     isMapping: mapDeviceMutation.isPending,
     isActivating: activateDeviceMutation.isPending,
     isDeactivating: deactivateDeviceMutation.isPending,
+    isUnassigning: unassignDeviceMutation.isPending,
+    isReassigning: reassignDeviceMutation.isPending,
   };
 };

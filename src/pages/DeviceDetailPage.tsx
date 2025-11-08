@@ -1,17 +1,25 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
 import DeviceStatusBadge from '../components/devices/DeviceStatusBadge';
 import DeviceBatteryIndicator from '../components/devices/DeviceBatteryIndicator';
+import DeviceSetupProgress from '../components/devices/DeviceSetupProgress';
+import DeviceUnassignModal from '../components/devices/DeviceUnassignModal';
+import DeviceReassignModal from '../components/devices/DeviceReassignModal';
 import { useDevice } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
+import useCompanies from '../hooks/useCompanies';
 
 const DeviceDetailPage = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
   const navigate = useNavigate();
-  const { device, isLoading, activateDevice, deactivateDevice } = useDevice(deviceId);
+  const { isAdmin } = useCompanies();
+  const { device, isLoading, activateDevice, deactivateDevice, unassignDevice, reassignDevice } = useDevice(deviceId);
+  const [showUnassignModal, setShowUnassignModal] = useState(false);
+  const [showReassignModal, setShowReassignModal] = useState(false);
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -35,6 +43,17 @@ const DeviceDetailPage = () => {
 
   const siteName = device.sites?.name || 'Unassigned';
   const programName = device.pilot_programs?.name || 'Unassigned';
+  const isAssigned = !!device.site_id && !!device.program_id;
+
+  const handleUnassign = async (reason?: string) => {
+    await unassignDevice(reason);
+    setShowUnassignModal(false);
+  };
+
+  const handleReassign = async (mapping: any) => {
+    await reassignDevice(mapping);
+    setShowReassignModal(false);
+  };
 
   return (
     <div className="animate-fade-in">
@@ -57,22 +76,47 @@ const DeviceDetailPage = () => {
             lastSeenAt={device.last_seen_at}
             isActive={device.is_active}
           />
-          {device.is_active ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => deactivateDevice()}
-            >
-              Deactivate
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => activateDevice()}
-            >
-              Activate
-            </Button>
+          {isAdmin && (
+            <>
+              {isAssigned && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={<RefreshCw size={14} />}
+                    onClick={() => setShowReassignModal(true)}
+                  >
+                    Reassign
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={<XCircle size={14} />}
+                    onClick={() => setShowUnassignModal(true)}
+                  >
+                    Unassign
+                  </Button>
+                </>
+              )}
+              {device.is_active ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => deactivateDevice()}
+                >
+                  Deactivate
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => activateDevice()}
+                  disabled={!isAssigned}
+                >
+                  Activate
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -183,6 +227,17 @@ const DeviceDetailPage = () => {
         </div>
 
         <div className="space-y-6">
+          {isAdmin && device.provisioning_status !== 'active' && (
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold">Setup Progress</h2>
+              </CardHeader>
+              <CardContent>
+                <DeviceSetupProgress device={device} showDetails={true} />
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <h2 className="text-lg font-semibold">Hardware Info</h2>
@@ -250,6 +305,24 @@ const DeviceDetailPage = () => {
           )}
         </div>
       </div>
+
+      {showUnassignModal && (
+        <DeviceUnassignModal
+          isOpen={showUnassignModal}
+          onClose={() => setShowUnassignModal(false)}
+          device={device}
+          onConfirm={handleUnassign}
+        />
+      )}
+
+      {showReassignModal && (
+        <DeviceReassignModal
+          isOpen={showReassignModal}
+          onClose={() => setShowReassignModal(false)}
+          device={device}
+          onSubmit={handleReassign}
+        />
+      )}
     </div>
   );
 };
