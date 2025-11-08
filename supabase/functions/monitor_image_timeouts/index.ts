@@ -90,14 +90,14 @@ Deno.serve(async (req: Request) => {
           // Last retry attempt - create alert
           await supabase.from('device_alerts').insert({
             device_id: result.device_id,
-            alert_type: 'image_transfer_failure',
-            severity: 'high',
-            title: `Image Transfer Failing: ${result.image_name}`,
-            message: `Image has failed ${imageData.retry_count + 1} times. Final retry attempt scheduled.`,
-            alert_data: {
+            alert_type: 'image_transmission_failed',
+            severity: 'critical',
+            message: `Image transfer failing: ${result.image_name}. Failed ${imageData.retry_count + 1} times. Final retry attempt scheduled.`,
+            metadata: {
               image_id: result.image_id,
               image_name: result.image_name,
               retry_count: imageData.retry_count,
+              max_retries: imageData.max_retries,
             },
           });
         }

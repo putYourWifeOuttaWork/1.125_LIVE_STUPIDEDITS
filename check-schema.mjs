@@ -1,31 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+dotenv.config();
+const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 
-const supabase = createClient(
-  'https://jycxolmevsvrxmeinxff.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5Y3hvbG1ldnN2cnhtZWlueGZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExMzE0MzYsImV4cCI6MjA2NjcwNzQzNn0.0msVw5lkmycrU1p1qFiUTv7Q6AB-IIdpZejYbekW4sk'
-);
+// Check device_alerts columns
+const { error: alertError } = await supabase.from('device_alerts').select('alert_id, alert_type, severity, message, metadata').limit(0);
+console.log('device_alerts columns check:', alertError ? 'ERROR: ' + alertError.message : 'OK - has: alert_type, severity, message, metadata (NOT title/alert_data)');
 
-async function checkSchema() {
-  const tables = [
-    'pilot_programs',
-    'sites', 
-    'submissions',
-    'observations',
-    'companies',
-    'user_profiles',
-    'site_templates'
-  ];
-  
-  console.log('Checking database schema...\n');
-  
-  for (const table of tables) {
-    const { data, error } = await supabase.from(table).select('*').limit(0);
-    if (error) {
-      console.log(`❌ ${table}: ${error.message}`);
-    } else {
-      console.log(`✅ ${table}: Table exists`);
-    }
-  }
-}
+// Check if device_sessions exists
+const { error: sessionError } = await supabase.from('device_sessions').select('session_id').limit(0);
+console.log('device_sessions table:', sessionError ? 'ERROR: ' + sessionError.message : 'OK - exists');
 
-checkSchema().catch(console.error);
+// Check if device_wake_sessions exists
+const { error: wakeError } = await supabase.from('device_wake_sessions').select('session_id').limit(0);
+console.log('device_wake_sessions table:', wakeError ? 'ERROR: ' + wakeError.message : 'OK - exists');
