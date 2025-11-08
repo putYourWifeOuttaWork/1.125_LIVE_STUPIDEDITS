@@ -71,8 +71,30 @@ export const useDevices = (options: UseDevicesOptions = {}) => {
         throw error;
       }
 
-      logger.debug('Devices fetched successfully', { count: data?.length });
-      return data as DeviceWithStats[];
+      // Enrich devices with image counts
+      const devicesWithStats: DeviceWithStats[] = await Promise.all(
+        (data || []).map(async (device) => {
+          const { count: totalImages } = await supabase
+            .from('device_images')
+            .select('*', { count: 'exact', head: true })
+            .eq('device_id', device.device_id);
+
+          const { count: pendingImages } = await supabase
+            .from('device_images')
+            .select('*', { count: 'exact', head: true })
+            .eq('device_id', device.device_id)
+            .eq('status', 'receiving');
+
+          return {
+            ...device,
+            total_images: totalImages || 0,
+            pending_images: pendingImages || 0
+          } as DeviceWithStats;
+        })
+      );
+
+      logger.debug('Devices fetched successfully', { count: devicesWithStats.length });
+      return devicesWithStats;
     },
     refetchInterval,
     staleTime: 15000,
