@@ -631,3 +631,145 @@ export const executeCustomReport = async (
       })
   , 'executeCustomReport');
 };
+
+// ==========================================
+// DEVICES API
+// ==========================================
+
+/**
+ * Fetch all devices with optional filters
+ */
+export const fetchDevices = async (filters?: {
+  programId?: string;
+  siteId?: string;
+  provisioningStatus?: string;
+}) => {
+  logger.debug('Fetching devices', filters);
+
+  let query = supabase
+    .from('devices')
+    .select(`
+      *,
+      sites:site_id (
+        site_id,
+        name,
+        type
+      ),
+      pilot_programs:program_id (
+        program_id,
+        name
+      )
+    `)
+    .order('created_at', { ascending: false });
+
+  if (filters?.programId) {
+    query = query.eq('program_id', filters.programId);
+  }
+
+  if (filters?.siteId) {
+    query = query.eq('site_id', filters.siteId);
+  }
+
+  if (filters?.provisioningStatus) {
+    query = query.eq('provisioning_status', filters.provisioningStatus);
+  }
+
+  return withRetry(() => query, 'fetchDevices');
+};
+
+/**
+ * Fetch a single device by ID
+ */
+export const fetchDeviceById = async (deviceId: string) => {
+  if (!deviceId) return { data: null, error: null };
+
+  logger.debug(`Fetching device ${deviceId}`);
+  return withRetry(() =>
+    supabase
+      .from('devices')
+      .select(`
+        *,
+        sites:site_id (
+          site_id,
+          name,
+          type,
+          program_id
+        ),
+        pilot_programs:program_id (
+          program_id,
+          name,
+          company_id
+        )
+      `)
+      .eq('device_id', deviceId)
+      .maybeSingle()
+  , `fetchDeviceById(${deviceId})`);
+};
+
+/**
+ * Fetch device telemetry data
+ */
+export const fetchDeviceTelemetry = async (
+  deviceId: string,
+  limit: number = 100
+) => {
+  if (!deviceId) return { data: [], error: null };
+
+  logger.debug(`Fetching telemetry for device ${deviceId}`);
+  return withRetry(() =>
+    supabase
+      .from('device_telemetry')
+      .select('*')
+      .eq('device_id', deviceId)
+      .order('captured_at', { ascending: false })
+      .limit(limit)
+  , `fetchDeviceTelemetry(${deviceId})`);
+};
+
+/**
+ * Fetch device images
+ */
+export const fetchDeviceImages = async (
+  deviceId: string,
+  status?: 'pending' | 'receiving' | 'complete' | 'failed'
+) => {
+  if (!deviceId) return { data: [], error: null };
+
+  logger.debug(`Fetching images for device ${deviceId}`);
+
+  let query = supabase
+    .from('device_images')
+    .select('*')
+    .eq('device_id', deviceId)
+    .order('captured_at', { ascending: false });
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  return withRetry(() => query, `fetchDeviceImages(${deviceId})`);
+};
+
+/**
+ * Fetch device alerts
+ */
+export const fetchDeviceAlerts = async (
+  deviceId: string,
+  includeResolved: boolean = false
+) => {
+  if (!deviceId) return { data: [], error: null };
+
+  logger.debug(`Fetching alerts for device ${deviceId}`);
+
+  let query = supabase
+    .from('device_alerts')
+    .select('*')
+    .eq('device_id', deviceId)
+    .order('created_at', { ascending: false });
+
+  if (!includeResolved) {
+    query = query.is('resolved_at', null);
+  }
+
+  return withRetry(() => query, `fetchDeviceAlerts(${deviceId})`);
+};

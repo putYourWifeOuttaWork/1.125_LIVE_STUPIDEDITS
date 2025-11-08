@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cpu, Search, AlertCircle, MapPin } from 'lucide-react';
+import { Cpu, Search, AlertCircle, MapPin, Plus, Zap } from 'lucide-react';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import LoadingScreen from '../components/common/LoadingScreen';
 import DeviceCard from '../components/devices/DeviceCard';
 import DeviceMappingModal from '../components/devices/DeviceMappingModal';
+import DeviceSetupWizard from '../components/devices/DeviceSetupWizard';
+import DeviceRegistrationModal from '../components/devices/DeviceRegistrationModal';
 import { useDevices, usePendingDevices } from '../hooks/useDevices';
 import { useDevice } from '../hooks/useDevice';
 import { DeviceWithStats } from '../lib/types';
@@ -20,7 +22,10 @@ const DevicesPage = () => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'inactive'>('all');
   const [showMappingModal, setShowMappingModal] = useState(false);
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [selectedDeviceForMapping, setSelectedDeviceForMapping] = useState<DeviceWithStats | null>(null);
+  const [useWizardMode, setUseWizardMode] = useState(true);
 
   const { devices: pendingDevices, isLoading: pendingLoading } = usePendingDevices();
   const { devices: allDevices, isLoading: devicesLoading } = useDevices({
@@ -40,7 +45,11 @@ const DevicesPage = () => {
 
   const handleMapDevice = (device: DeviceWithStats) => {
     setSelectedDeviceForMapping(device);
-    setShowMappingModal(true);
+    if (useWizardMode) {
+      setShowSetupWizard(true);
+    } else {
+      setShowMappingModal(true);
+    }
   };
 
   const handleViewDevice = (device: DeviceWithStats) => {
@@ -51,10 +60,17 @@ const DevicesPage = () => {
     try {
       await mapDevice(mapping);
       setShowMappingModal(false);
+      setShowSetupWizard(false);
       setSelectedDeviceForMapping(null);
+      toast.success('Device mapped successfully!');
     } catch (error) {
       console.error('Error mapping device:', error);
+      toast.error('Failed to map device');
     }
+  };
+
+  const handleRegistrationSuccess = () => {
+    // Refresh devices list
   };
 
   if (!isAdmin) {
@@ -112,6 +128,29 @@ const DevicesPage = () => {
           <p className="text-gray-600 mt-1">
             Manage IoT devices and monitor their status
           </p>
+        </div>
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            icon={<Plus size={16} />}
+            onClick={() => setShowRegistrationModal(true)}
+          >
+            Register Device
+          </Button>
+          <Button
+            variant="primary"
+            icon={<Zap size={16} />}
+            onClick={() => {
+              if (pendingDevices.length > 0) {
+                handleMapDevice(pendingDevices[0]);
+              } else {
+                toast.info('No pending devices to setup');
+              }
+            }}
+            disabled={pendingDevices.length === 0}
+          >
+            Setup Device
+          </Button>
         </div>
       </div>
 
@@ -252,6 +291,26 @@ const DevicesPage = () => {
           }}
           device={selectedDeviceForMapping}
           onSubmit={handleDeviceMapped}
+        />
+      )}
+
+      {showSetupWizard && selectedDeviceForMapping && (
+        <DeviceSetupWizard
+          isOpen={showSetupWizard}
+          onClose={() => {
+            setShowSetupWizard(false);
+            setSelectedDeviceForMapping(null);
+          }}
+          device={selectedDeviceForMapping}
+          onComplete={handleDeviceMapped}
+        />
+      )}
+
+      {showRegistrationModal && (
+        <DeviceRegistrationModal
+          isOpen={showRegistrationModal}
+          onClose={() => setShowRegistrationModal(false)}
+          onSuccess={handleRegistrationSuccess}
         />
       )}
     </div>
