@@ -285,7 +285,7 @@ CREATE POLICY "Users can view device sessions for their programs"
   TO authenticated
   USING (
     program_id IN (
-      SELECT program_id FROM program_users WHERE user_id = auth.uid()
+      SELECT program_id FROM pilot_program_users WHERE user_id = auth.uid()
     )
     OR
     EXISTS (
@@ -312,7 +312,7 @@ CREATE POLICY "Users can view device history for their programs"
   TO authenticated
   USING (
     program_id IN (
-      SELECT program_id FROM program_users WHERE user_id = auth.uid()
+      SELECT program_id FROM pilot_program_users WHERE user_id = auth.uid()
     )
     OR
     EXISTS (
@@ -322,7 +322,7 @@ CREATE POLICY "Users can view device history for their programs"
     OR
     device_id IN (
       SELECT device_id FROM devices WHERE program_id IN (
-        SELECT program_id FROM program_users WHERE user_id = auth.uid()
+        SELECT program_id FROM pilot_program_users WHERE user_id = auth.uid()
       )
     )
   );
