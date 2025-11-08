@@ -89,11 +89,11 @@ const DeviceCard = ({
           )}
 
           <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-            <div className="flex items-center text-sm text-gray-600">
-              <Camera size={14} className="mr-1 text-gray-400" />
+            <div className="flex items-center gap-1 text-sm text-gray-600">
+              <Camera size={14} className="text-gray-400" />
               <span>{device.total_images || 0} images</span>
               {device.pending_images && device.pending_images > 0 && (
-                <span className="ml-2 text-yellow-600">
+                <span className="ml-1 text-yellow-600">
                   ({device.pending_images} pending)
                 </span>
               )}

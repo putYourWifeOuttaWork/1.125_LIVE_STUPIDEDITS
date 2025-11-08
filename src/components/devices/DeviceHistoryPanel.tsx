@@ -7,7 +7,7 @@ import Button from '../common/Button';
 import LoadingScreen from '../common/LoadingScreen';
 import EventCategoryBadge from './EventCategoryBadge';
 import SeverityIndicator from './SeverityIndicator';
-import DeviceTelemetryCard from './DeviceTelemetryCard';
+import DeviceEventDetails from './DeviceEventDetails';
 import DateRangePicker from '../common/DateRangePicker';
 import { toast } from 'react-toastify';
 
@@ -296,27 +296,7 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
                     {expandedRows.has(event.history_id) && (
                       <tr key={`${event.history_id}-details`}>
                         <td colSpan={5} className="px-6 py-4 bg-gray-50">
-                          <div className="space-y-3">
-                            {event.event_data && Object.keys(event.event_data).length > 0 && (
-                              <div>
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">Event Data</h4>
-                                {event.event_data.temperature !== undefined && (
-                                  <DeviceTelemetryCard telemetryData={event.event_data} compact />
-                                )}
-                                <pre className="text-xs bg-white p-3 rounded border border-gray-200 mt-2 overflow-x-auto">
-                                  {JSON.stringify(event.event_data, null, 2)}
-                                </pre>
-                              </div>
-                            )}
-                            {event.metadata && Object.keys(event.metadata).length > 0 && (
-                              <div>
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">Device Metadata</h4>
-                                <pre className="text-xs bg-white p-3 rounded border border-gray-200 overflow-x-auto">
-                                  {JSON.stringify(event.metadata, null, 2)}
-                                </pre>
-                              </div>
-                            )}
-                          </div>
+                          <DeviceEventDetails event={event} />
                         </td>
                       </tr>
                     )}
