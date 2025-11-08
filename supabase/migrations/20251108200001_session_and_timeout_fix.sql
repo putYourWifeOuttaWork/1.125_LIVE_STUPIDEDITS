@@ -1,56 +1,29 @@
 /*
-  # Fix Session and Timeout Tracking Migration
+  # Session and Timeout Tracking Enhancement
 
-  This migration safely adds all session and timeout tracking features.
-  It's designed to be idempotent and won't fail if tables already exist.
+  This migration adds image retry tracking and extends device_commands for scheduling.
+
+  NOTE: We use the existing device_wake_sessions table (not creating a new device_sessions).
+  device_wake_sessions already has comprehensive session tracking with chunks, telemetry, etc.
+  device_history.session_id already references device_wake_sessions.
 */
 
 -- =====================================================
--- 1. CREATE device_sessions TABLE
+-- 1. VERIFY device_wake_sessions EXISTS
 -- =====================================================
+-- We'll use the existing device_wake_sessions table for session tracking
+-- It already has everything we need: chunks_sent, chunks_total, status, telemetry_data, etc.
+
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'device_sessions') THEN
-    CREATE TABLE device_sessions (
-      session_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      device_id uuid NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
-      session_start_time timestamptz NOT NULL DEFAULT now(),
-      session_end_time timestamptz,
-      next_wake_time timestamptz,
-      session_duration_seconds integer,
-      session_status text NOT NULL DEFAULT 'active' CHECK (session_status IN ('active', 'completed', 'timeout', 'error')),
-      images_transmitted integer DEFAULT 0,
-      images_failed integer DEFAULT 0,
-      chunks_sent integer DEFAULT 0,
-      chunks_retried integer DEFAULT 0,
-      session_metadata jsonb DEFAULT '{}'::jsonb,
-      created_at timestamptz DEFAULT now(),
-      updated_at timestamptz DEFAULT now()
-    );
-
-    CREATE INDEX idx_device_sessions_device ON device_sessions(device_id);
-    CREATE INDEX idx_device_sessions_start_time ON device_sessions(session_start_time DESC);
-    CREATE INDEX idx_device_sessions_status ON device_sessions(session_status);
-    CREATE INDEX idx_device_sessions_next_wake ON device_sessions(next_wake_time);
+  IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'device_wake_sessions') THEN
+    RAISE EXCEPTION 'device_wake_sessions table does not exist!';
   END IF;
+  RAISE NOTICE 'Using existing device_wake_sessions table for session tracking';
 END $$;
 
 -- =====================================================
--- 2. ADD session_id TO device_history
--- =====================================================
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'device_history' AND column_name = 'session_id'
-  ) THEN
-    ALTER TABLE device_history ADD COLUMN session_id uuid REFERENCES device_sessions(session_id) ON DELETE SET NULL;
-    CREATE INDEX idx_device_history_session ON device_history(session_id);
-  END IF;
-END $$;
-
--- =====================================================
--- 3. ADD retry tracking TO device_images
+-- 2. ADD retry tracking TO device_images
 -- =====================================================
 DO $$
 BEGIN
@@ -84,7 +57,7 @@ BEGIN
 END $$;
 
 -- =====================================================
--- 4. EXTEND device_commands TABLE (already exists)
+-- 3. EXTEND device_commands TABLE (already exists)
 -- =====================================================
 -- Add new columns to existing device_commands table
 DO $$
@@ -169,41 +142,8 @@ EXCEPTION
 END $$;
 
 -- =====================================================
--- 5. RLS POLICIES
+-- 4. RLS POLICIES
 -- =====================================================
-
--- device_sessions policies
-DO $$
-BEGIN
-  ALTER TABLE device_sessions ENABLE ROW LEVEL SECURITY;
-EXCEPTION
-  WHEN OTHERS THEN NULL;
-END $$;
-
-DROP POLICY IF EXISTS "Users can view sessions for devices they have access to" ON device_sessions;
-CREATE POLICY "Users can view sessions for devices they have access to"
-  ON device_sessions FOR SELECT
-  TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM devices d
-      JOIN sites s ON d.site_id = s.site_id
-      JOIN users u ON u.id = auth.uid()
-      WHERE d.device_id = device_sessions.device_id
-      AND s.company_id = u.company_id
-    )
-  );
-
-DROP POLICY IF EXISTS "System can manage all sessions" ON device_sessions;
-CREATE POLICY "System can manage all sessions"
-  ON device_sessions FOR ALL
-  TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM users
-      WHERE id = auth.uid() AND (is_company_admin = true OR is_super_admin = true)
-    )
-  );
 
 -- device_commands policies
 DO $$
@@ -250,50 +190,16 @@ CREATE POLICY "System can update commands"
   );
 
 -- =====================================================
--- 6. FUNCTIONS
+-- 5. FUNCTIONS
 -- =====================================================
 
--- Function: Create or get current device session
-CREATE OR REPLACE FUNCTION create_device_session(
-  p_device_id uuid,
-  p_next_wake_time timestamptz DEFAULT NULL
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  v_session_id uuid;
-  v_last_session_id uuid;
-BEGIN
-  -- Close any active sessions for this device
-  UPDATE device_sessions
-  SET
-    session_status = 'completed',
-    session_end_time = now(),
-    session_duration_seconds = EXTRACT(EPOCH FROM (now() - session_start_time))::integer,
-    updated_at = now()
-  WHERE device_id = p_device_id
-    AND session_status = 'active'
-  RETURNING session_id INTO v_last_session_id;
-
-  -- Create new session
-  INSERT INTO device_sessions (
-    device_id,
-    session_start_time,
-    next_wake_time,
-    session_status
-  ) VALUES (
-    p_device_id,
-    now(),
-    p_next_wake_time,
-    'active'
-  )
-  RETURNING session_id INTO v_session_id;
-
-  RETURN v_session_id;
-END;
-$$;
+-- Note: We use device_wake_sessions (existing table) instead of creating new functions
+-- The existing device_wake_sessions already tracks:
+--   - chunks_sent, chunks_total, chunks_missing
+--   - status (in_progress, completed, timeout, error)
+--   - telemetry_data, error_codes
+--   - wifi_retry_count, mqtt_connected
+-- No need for create_device_session() - MQTT handler already manages device_wake_sessions
 
 -- Function: Timeout stale images based on next wake schedule
 CREATE OR REPLACE FUNCTION timeout_stale_images()

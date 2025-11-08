@@ -39,23 +39,34 @@ From ESP32-CAM Architecture Document:
 
 ## Database Schema
 
-### New Tables
+### Existing Tables (Enhanced)
 
-#### `device_sessions`
-Tracks each wake-to-sleep cycle:
+#### `device_wake_sessions` (Existing - We Use This!)
+Comprehensive wake-to-sleep cycle tracking:
 ```sql
 - session_id (PK)
 - device_id (FK)
-- session_start_time
-- session_end_time
-- next_wake_time
-- session_status ('active', 'completed', 'timeout', 'error')
-- images_transmitted, images_failed
-- chunks_sent, chunks_retried
-- session_metadata (jsonb)
+- wake_timestamp
+- session_duration_ms
+- next_wake_scheduled
+- status ('in_progress', 'completed', 'timeout', 'error')
+- connection_success, mqtt_connected
+- image_captured, image_id
+- chunks_sent, chunks_total, chunks_missing[]
+- transmission_complete
+- telemetry_data (jsonb) - battery, temp, humidity
+- error_codes[]
+- pending_images_count
+- wifi_retry_count
 ```
 
-#### `device_commands`
+**Why we use device_wake_sessions:**
+- Already comprehensive with chunk tracking
+- Already integrated with device_history
+- Has telemetry and error code tracking
+- More detailed than a separate session table
+
+#### `device_commands` (Extended)
 Command queue for devices:
 ```sql
 - command_id (PK)
@@ -77,8 +88,8 @@ Command queue for devices:
 - `failed_at` - Timestamp when marked as failed
 - `timeout_reason` - Why it failed
 
-#### `device_history` - New Column:
-- `session_id` - Links events to sessions
+#### `device_history` - Existing Column:
+- `session_id` - Already links events to device_wake_sessions
 
 ---
 
@@ -88,11 +99,12 @@ Command queue for devices:
 
 ```
 1. Device wakes at next_wake_at
-   └─ create_device_session() creates new session
-   └─ Old session marked 'completed'
+   └─ MQTT handler creates device_wake_session
+   └─ Status: 'in_progress'
 
 2. Device sends HELLO (alive message)
-   └─ Trigger: handle_device_hello() links to session
+   └─ Updates device.last_wake_at
+   └─ Links all activity to current wake session
 
 3. Server sends command: capture_image
 
