@@ -32,7 +32,7 @@ const AppLayout = () => {
   const { user } = useAuthStore();
   const { selectedProgram, selectedSite, resetAll } = usePilotProgramStore();
   const { userCompany, isAdmin: isCompanyAdmin, isSuperAdmin, companies, fetchAllCompanies } = useCompanies();
-  const { selectedCompanyId, setSelectedCompanyId, clearFilter } = useCompanyFilterStore();
+  const { selectedCompanyId, setActiveCompanyContext, loadActiveCompanyContext, isLoading: companyContextLoading } = useCompanyFilterStore();
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -49,19 +49,32 @@ const AppLayout = () => {
   const [hasActiveSessions, setHasActiveSessions] = useState(false);
   const [showSessionIndicator, setShowSessionIndicator] = useState(false);
 
-  // Load all companies for super admins
+  // Load all companies for super admins and initialize company context
   useEffect(() => {
     if (isSuperAdmin) {
       fetchAllCompanies();
     }
-  }, [isSuperAdmin, fetchAllCompanies]);
+    // Load active company context from database on mount
+    loadActiveCompanyContext();
+  }, [isSuperAdmin, fetchAllCompanies, loadActiveCompanyContext]);
 
   // Get display name for company filter
   const getCompanyFilterDisplay = () => {
     if (!selectedCompanyId) return userCompany?.name || 'No Company';
-    if (selectedCompanyId === 'all') return 'All Companies';
     const company = companies.find(c => c.company_id === selectedCompanyId);
     return company ? company.name : 'Unknown Company';
+  };
+
+  // Handle company context change for super admins
+  const handleCompanyChange = async (companyId: string) => {
+    const success = await setActiveCompanyContext(companyId);
+    if (success) {
+      setShowCompanyDropdown(false);
+      // Force reload of all data with new company context
+      window.location.reload();
+    } else {
+      toast.error('Failed to switch company context');
+    }
   };
   
   const handleSignOut = async () => {
@@ -161,25 +174,17 @@ const AppLayout = () => {
 
                     {showCompanyDropdown && (
                       <div className="absolute top-full mt-1 right-0 bg-white rounded-md shadow-lg border border-gray-200 py-1 min-w-[200px] z-50">
-                        <button
-                          onClick={() => {
-                            clearFilter();
-                            setShowCompanyDropdown(false);
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800 text-sm"
-                        >
-                          All Companies
-                        </button>
                         {companies.map(company => (
                           <button
                             key={company.company_id}
-                            onClick={() => {
-                              setSelectedCompanyId(company.company_id);
-                              setShowCompanyDropdown(false);
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800 text-sm"
+                            onClick={() => handleCompanyChange(company.company_id)}
+                            disabled={companyContextLoading}
+                            className={`w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800 text-sm ${
+                              selectedCompanyId === company.company_id ? 'bg-gray-100 font-semibold' : ''
+                            } ${companyContextLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
                             {company.name}
+                            {selectedCompanyId === company.company_id && ' ✓'}
                           </button>
                         ))}
                       </div>

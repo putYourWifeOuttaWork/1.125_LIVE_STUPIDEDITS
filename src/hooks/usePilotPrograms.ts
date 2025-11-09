@@ -51,6 +51,7 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
   const queryClient = useQueryClient();
 
   // Use React Query for fetching programs
+  // Note: No manual company filtering needed - RLS policies handle company isolation
   const programsQuery = useQuery({
     queryKey: ['programs', user?.id],
     queryFn: async () => {
@@ -58,8 +59,11 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
 
       logger.debug('Fetching programs for user:', user.id);
 
+      // RLS policies automatically filter programs based on:
+      // - Super admins: see programs in their active company context
+      // - Company admins: see all programs in their company
+      // - Regular users: see only programs they have explicit access to
       const { data, error } = await withRetry(() =>
-        // Update to use the new view instead of the direct table
         supabase
           .from('pilot_programs_with_progress')
           .select('*, phases')
@@ -71,7 +75,7 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
         throw error;
       }
 
-      logger.debug(`Successfully fetched ${data?.length || 0} programs`);
+      logger.debug(`Successfully fetched ${data?.length || 0} programs (filtered by RLS)`);
 
       // Sort programs by phase number and then end date
       return sortProgramsByPhase(data || []);
