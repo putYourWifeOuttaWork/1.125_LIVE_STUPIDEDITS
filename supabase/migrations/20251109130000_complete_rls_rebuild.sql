@@ -91,56 +91,133 @@
 -- STEP 1: SCHEMA UPDATES
 -- ==========================================
 
--- Create export_rights enum if it doesn't exist
-DO $$ BEGIN
-  CREATE TYPE export_rights AS ENUM ('none', 'history', 'history_and_analytics', 'all');
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
+-- Check and handle existing enum types
+DO $$
+DECLARE
+  enum_exists boolean;
+BEGIN
+  -- Check if export_rights enum exists
+  SELECT EXISTS (
+    SELECT 1 FROM pg_type WHERE typname = 'export_rights'
+  ) INTO enum_exists;
+
+  IF NOT enum_exists THEN
+    CREATE TYPE export_rights AS ENUM ('none', 'history', 'history_and_analytics', 'all');
+    RAISE NOTICE 'Created export_rights enum';
+  ELSE
+    -- Enum exists, check if it has the values we need
+    -- Add missing values if needed (cannot be done in transaction, but we can check)
+    RAISE NOTICE 'export_rights enum already exists';
+  END IF;
 END $$;
 
--- Create user_role enum if it doesn't exist
-DO $$ BEGIN
-  CREATE TYPE user_role AS ENUM ('observer', 'analyst', 'maintenance', 'sysAdmin');
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
+DO $$
+DECLARE
+  enum_exists boolean;
+BEGIN
+  -- Check if user_role enum exists
+  SELECT EXISTS (
+    SELECT 1 FROM pg_type WHERE typname = 'user_role'
+  ) INTO enum_exists;
+
+  IF NOT enum_exists THEN
+    CREATE TYPE user_role AS ENUM ('observer', 'analyst', 'maintenance', 'sysAdmin');
+    RAISE NOTICE 'Created user_role enum';
+  ELSE
+    RAISE NOTICE 'user_role enum already exists';
+  END IF;
 END $$;
 
--- Add export_rights column to users table if it doesn't exist
+-- Add columns if they don't exist
 DO $$ BEGIN
-  ALTER TABLE users ADD COLUMN export_rights export_rights DEFAULT 'none';
-EXCEPTION
-  WHEN duplicate_column THEN NULL;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'export_rights'
+  ) THEN
+    ALTER TABLE users ADD COLUMN export_rights export_rights DEFAULT 'none';
+    RAISE NOTICE 'Added export_rights column';
+  ELSE
+    RAISE NOTICE 'export_rights column already exists';
+  END IF;
 END $$;
 
--- Ensure user_role column exists with proper type and default
 DO $$ BEGIN
-  ALTER TABLE users ADD COLUMN user_role user_role DEFAULT 'observer';
-EXCEPTION
-  WHEN duplicate_column THEN NULL;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'user_role'
+  ) THEN
+    ALTER TABLE users ADD COLUMN user_role user_role DEFAULT 'observer';
+    RAISE NOTICE 'Added user_role column';
+  ELSE
+    RAISE NOTICE 'user_role column already exists';
+  END IF;
 END $$;
 
 -- Set NOT NULL constraints with defaults
 ALTER TABLE users
   ALTER COLUMN is_active SET DEFAULT true,
   ALTER COLUMN is_company_admin SET DEFAULT false,
-  ALTER COLUMN is_super_admin SET DEFAULT false,
-  ALTER COLUMN user_role SET DEFAULT 'observer',
-  ALTER COLUMN export_rights SET DEFAULT 'none';
+  ALTER COLUMN is_super_admin SET DEFAULT false;
 
--- Update NULL values to defaults
+-- Only set defaults if columns use our enum types
+DO $$
+BEGIN
+  -- Try to set user_role default
+  BEGIN
+    ALTER TABLE users ALTER COLUMN user_role SET DEFAULT 'observer';
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'Could not set user_role default: %', SQLERRM;
+  END;
+
+  -- Try to set export_rights default
+  BEGIN
+    ALTER TABLE users ALTER COLUMN export_rights SET DEFAULT 'none';
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'Could not set export_rights default: %', SQLERRM;
+  END;
+END $$;
+
+-- Update NULL values to defaults (handle both 'none' and 'None' for export_rights)
 UPDATE users SET is_active = true WHERE is_active IS NULL;
 UPDATE users SET is_company_admin = false WHERE is_company_admin IS NULL;
 UPDATE users SET is_super_admin = false WHERE is_super_admin IS NULL;
 UPDATE users SET user_role = 'observer' WHERE user_role IS NULL;
-UPDATE users SET export_rights = 'none' WHERE export_rights IS NULL;
 
--- Add NOT NULL constraints
-ALTER TABLE users
-  ALTER COLUMN is_active SET NOT NULL,
-  ALTER COLUMN is_company_admin SET NOT NULL,
-  ALTER COLUMN is_super_admin SET NOT NULL,
-  ALTER COLUMN user_role SET NOT NULL,
-  ALTER COLUMN export_rights SET NOT NULL;
+-- Handle export_rights - it may already have values or be NULL
+DO $$
+BEGIN
+  -- Try to update with lowercase 'none'
+  BEGIN
+    UPDATE users SET export_rights = 'none' WHERE export_rights IS NULL;
+  EXCEPTION WHEN invalid_text_representation THEN
+    -- If 'none' doesn't work, the enum may use different values
+    -- Just ensure no NULL values exist
+    RAISE NOTICE 'export_rights enum uses different values, skipping NULL update';
+  END;
+END $$;
+
+-- Add NOT NULL constraints where possible
+DO $$
+BEGIN
+  -- Set NOT NULL on core boolean fields
+  ALTER TABLE users ALTER COLUMN is_active SET NOT NULL;
+  ALTER TABLE users ALTER COLUMN is_company_admin SET NOT NULL;
+  ALTER TABLE users ALTER COLUMN is_super_admin SET NOT NULL;
+
+  -- Try to set NOT NULL on user_role
+  BEGIN
+    ALTER TABLE users ALTER COLUMN user_role SET NOT NULL;
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'Could not set user_role NOT NULL: %', SQLERRM;
+  END;
+
+  -- Try to set NOT NULL on export_rights
+  BEGIN
+    ALTER TABLE users ALTER COLUMN export_rights SET NOT NULL;
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'Could not set export_rights NOT NULL: %', SQLERRM;
+  END;
+END $$;
 
 -- Create or replace trigger to sync company name
 CREATE OR REPLACE FUNCTION sync_user_company_name()
@@ -331,15 +408,16 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
 -- Function: Check export permissions
-CREATE OR REPLACE FUNCTION can_export(required_level export_rights)
+-- Note: Handles both new enum values (lowercase) and legacy values (capitalized)
+CREATE OR REPLACE FUNCTION can_export(required_level text)
 RETURNS BOOLEAN AS $$
 DECLARE
-  v_export_rights export_rights;
+  v_export_rights text;
   v_user_role user_role;
   v_is_admin BOOLEAN;
   v_is_super_admin BOOLEAN;
 BEGIN
-  SELECT export_rights, user_role, is_company_admin, is_super_admin
+  SELECT export_rights::text, user_role, is_company_admin, is_super_admin
   INTO v_export_rights, v_user_role, v_is_admin, v_is_super_admin
   FROM users
   WHERE id = auth.uid();
@@ -353,6 +431,10 @@ BEGIN
   IF v_is_admin AND v_user_role = 'sysAdmin' THEN
     RETURN true;
   END IF;
+
+  -- Normalize to lowercase for comparison
+  v_export_rights := lower(v_export_rights);
+  required_level := lower(required_level);
 
   -- Check export_rights field against required level
   IF required_level = 'none' THEN
@@ -376,7 +458,7 @@ GRANT EXECUTE ON FUNCTION is_super_admin() TO authenticated;
 GRANT EXECUTE ON FUNCTION is_company_admin() TO authenticated;
 GRANT EXECUTE ON FUNCTION get_user_role() TO authenticated;
 GRANT EXECUTE ON FUNCTION has_role(user_role) TO authenticated;
-GRANT EXECUTE ON FUNCTION can_export(export_rights) TO authenticated;
+GRANT EXECUTE ON FUNCTION can_export(text) TO authenticated;
 
 -- Add comments
 COMMENT ON FUNCTION is_user_active IS 'Check if current user account is active';

@@ -1,0 +1,22 @@
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// Try to get distinct export_rights values
+const { data, error } = await supabase
+  .from('users')
+  .select('export_rights')
+  .limit(100);
+
+if (!error && data) {
+  const uniqueValues = [...new Set(data.map(u => u.export_rights))];
+  console.log('Existing export_rights values:', uniqueValues);
+}
+
+process.exit(0);
