@@ -1,146 +1,42 @@
-# Quick Fix - Audit Logs Empty After Migration
+# QUICK FIX: Matt Cannot See Programs
 
-## Problem
+## The Problem
+Matt cannot see any programs even though he's a super admin and 12 programs exist in the database.
 
-After applying the separation migration, audit logs are showing blank because of **varchar to TEXT type mismatch** in column 10 (site_name).
+## The Solution (2 Steps)
 
-## The Fix
+### Step 1: Apply the RLS Fix
 
-The migration file has been **updated** with proper type casting:
-- `s.name::TEXT` (was just `s.name`)
-- `d.device_name::TEXT` (was just `d.device_name`)  
-- `d.device_mac::TEXT` (was just `d.device_mac`)
-- `u.email::TEXT` (was just `u.email`)
+1. **Open Supabase SQL Editor**
+   - Go to: https://supabase.com/dashboard/project/YOUR_PROJECT_ID/sql
 
-All varchar columns from database tables are now explicitly cast to TEXT to match the function signatures.
+2. **Copy and Run the SQL**
+   - Open the file: `APPLY_RLS_FIX_NOW.sql`
+   - Copy the ENTIRE contents
+   - Paste into the SQL Editor
+   - Click **"Run"**
 
----
+3. **Verify Success**
+   - You should see: `RLS policies updated successfully!`
 
-## ⚠️ ACTION REQUIRED ⚠️
+### Step 2: Have Matt Log Out and Back In
 
-**Re-apply the updated migration file:**
+1. **Matt must completely log out**
+2. **Clear browser cache** (important!):
+   - Press F12 to open Developer Tools
+   - Go to "Application" tab
+   - Under Storage, click "Clear site data"
+3. **Close browser completely**
+4. **Reopen browser and log back in**
+5. **Navigate to Programs page**
 
-```
-📁 supabase/migrations/20251108235959_separate_device_and_audit_history.sql
-```
+## Expected Result
 
----
+Matt should now see all 12 programs.
 
-## Steps to Apply
+## Still Not Working?
 
-### 1. Open Supabase Dashboard
-- Go to your project
-- Click **SQL Editor**
+Check browser console (F12) for debug output starting with:
+`=== PROGRAM FETCH DEBUG ===`
 
-### 2. Run the Updated Migration
-- Open `supabase/migrations/20251108235959_separate_device_and_audit_history.sql`
-- Copy **ALL** contents (it's been updated!)
-- Paste into SQL Editor
-- Click **RUN**
-
-### 3. Verify It Works
-
-```bash
-node test-updated-migration.mjs
-```
-
-**Expected output:**
-```
-✅ Function working correctly! Rows returned: X
-
-Sample events:
-1. Event Type: ProgramUpdate
-   Source: program
-   Timestamp: 2025-XX-XX...
-```
-
----
-
-## What Was Changed in the Migration
-
-### Before (Broken):
-```sql
-s.name AS site_name,           -- varchar(100) causing type mismatch
-d.device_name,                 -- varchar causing type mismatch
-u.email AS user_email          -- varchar causing type mismatch
-```
-
-### After (Fixed):
-```sql
-s.name::TEXT AS site_name,     -- explicitly cast to TEXT
-d.device_name::TEXT,           -- explicitly cast to TEXT
-u.email::TEXT AS user_email    -- explicitly cast to TEXT
-```
-
----
-
-## Why This Happened
-
-PostgreSQL functions require **exact type matches** between:
-1. The declared RETURNS TABLE column types
-2. The actual SELECT query column types
-
-The `sites.name` column is `varchar(100)` in the database, but we declared it as `TEXT` in the function signature. While these are similar, PostgreSQL requires explicit casting to match them perfectly.
-
----
-
-## After Applying
-
-Your audit logs should show:
-- ✅ Program creation, updates, deletion events
-- ✅ Site creation, updates, deletion events
-- ✅ Submission creation and updates
-- ✅ User added, removed, role changes
-- ✅ Petri/Gasifier observation changes
-- ✅ All historical audit trail data
-
----
-
-## If Still Blank After Fix
-
-If you still see no events after applying the updated migration:
-
-1. **Check the staging table directly:**
-   ```sql
-   SELECT COUNT(*) FROM pilot_program_history_staging;
-   ```
-   If this returns 0, the audit triggers might not be working.
-
-2. **Check for a specific program:**
-   ```sql
-   SELECT * FROM pilot_program_history_staging
-   WHERE program_id = 'YOUR_PROGRAM_ID'
-   LIMIT 10;
-   ```
-
-3. **Verify RLS policies:**
-   Make sure authenticated users can access the staging table.
-
----
-
-## Files Updated
-
-- ✅ `supabase/migrations/20251108235959_separate_device_and_audit_history.sql` - **UPDATED with type casts**
-- ✅ `test-updated-migration.mjs` - New test script
-
----
-
-**Time to fix**: ~2 minutes
-**Status**: 🟡 Waiting for updated migration to be applied
-**Impact**: Restores full audit log functionality with all historical data
-
----
-
-## Quick Commands
-
-```bash
-# Test after applying migration
-node test-updated-migration.mjs
-
-# Build project (should succeed)
-npm run build
-```
-
----
-
-**Next Action**: Re-apply the updated migration file with the TEXT casts!
+See `IMMEDIATE_STEPS_FOR_MATT.md` for detailed troubleshooting.

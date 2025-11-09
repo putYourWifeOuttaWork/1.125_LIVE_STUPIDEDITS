@@ -1,37 +1,20 @@
 /*
-  # Fix RLS Policies with Direct Subqueries
+  Quick RLS Fix for Matt's Program Access
 
-  1. Purpose
-    - Replace RLS helper function calls with direct subqueries
-    - Ensure RLS policies work reliably with authenticated sessions
-    - Fix issue where company admins cannot see their programs
-
-  2. Problem
-    - Helper functions like get_user_company_id() and user_is_company_admin()
-      may not resolve correctly in all contexts
-    - This causes company admins to be unable to see their programs
-
-  3. Solution
-    - Rewrite SELECT policies to use direct subqueries against users table
-    - Keep the same access model but make it more reliable
-    - Inline the logic instead of relying on SECURITY DEFINER functions
-
-  4. Access Model (Unchanged)
-    - Super admins: Full access to all companies
-    - Company admins: Full access to their company's data
-    - Regular users: Must have explicit program access via pilot_program_users
+  This script fixes the RLS policies so company admins (like Matt) can see their programs.
+  Run this in the Supabase SQL Editor.
 */
 
 -- ==========================================
--- PILOT_PROGRAMS TABLE - IMPROVED RLS
+-- PILOT_PROGRAMS TABLE - Fix RLS
 -- ==========================================
 
--- Drop existing SELECT policies
+-- Drop ALL existing SELECT policies on pilot_programs
 DROP POLICY IF EXISTS "Super admins can view all programs" ON pilot_programs;
 DROP POLICY IF EXISTS "Company admins can view company programs" ON pilot_programs;
 DROP POLICY IF EXISTS "Users can view programs with explicit access" ON pilot_programs;
 
--- Recreate SELECT policies with direct subqueries
+-- Recreate with direct subqueries (more reliable)
 CREATE POLICY "Super admins can view all programs"
 ON pilot_programs
 FOR SELECT
@@ -76,15 +59,15 @@ USING (
 );
 
 -- ==========================================
--- SITES TABLE - IMPROVED RLS
+-- SITES TABLE - Fix RLS
 -- ==========================================
 
--- Drop existing SELECT policies
+-- Drop ALL existing SELECT policies on sites
 DROP POLICY IF EXISTS "Super admins can view all sites" ON sites;
 DROP POLICY IF EXISTS "Company admins can view company sites" ON sites;
 DROP POLICY IF EXISTS "Users can view sites in accessible programs" ON sites;
 
--- Recreate SELECT policies with direct subqueries
+-- Recreate with direct subqueries
 CREATE POLICY "Super admins can view all sites"
 ON sites
 FOR SELECT
@@ -129,15 +112,15 @@ USING (
 );
 
 -- ==========================================
--- SUBMISSIONS TABLE - IMPROVED RLS
+-- SUBMISSIONS TABLE - Fix RLS
 -- ==========================================
 
--- Drop existing SELECT policies
+-- Drop ALL existing SELECT policies on submissions
 DROP POLICY IF EXISTS "Super admins can view all submissions" ON submissions;
 DROP POLICY IF EXISTS "Company admins can view company submissions" ON submissions;
 DROP POLICY IF EXISTS "Users can view submissions in accessible programs" ON submissions;
 
--- Recreate SELECT policies with direct subqueries
+-- Recreate with direct subqueries
 CREATE POLICY "Super admins can view all submissions"
 ON submissions
 FOR SELECT
@@ -182,15 +165,15 @@ USING (
 );
 
 -- ==========================================
--- PETRI_OBSERVATIONS TABLE - IMPROVED RLS
+-- PETRI_OBSERVATIONS TABLE - Fix RLS
 -- ==========================================
 
--- Drop existing SELECT policies
+-- Drop ALL existing SELECT policies on petri_observations
 DROP POLICY IF EXISTS "Super admins can view all petri observations" ON petri_observations;
 DROP POLICY IF EXISTS "Company admins can view company petri observations" ON petri_observations;
 DROP POLICY IF EXISTS "Users can view petri observations in accessible programs" ON petri_observations;
 
--- Recreate SELECT policies with direct subqueries
+-- Recreate with direct subqueries
 CREATE POLICY "Super admins can view all petri observations"
 ON petri_observations
 FOR SELECT
@@ -235,15 +218,15 @@ USING (
 );
 
 -- ==========================================
--- GASIFIER_OBSERVATIONS TABLE - IMPROVED RLS
+-- GASIFIER_OBSERVATIONS TABLE - Fix RLS
 -- ==========================================
 
--- Drop existing SELECT policies
+-- Drop ALL existing SELECT policies on gasifier_observations
 DROP POLICY IF EXISTS "Super admins can view all gasifier observations" ON gasifier_observations;
 DROP POLICY IF EXISTS "Company admins can view company gasifier observations" ON gasifier_observations;
 DROP POLICY IF EXISTS "Users can view gasifier observations in accessible programs" ON gasifier_observations;
 
--- Recreate SELECT policies with direct subqueries
+-- Recreate with direct subqueries
 CREATE POLICY "Super admins can view all gasifier observations"
 ON gasifier_observations
 FOR SELECT
@@ -287,19 +270,16 @@ USING (
   )
 );
 
--- Add indexes to improve RLS policy performance
+-- ==========================================
+-- PERFORMANCE INDEXES
+-- ==========================================
+
+-- Add indexes for faster RLS checks
 CREATE INDEX IF NOT EXISTS idx_users_auth_lookup
 ON users(id, company_id, is_company_admin, is_super_admin);
 
 CREATE INDEX IF NOT EXISTS idx_pilot_program_users_lookup
 ON pilot_program_users(user_id, program_id);
 
--- Add comments for documentation
-COMMENT ON POLICY "Super admins can view all programs" ON pilot_programs
-IS 'Super admins have unrestricted access to all programs across all companies';
-
-COMMENT ON POLICY "Company admins can view company programs" ON pilot_programs
-IS 'Company admins can view all programs within their company';
-
-COMMENT ON POLICY "Users can view programs with explicit access" ON pilot_programs
-IS 'Regular users can only view programs they have explicit access to via pilot_program_users table';
+-- Done!
+SELECT 'RLS policies updated successfully!' as status;
