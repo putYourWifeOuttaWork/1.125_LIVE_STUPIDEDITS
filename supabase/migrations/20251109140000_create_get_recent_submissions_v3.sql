@@ -184,6 +184,9 @@ COMMENT ON FUNCTION get_impersonated_company_id() IS 'Extracts the impersonated 
 -- STEP 3: CREATE GET_RECENT_SUBMISSIONS_V3 FUNCTION
 -- ==========================================
 
+-- Drop existing function if it exists (required when changing return type)
+DROP FUNCTION IF EXISTS get_recent_submissions_v3(integer, uuid, uuid);
+
 CREATE OR REPLACE FUNCTION get_recent_submissions_v3(
   limit_param integer DEFAULT 10,
   program_id_param uuid DEFAULT NULL,
