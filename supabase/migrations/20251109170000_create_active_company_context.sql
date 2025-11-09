@@ -299,10 +299,80 @@ ON CONFLICT (user_id) DO NOTHING;
 -- GRANT PERMISSIONS
 -- ==========================================
 
+-- ==========================================
+-- HELPER FUNCTION: USER HAS PROGRAM ACCESS
+-- ==========================================
+
+-- Function to check if user has access to a specific program
+-- Integrates with active company context system
+CREATE OR REPLACE FUNCTION user_has_program_access(p_program_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_user_id UUID;
+  v_is_super_admin BOOLEAN;
+  v_is_company_admin BOOLEAN;
+  v_active_company_id UUID;
+  v_program_company_id UUID;
+  v_table_exists BOOLEAN;
+BEGIN
+  v_user_id := auth.uid();
+
+  IF v_user_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  -- Get user's admin status
+  SELECT is_super_admin, is_company_admin
+  INTO v_is_super_admin, v_is_company_admin
+  FROM users
+  WHERE id = v_user_id;
+
+  -- Get active company context
+  v_active_company_id := get_active_company_id();
+
+  -- Get program's company
+  SELECT company_id INTO v_program_company_id
+  FROM pilot_programs
+  WHERE program_id = p_program_id;
+
+  -- Program must be in user's active company
+  IF v_active_company_id != v_program_company_id THEN
+    RETURN false;
+  END IF;
+
+  -- Super admins and company admins have implicit access to all programs
+  -- in their active company context
+  IF v_is_super_admin OR v_is_company_admin THEN
+    RETURN true;
+  END IF;
+
+  -- For regular users, check explicit program assignment
+  -- Check if pilot_program_users table exists
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+    AND table_name = 'pilot_program_users'
+  ) INTO v_table_exists;
+
+  IF v_table_exists THEN
+    RETURN EXISTS (
+      SELECT 1
+      FROM pilot_program_users
+      WHERE user_id = v_user_id
+        AND program_id = p_program_id
+    );
+  ELSE
+    -- If pilot_program_users table doesn't exist, regular users have no access
+    RETURN false;
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
 -- Grant execute permissions on helper functions
 GRANT EXECUTE ON FUNCTION get_active_company_id() TO authenticated;
 GRANT EXECUTE ON FUNCTION set_active_company_context(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_active_company_context() TO authenticated;
+GRANT EXECUTE ON FUNCTION user_has_program_access(UUID) TO authenticated;
 
 -- Grant table permissions
 GRANT SELECT, INSERT, UPDATE ON user_active_company_context TO authenticated;
@@ -319,3 +389,4 @@ COMMENT ON COLUMN user_active_company_context.updated_at IS 'Last time the conte
 COMMENT ON FUNCTION get_active_company_id() IS 'Returns the active company ID for current user. Super admins get their selected company, regular users get their assigned company.';
 COMMENT ON FUNCTION set_active_company_context(UUID) IS 'Sets the active company context for current user. Super admins can switch to any company, regular users locked to assigned company.';
 COMMENT ON FUNCTION get_active_company_context() IS 'Returns full active company context details for current user including permissions and company info.';
+COMMENT ON FUNCTION user_has_program_access(UUID) IS 'Check if user has access to a specific program. Admins get implicit access to all programs in their active company, regular users need explicit assignment via pilot_program_users.';

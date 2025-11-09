@@ -62,7 +62,7 @@ CREATE POLICY "Company admins view all company programs"
   FOR SELECT
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -74,7 +74,7 @@ CREATE POLICY "Regular users view assigned programs only"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
   );
@@ -95,7 +95,7 @@ CREATE POLICY "Company admins create programs in their company"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -120,12 +120,12 @@ CREATE POLICY "Company admins update programs in their company"
   FOR UPDATE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   )
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -136,7 +136,7 @@ CREATE POLICY "Program admins update assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -166,7 +166,7 @@ CREATE POLICY "Company admins delete programs in their company"
   FOR DELETE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -201,7 +201,7 @@ CREATE POLICY "Company admins view all company sites"
   FOR SELECT
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -212,7 +212,7 @@ CREATE POLICY "Regular users view sites in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
   );
@@ -233,7 +233,7 @@ CREATE POLICY "Company admins create sites in their company"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -244,7 +244,7 @@ CREATE POLICY "Program editors create sites in assigned programs"
   TO authenticated
   WITH CHECK (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -275,12 +275,12 @@ CREATE POLICY "Company admins update sites in their company"
   FOR UPDATE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   )
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -291,7 +291,7 @@ CREATE POLICY "Program editors update sites in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -321,7 +321,7 @@ CREATE POLICY "Company admins delete sites in their company"
   FOR DELETE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -332,7 +332,7 @@ CREATE POLICY "Program editors delete sites in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -373,7 +373,7 @@ CREATE POLICY "Company admins view all company submissions"
   FOR SELECT
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -384,7 +384,7 @@ CREATE POLICY "Regular users view submissions in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
   );
@@ -405,7 +405,7 @@ CREATE POLICY "Company admins create submissions in their company"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -416,7 +416,7 @@ CREATE POLICY "Program users create submissions in assigned programs"
   TO authenticated
   WITH CHECK (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
   );
@@ -441,12 +441,12 @@ CREATE POLICY "Company admins update submissions in their company"
   FOR UPDATE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   )
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -457,7 +457,7 @@ CREATE POLICY "Program editors update submissions in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -487,7 +487,7 @@ CREATE POLICY "Company admins delete submissions in their company"
   FOR DELETE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -498,7 +498,7 @@ CREATE POLICY "Program editors delete submissions in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -539,7 +539,7 @@ CREATE POLICY "Company admins view all company petri observations"
   FOR SELECT
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -550,7 +550,7 @@ CREATE POLICY "Regular users view petri observations in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
   );
@@ -571,7 +571,7 @@ CREATE POLICY "Company admins create petri observations in their company"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -582,7 +582,7 @@ CREATE POLICY "Program users create petri observations in assigned programs"
   TO authenticated
   WITH CHECK (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
   );
@@ -607,12 +607,12 @@ CREATE POLICY "Company admins update petri observations in their company"
   FOR UPDATE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   )
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -623,7 +623,7 @@ CREATE POLICY "Program editors update petri observations in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -653,7 +653,7 @@ CREATE POLICY "Company admins delete petri observations in their company"
   FOR DELETE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -664,7 +664,7 @@ CREATE POLICY "Program editors delete petri observations in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -705,7 +705,7 @@ CREATE POLICY "Company admins view all company gasifier observations"
   FOR SELECT
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -716,7 +716,7 @@ CREATE POLICY "Regular users view gasifier observations in assigned programs"
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
   );
@@ -737,7 +737,7 @@ CREATE POLICY "Company admins create gasifier observations in their company"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -748,7 +748,7 @@ CREATE POLICY "Program users create gasifier observations in assigned programs"
   TO authenticated
   WITH CHECK (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
   );
@@ -773,12 +773,12 @@ CREATE POLICY "Company admins update gasifier observations in their company"
   FOR UPDATE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   )
   WITH CHECK (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -789,7 +789,7 @@ CREATE POLICY "Program editors update gasifier observations in assigned programs
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
@@ -819,7 +819,7 @@ CREATE POLICY "Company admins delete gasifier observations in their company"
   FOR DELETE
   TO authenticated
   USING (
-    user_is_company_admin()
+    is_company_admin()
     AND NOT is_super_admin()
     AND company_id = get_active_company_id()
   );
@@ -830,7 +830,7 @@ CREATE POLICY "Program editors delete gasifier observations in assigned programs
   TO authenticated
   USING (
     NOT is_super_admin()
-    AND NOT user_is_company_admin()
+    AND NOT is_company_admin()
     AND company_id = get_active_company_id()
     AND user_has_program_access(program_id)
     AND EXISTS (
