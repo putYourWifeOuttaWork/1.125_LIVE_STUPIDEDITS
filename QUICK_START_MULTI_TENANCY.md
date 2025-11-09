@@ -1,5 +1,7 @@
 # Quick Start: Multi-Tenancy System
 
+**✅ MIGRATION FIXED:** Updated to handle existing functions by dropping them first.
+
 ## ⚡ Apply Migration (Required First Step)
 
 ### Option 1: Supabase Dashboard (Recommended)

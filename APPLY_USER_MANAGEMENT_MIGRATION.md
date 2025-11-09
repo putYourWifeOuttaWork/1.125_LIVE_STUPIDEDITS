@@ -3,6 +3,8 @@
 ## Migration File
 `supabase/migrations/20251109160000_user_management_and_device_pool.sql`
 
+**✅ UPDATED:** Migration now includes `DROP FUNCTION IF EXISTS` statements to handle conflicts with existing functions.
+
 ## What This Migration Does
 
 This migration creates the necessary database functions and policies to support:

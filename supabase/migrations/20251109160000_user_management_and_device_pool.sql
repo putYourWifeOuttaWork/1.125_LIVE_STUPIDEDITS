@@ -33,6 +33,14 @@
 -- USER MANAGEMENT FUNCTIONS
 -- ==========================================
 
+-- Drop existing functions if they exist with different signatures
+DROP FUNCTION IF EXISTS search_users_by_email(text);
+DROP FUNCTION IF EXISTS add_user_to_company(text, uuid);
+DROP FUNCTION IF EXISTS remove_user_from_company(uuid);
+DROP FUNCTION IF EXISTS get_unassigned_devices();
+DROP FUNCTION IF EXISTS assign_device_to_company(uuid, uuid);
+DROP FUNCTION IF EXISTS get_device_pool_stats();
+
 -- Search for users by email (existing users only)
 CREATE OR REPLACE FUNCTION search_users_by_email(search_query text)
 RETURNS TABLE (
