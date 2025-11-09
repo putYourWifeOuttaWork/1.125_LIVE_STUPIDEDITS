@@ -290,12 +290,38 @@ SELECT drop_all_policies_on_table('device_error_codes');
 -- Drop the helper function
 DROP FUNCTION IF EXISTS drop_all_policies_on_table(text);
 
--- Drop old helper functions
-DROP FUNCTION IF EXISTS is_super_admin();
-DROP FUNCTION IF EXISTS get_user_company_id();
-DROP FUNCTION IF EXISTS user_has_program_access(UUID);
-DROP FUNCTION IF EXISTS user_is_company_admin();
-DROP FUNCTION IF EXISTS user_is_company_admin_for_program(UUID);
+-- Drop old helper functions with CASCADE to remove dependencies
+DROP FUNCTION IF EXISTS is_super_admin() CASCADE;
+DROP FUNCTION IF EXISTS get_user_company_id() CASCADE;
+DROP FUNCTION IF EXISTS user_has_program_access(UUID) CASCADE;
+DROP FUNCTION IF EXISTS user_is_company_admin() CASCADE;
+DROP FUNCTION IF EXISTS user_is_company_admin_for_program(UUID) CASCADE;
+DROP FUNCTION IF EXISTS is_company_admin() CASCADE;
+DROP FUNCTION IF EXISTS is_user_active() CASCADE;
+DROP FUNCTION IF EXISTS get_user_role() CASCADE;
+DROP FUNCTION IF EXISTS has_role(user_role) CASCADE;
+DROP FUNCTION IF EXISTS can_export(export_rights) CASCADE;
+DROP FUNCTION IF EXISTS can_export(text) CASCADE;
+
+-- Drop any other variations that might exist
+DO $$
+DECLARE
+  func_record RECORD;
+BEGIN
+  FOR func_record IN
+    SELECT proname, oidvectortypes(proargtypes) as argtypes
+    FROM pg_proc
+    WHERE proname IN (
+      'is_super_admin', 'get_user_company_id', 'user_has_program_access',
+      'user_is_company_admin', 'user_is_company_admin_for_program',
+      'is_company_admin', 'is_user_active', 'get_user_role', 'has_role', 'can_export'
+    )
+    AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+  LOOP
+    EXECUTE format('DROP FUNCTION IF EXISTS %I(%s) CASCADE', func_record.proname, func_record.argtypes);
+    RAISE NOTICE 'Dropped function %(%)', func_record.proname, func_record.argtypes;
+  END LOOP;
+END $$;
 
 -- ==========================================
 -- STEP 3: CREATE NEW RLS HELPER FUNCTIONS

@@ -4,6 +4,14 @@
 
 This project has a complete RLS rebuild ready to deploy. Here's what you need to do:
 
+## ⚠️ Migration Fixes Applied
+
+Two fixes have been applied to handle your existing database:
+1. ✅ **Enum compatibility** - Works with existing `'None'` export_rights value
+2. ✅ **Function cleanup** - Removes duplicate helper functions before creating new ones
+
+See `MIGRATION_FIX_APPLIED.md` and `MIGRATION_FIX_2_APPLIED.md` for details.
+
 ## Step 1: Apply Migrations (Manual)
 
 Go to your Supabase SQL Editor:
