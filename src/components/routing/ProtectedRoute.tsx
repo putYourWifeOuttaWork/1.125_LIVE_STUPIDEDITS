@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { useCompanyFilterStore } from '../../stores/companyFilterStore';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import LoadingScreen from '../common/LoadingScreen';
@@ -7,6 +8,7 @@ import { User } from '../../lib/types';
 
 const ProtectedRoute = () => {
   const { user, setUser } = useAuthStore();
+  const { setActiveCompanyContext } = useCompanyFilterStore();
   const location = useLocation();
   const [isLoading, setIsLoading] = useState(true);
 
@@ -49,6 +51,23 @@ const ProtectedRoute = () => {
         };
 
         setUser(fullUser);
+
+        // Initialize active company context in the database
+        // This ensures RLS policies have the correct company context
+        if (fullUser.company_id) {
+          console.log(`Initializing active company context for user ${fullUser.email}: ${fullUser.company_id}`);
+          const success = await setActiveCompanyContext(fullUser.company_id);
+
+          if (!success) {
+            console.error('Failed to set active company context');
+            // Don't block the user, but log the warning
+            console.warn('User may experience data visibility issues');
+          } else {
+            console.log('Active company context initialized successfully');
+          }
+        } else {
+          console.warn('User has no company_id assigned');
+        }
       } catch (error) {
         console.error('Error loading user profile:', error);
         // If we can't load the profile, clear the user
@@ -59,7 +78,7 @@ const ProtectedRoute = () => {
     };
 
     loadUserProfile();
-  }, [setUser]);
+  }, [setUser, setActiveCompanyContext]);
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -72,6 +91,12 @@ const ProtectedRoute = () => {
 
   if (user.is_active === false) {
     // Redirect to deactivated page
+    return <Navigate to="/deactivated" replace />;
+  }
+
+  // Require company assignment
+  if (!user.company_id) {
+    console.error('User has no company assignment');
     return <Navigate to="/deactivated" replace />;
   }
 

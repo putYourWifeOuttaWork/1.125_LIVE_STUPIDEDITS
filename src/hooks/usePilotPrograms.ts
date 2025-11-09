@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from '../stores/authStore';
+import { useCompanyFilterStore } from '../stores/companyFilterStore';
 import { PilotProgram, ProgramPhase } from '../lib/types';
 import { toast } from 'react-toastify';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -48,16 +49,18 @@ const sortProgramsByPhase = (programs: PilotProgram[]) => {
 
 export const usePilotPrograms = (): UsePilotProgramsResult => {
   const { user } = useAuthStore();
+  const { selectedCompanyId } = useCompanyFilterStore();
   const queryClient = useQueryClient();
 
   // Use React Query for fetching programs
   // Note: No manual company filtering needed - RLS policies handle company isolation
+  // Include selectedCompanyId in query key to trigger refetches when company context changes
   const programsQuery = useQuery({
-    queryKey: ['programs', user?.id],
+    queryKey: ['programs', user?.id, selectedCompanyId],
     queryFn: async () => {
       if (!user) return [];
 
-      logger.debug('Fetching programs for user:', user.id);
+      logger.debug('Fetching programs for user:', user.id, 'company:', selectedCompanyId);
 
       // RLS policies automatically filter programs based on:
       // - Super admins: see programs in their active company context
@@ -75,12 +78,12 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
         throw error;
       }
 
-      logger.debug(`Successfully fetched ${data?.length || 0} programs (filtered by RLS)`);
+      logger.debug(`Successfully fetched ${data?.length || 0} programs for company ${selectedCompanyId} (filtered by RLS)`);
 
       // Sort programs by phase number and then end date
       return sortProgramsByPhase(data || []);
     },
-    enabled: !!user,
+    enabled: !!user && !!selectedCompanyId,
     staleTime: 0, // Always refetch on window focus
     refetchOnWindowFocus: true,
   });
@@ -196,7 +199,7 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
       queryClient.setQueryData(['program', data.program_id], data);
       
       // Update the program in the programs list
-      queryClient.setQueryData<PilotProgram[]>(['programs', user?.id], (oldData) => {
+      queryClient.setQueryData<PilotProgram[]>(['programs', user?.id, selectedCompanyId], (oldData) => {
         if (!oldData) return [data];
         return oldData.map(p => 
           p.program_id === data.program_id ? data : p
@@ -229,7 +232,7 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
       queryClient.removeQueries({queryKey: ['program', programId]});
       
       // Remove the program from the programs list
-      queryClient.setQueryData<PilotProgram[]>(['programs', user?.id], (oldData) => {
+      queryClient.setQueryData<PilotProgram[]>(['programs', user?.id, selectedCompanyId], (oldData) => {
         if (!oldData) return [];
         return oldData.filter(p => p.program_id !== programId);
       });
