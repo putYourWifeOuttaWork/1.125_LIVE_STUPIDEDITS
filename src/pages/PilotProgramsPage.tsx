@@ -16,7 +16,6 @@ import usePilotPrograms from '../hooks/usePilotPrograms';
 import PilotProgramCard from '../components/pilotPrograms/PilotProgramCard';
 import useCompanies from '../hooks/useCompanies';
 import { useCompanyFilterStore } from '../stores/companyFilterStore';
-import CompanyTabs from '../components/common/CompanyTabs';
 
 const PilotProgramsPage = () => {
   const navigate = useNavigate();
@@ -64,9 +63,6 @@ const PilotProgramsPage = () => {
 
   return (
     <div className="animate-fade-in">
-      {/* Super Admin Company Tabs */}
-      <CompanyTabs />
-
       <div className="flex items-center mb-6">
         <button
           onClick={() => navigate('/home')}

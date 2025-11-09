@@ -67,13 +67,34 @@ const AppLayout = () => {
 
   // Handle company context change for super admins
   const handleCompanyChange = async (companyId: string) => {
-    const success = await setActiveCompanyContext(companyId);
-    if (success) {
+    if (!user) return;
+
+    try {
+      // Update the user's company_id in the users table
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ company_id: companyId })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('Error updating user company:', updateError);
+        toast.error('Failed to switch company');
+        return;
+      }
+
+      // Also update the active company context table for consistency
+      await setActiveCompanyContext(companyId);
+
       setShowCompanyDropdown(false);
+
+      const companyName = companies.find(c => c.company_id === companyId)?.name || 'company';
+      toast.success(`Switched to ${companyName}`);
+
       // Force reload of all data with new company context
       window.location.reload();
-    } else {
-      toast.error('Failed to switch company context');
+    } catch (error) {
+      console.error('Error switching company:', error);
+      toast.error('Failed to switch company');
     }
   };
   

@@ -28,7 +28,6 @@ import useWeather from '../hooks/useWeather';
 import AnalyticsChart from '../components/dashboard/AnalyticsChart';
 import UnclaimedSessionsCard from '../components/submissions/UnclaimedSessionsCard';
 import { useSessionStore } from '../stores/sessionStore';
-import CompanyTabs from '../components/common/CompanyTabs';
 
 // Type for recent submission from the get_recent_submissions RPC
 interface RecentSubmission {
@@ -318,9 +317,6 @@ const HomePage = () => {
   
   return (
      <div className="animate-fade-in">
-      {/* Super Admin Company Tabs */}
-      <CompanyTabs />
-
       {/* Company Context Banner */}
       {userCompany && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
