@@ -317,6 +317,24 @@ const HomePage = () => {
   
   return (
      <div className="animate-fade-in">
+      {/* Company Context Banner */}
+      {userCompany && (
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <Building className="h-5 w-5 text-blue-600" />
+            <div className="flex-grow">
+              <p className="text-sm font-medium text-blue-900">
+                Viewing data for: <span className="font-bold">{userCompany.name}</span>
+              </p>
+              <p className="text-xs text-blue-700 mt-1">
+                All programs and sites shown are filtered to your company.
+                {activePrograms.length === 0 && " This company has no active programs yet."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <div className="flex-grow">
           <h1 className="text-2xl font-bold text-gray-900">Welcome to InVivo!</h1>
@@ -378,9 +396,16 @@ const HomePage = () => {
                   aria-labelledby="program-selector-label"
                 >
                   {activePrograms.length === 0 ? (
-                    <p className="col-span-full text-gray-500 text-center">
-                      No active programs available. <a href="/programs\" className="text-primary-600 hover:text-primary-800">Create one</a>
-                    </p>
+                    <div className="col-span-full text-center py-8">
+                      <p className="text-gray-600 mb-2">
+                        No active programs available for {userCompany?.name || 'your company'}.
+                      </p>
+                      {(isCompanyAdmin) && (
+                        <a href="/programs" className="text-primary-600 hover:text-primary-800 font-medium">
+                          Create a new program to get started
+                        </a>
+                      )}
+                    </div>
                   ) : (
                     activePrograms.map(program => (
                       <button
