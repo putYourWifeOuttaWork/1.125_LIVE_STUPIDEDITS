@@ -55,23 +55,45 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
     queryKey: ['programs', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      
+
       logger.debug('Fetching programs for user:', user.id);
-      const { data, error } = await withRetry(() => 
+
+      // DEBUG: Check session state
+      const session = await supabase.auth.getSession();
+      console.log('=== PROGRAM FETCH DEBUG ===');
+      console.log('User from store:', user);
+      console.log('Session user:', session.data.session?.user);
+      console.log('Session exists:', !!session.data.session);
+      console.log('Auth UID should be:', session.data.session?.user?.id);
+
+      const { data, error } = await withRetry(() =>
         // Update to use the new view instead of the direct table
         supabase
           .from('pilot_programs_with_progress')
           .select('*, phases')
           .order('name')
       , 'fetchPilotPrograms');
-        
+
+      // DEBUG: Log query results
+      console.log('Query result:', {
+        dataCount: data?.length,
+        error: error ? error.message : null,
+        hasData: !!data
+      });
+      if (data && data.length > 0) {
+        console.log('First program:', data[0].name);
+      } else {
+        console.log('No programs returned - possible RLS issue');
+      }
+      console.log('=== END DEBUG ===');
+
       if (error) {
         logger.error('Error fetching programs:', error);
         throw error;
       }
-      
+
       logger.debug(`Successfully fetched ${data?.length || 0} programs`);
-      
+
       // Sort programs by phase number and then end date
       return sortProgramsByPhase(data || []);
     },
