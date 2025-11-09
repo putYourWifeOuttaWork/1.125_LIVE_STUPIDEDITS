@@ -187,25 +187,68 @@ const HomePage = () => {
   
   // Fetch recent submissions - memoized with useCallback
   const fetchRecentSubmissions = useCallback(async () => {
+    if (!selectedSiteId) {
+      setRecentSubmissions([]);
+      return;
+    }
+
     setSubmissionsLoading(true);
     try {
-      // Use the RPC function to get recent submissions
+      // Direct query: Get submissions for the selected site
+      // This leverages the parent-child relationship (submissions.site_id -> sites.site_id)
       const { data, error } = await supabase
-        .rpc('get_recent_submissions_v3', {
-          limit_param: 10,
-          program_id_param: selectedProgramId,
-          site_id_param: selectedSiteId
-        });
+        .from('submissions')
+        .select(`
+          submission_id,
+          site_id,
+          program_id,
+          temperature,
+          humidity,
+          weather,
+          created_at,
+          global_submission_id,
+          sites!inner (
+            name
+          ),
+          pilot_programs!inner (
+            name
+          ),
+          petri_observations (
+            observation_id
+          ),
+          gasifier_observations (
+            observation_id
+          )
+        `)
+        .eq('site_id', selectedSiteId)
+        .order('created_at', { ascending: false })
+        .limit(5);
 
       if (error) throw error;
-      setRecentSubmissions(data || []);
+
+      // Transform the data to match the RecentSubmission interface
+      const transformedData: RecentSubmission[] = (data || []).map((submission: any) => ({
+        submission_id: submission.submission_id,
+        site_id: submission.site_id,
+        site_name: submission.sites?.name || 'Unknown Site',
+        program_id: submission.program_id,
+        program_name: submission.pilot_programs?.name || 'Unknown Program',
+        temperature: submission.temperature,
+        humidity: submission.humidity,
+        created_at: submission.created_at,
+        petri_count: submission.petri_observations?.length || 0,
+        gasifier_count: submission.gasifier_observations?.length || 0,
+        global_submission_id: submission.global_submission_id
+      }));
+
+      setRecentSubmissions(transformedData);
     } catch (error) {
       console.error('Error fetching recent submissions:', error);
       toast.error('Error fetching recent submissions');
     } finally {
       setSubmissionsLoading(false);
     }
-  }, [selectedProgramId, selectedSiteId]);
+  }, [selectedSiteId]);
   
   // Fetch recent submissions when program or site selection changes
   useEffect(() => {
