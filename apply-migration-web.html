@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apply Migration - get_recent_submissions_v3</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 16px;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .alert {
+      background: #fef3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin-bottom: 25px;
+      border-radius: 4px;
+    }
+
+    .alert-error {
+      background: #f8d7da;
+      border-left-color: #dc3545;
+    }
+
+    .alert-success {
+      background: #d4edda;
+      border-left-color: #28a745;
+    }
+
+    .step {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #dee2e6;
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .step-number {
+      background: #667eea;
+      color: white;
+      width: 35px;
+      height: 35px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      margin-right: 15px;
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .sql-block {
+      background: #2d3748;
+      color: #e2e8f0;
+      padding: 20px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-x: auto;
+      margin: 15px 0;
+      position: relative;
+    }
+
+    .copy-btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      margin-top: 10px;
+    }
+
+    .copy-btn:hover {
+      background: #5568d3;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .copy-btn:active {
+      transform: translateY(0);
+    }
+
+    .copy-btn.copied {
+      background: #28a745;
+    }
+
+    .instruction {
+      background: #e7f3ff;
+      border-left: 4px solid #0066cc;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 4px;
+    }
+
+    .instruction strong {
+      color: #0066cc;
+    }
+
+    .link {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .link:hover {
+      text-decoration: underline;
+    }
+
+    .footer {
+      background: #f8f9fa;
+      padding: 20px 30px;
+      text-align: center;
+      color: #6c757d;
+      border-top: 1px solid #dee2e6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔧 Apply Migration: get_recent_submissions_v3</h1>
+      <p>Follow the steps below to fix the missing RPC function error</p>
+    </div>
+
+    <div class="content">
+      <div class="alert alert-error">
+        <strong>Error:</strong> relation "pilot_program_users" does not exist<br>
+        <strong>Cause:</strong> The <code>get_recent_submissions_v3</code> function is missing from your database
+      </div>
+
+      <div class="alert alert-success">
+        <strong>Solution:</strong> This page will guide you through applying the migration via the Supabase Dashboard
+      </div>
+
+      <!-- Step 1 -->
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">1</div>
+          <div class="step-title">Open Supabase SQL Editor</div>
+        </div>
+        <div class="instruction">
+          <strong>Click here to open your SQL Editor:</strong><br>
+          <a href="https://supabase.com/dashboard/project/jycxolmevsvrxmeinxff/sql/new" target="_blank" class="link">
+            Open Supabase SQL Editor →
+          </a>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">2</div>
+          <div class="step-title">Create superadmin_impersonations Table</div>
+        </div>
+        <p>Copy and run this SQL to create the impersonation tracking table:</p>
+        <div class="sql-block" id="sql1">CREATE TABLE IF NOT EXISTS superadmin_impersonations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  super_admin_user_id uuid NOT NULL REFERENCES auth.users(id),
+  target_company_id uuid NOT NULL REFERENCES companies(company_id),
+  target_company_name text,
+  reason text NOT NULL,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  ended_at timestamptz,
+  was_global_override boolean NOT NULL DEFAULT false,
+  request_ip text,
+  user_agent text
+);
+
+CREATE INDEX IF NOT EXISTS idx_superadmin_impersonations_user_id
+  ON superadmin_impersonations(super_admin_user_id);
+CREATE INDEX IF NOT EXISTS idx_superadmin_impersonations_company_id
+  ON superadmin_impersonations(target_company_id);
+CREATE INDEX IF NOT EXISTS idx_superadmin_impersonations_active
+  ON superadmin_impersonations(super_admin_user_id, ended_at)
+  WHERE ended_at IS NULL;
+
+ALTER TABLE superadmin_impersonations ENABLE ROW LEVEL SECURITY;</div>
+        <button class="copy-btn" onclick="copyToClipboard('sql1', this)">📋 Copy SQL</button>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">3</div>
+          <div class="step-title">Create RLS Policies</div>
+        </div>
+        <p>Copy and run this SQL to set up Row Level Security:</p>
+        <div class="sql-block" id="sql2">CREATE POLICY "Super admins can view all impersonations"
+  ON superadmin_impersonations
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM users
+      WHERE id = auth.uid()
+      AND is_super_admin = true
+      AND is_active = true
+    )
+  );
+
+CREATE POLICY "Super admins can create impersonations"
+  ON superadmin_impersonations
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    super_admin_user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM users
+      WHERE id = auth.uid()
+      AND is_super_admin = true
+      AND is_active = true
+    )
+  );
+
+CREATE POLICY "Super admins can end their own impersonations"
+  ON superadmin_impersonations
+  FOR UPDATE
+  TO authenticated
+  USING (
+    super_admin_user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM users
+      WHERE id = auth.uid()
+      AND is_super_admin = true
+      AND is_active = true
+    )
+  );</div>
+        <button class="copy-btn" onclick="copyToClipboard('sql2', this)">📋 Copy SQL</button>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">4</div>
+          <div class="step-title">Create Helper Function</div>
+        </div>
+        <p>Copy and run this SQL to create the impersonation context helper:</p>
+        <div class="sql-block" id="sql3">CREATE OR REPLACE FUNCTION get_impersonated_company_id()
+RETURNS uuid AS $$
+DECLARE
+  impersonated_company_id uuid;
+  jwt_claims jsonb;
+BEGIN
+  BEGIN
+    jwt_claims := current_setting('request.jwt.claims', true)::jsonb;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN NULL;
+  END;
+
+  IF jwt_claims IS NOT NULL THEN
+    impersonated_company_id := (jwt_claims->>'app.impersonated_company_id')::uuid;
+    RETURN impersonated_company_id;
+  END IF;
+
+  RETURN NULL;
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;</div>
+        <button class="copy-btn" onclick="copyToClipboard('sql3', this)">📋 Copy SQL</button>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">5</div>
+          <div class="step-title">Create Main RPC Function</div>
+        </div>
+        <p>Copy and run this SQL to create the get_recent_submissions_v3 function:</p>
+        <div class="sql-block" id="sql4">CREATE OR REPLACE FUNCTION get_recent_submissions_v3(
+  limit_param integer DEFAULT 10,
+  program_id_param uuid DEFAULT NULL,
+  site_id_param uuid DEFAULT NULL
+)
+RETURNS TABLE (
+  submission_id uuid,
+  site_id uuid,
+  site_name text,
+  program_id uuid,
+  program_name text,
+  temperature numeric,
+  humidity numeric,
+  weather text,
+  created_at timestamptz,
+  petri_count bigint,
+  gasifier_count bigint,
+  global_submission_id integer
+) AS $$
+DECLARE
+  current_user_id uuid;
+  user_company_id uuid;
+  user_is_active boolean;
+  user_is_super_admin boolean;
+  impersonated_company_id uuid;
+  effective_company_id uuid;
+BEGIN
+  current_user_id := auth.uid();
+  IF current_user_id IS NULL THEN RETURN; END IF;
+
+  SELECT u.company_id, u.is_active, u.is_super_admin
+  INTO user_company_id, user_is_active, user_is_super_admin
+  FROM users u WHERE u.id = current_user_id;
+
+  IF user_is_active IS NULL OR user_is_active = false THEN RETURN; END IF;
+
+  IF user_is_super_admin = true THEN
+    impersonated_company_id := get_impersonated_company_id();
+    IF impersonated_company_id IS NOT NULL THEN
+      effective_company_id := impersonated_company_id;
+    ELSE
+      effective_company_id := NULL;
+    END IF;
+  ELSE
+    effective_company_id := user_company_id;
+  END IF;
+
+  RETURN QUERY
+  SELECT s.submission_id, s.site_id, st.name AS site_name, s.program_id, pp.name AS program_name,
+         s.temperature, s.humidity, s.weather::text, s.created_at,
+         COALESCE(COUNT(DISTINCT po.observation_id), 0)::bigint AS petri_count,
+         COALESCE(COUNT(DISTINCT go.observation_id), 0)::bigint AS gasifier_count,
+         s.global_submission_id
+  FROM submissions s
+  INNER JOIN sites st ON s.site_id = st.site_id
+  INNER JOIN pilot_programs pp ON s.program_id = pp.program_id
+  LEFT JOIN petri_observations po ON s.submission_id = po.submission_id
+  LEFT JOIN gasifier_observations go ON s.submission_id = go.submission_id
+  WHERE (effective_company_id IS NULL OR pp.company_id = effective_company_id)
+    AND (program_id_param IS NULL OR s.program_id = program_id_param)
+    AND (site_id_param IS NULL OR s.site_id = site_id_param)
+    AND pp.status = 'active'
+  GROUP BY s.submission_id, s.site_id, st.name, s.program_id, pp.name,
+           s.temperature, s.humidity, s.weather, s.created_at, s.global_submission_id
+  ORDER BY s.created_at DESC
+  LIMIT limit_param;
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE WARNING 'Error in get_recent_submissions_v3: %', SQLERRM;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+GRANT EXECUTE ON FUNCTION get_recent_submissions_v3(integer, uuid, uuid) TO authenticated;</div>
+        <button class="copy-btn" onclick="copyToClipboard('sql4', this)">📋 Copy SQL</button>
+      </div>
+
+      <!-- Step 6 -->
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">6</div>
+          <div class="step-title">Verify Installation</div>
+        </div>
+        <p>Run this query to verify the function was created successfully:</p>
+        <div class="sql-block" id="sql5">SELECT proname as function_name, pg_get_function_arguments(oid) as arguments
+FROM pg_proc
+WHERE proname = 'get_recent_submissions_v3';</div>
+        <button class="copy-btn" onclick="copyToClipboard('sql5', this)">📋 Copy SQL</button>
+        <div class="instruction">
+          <strong>Expected result:</strong> You should see one row with function_name = 'get_recent_submissions_v3'
+        </div>
+      </div>
+
+      <!-- Step 7 -->
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">7</div>
+          <div class="step-title">Test the Function</div>
+        </div>
+        <p>Test the function with your current user:</p>
+        <div class="sql-block" id="sql6">SELECT * FROM get_recent_submissions_v3(10, NULL, NULL);</div>
+        <button class="copy-btn" onclick="copyToClipboard('sql6', this)">📋 Copy SQL</button>
+        <div class="instruction">
+          <strong>Expected result:</strong> You should see your recent submissions (or an empty result if you have none yet)
+        </div>
+      </div>
+
+      <div class="alert alert-success">
+        <strong>✅ Done!</strong> Once all steps are complete, refresh your application and the error should be resolved.
+      </div>
+    </div>
+
+    <div class="footer">
+      Migration: 20251109140000_create_get_recent_submissions_v3.sql
+    </div>
+  </div>
+
+  <script>
+    function copyToClipboard(elementId, button) {
+      const element = document.getElementById(elementId);
+      const text = element.textContent;
+
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = button.textContent;
+        button.textContent = '✅ Copied!';
+        button.classList.add('copied');
+
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.classList.remove('copied');
+        }, 2000);
+      }).catch(err => {
+        alert('Failed to copy: ' + err);
+      });
+    }
+  </script>
+</body>
+</html>
