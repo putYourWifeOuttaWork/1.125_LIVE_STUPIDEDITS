@@ -50,13 +50,6 @@ COMMENT ON TABLE pilot_program_users_archive IS 'Historical archive of pilot_pro
 -- DROP CONSTRAINTS AND TABLE
 -- ==========================================
 
--- Drop any existing RLS policies on pilot_program_users
-SELECT drop_all_policies_on_table('pilot_program_users')
-WHERE EXISTS (
-  SELECT 1 FROM pg_tables
-  WHERE schemaname = 'public' AND tablename = 'pilot_program_users'
-);
-
 -- Create helper function to drop policies if it doesn't exist
 CREATE OR REPLACE FUNCTION drop_all_policies_on_table(table_name text)
 RETURNS void AS $$
@@ -72,6 +65,18 @@ BEGIN
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Drop any existing RLS policies on pilot_program_users
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_tables
+    WHERE schemaname = 'public' AND tablename = 'pilot_program_users'
+  ) THEN
+    PERFORM drop_all_policies_on_table('pilot_program_users');
+    RAISE NOTICE 'Dropped RLS policies on pilot_program_users';
+  END IF;
+END $$;
 
 -- Drop the table (CASCADE will drop any dependent foreign keys)
 DROP TABLE IF EXISTS pilot_program_users CASCADE;
