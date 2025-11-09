@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { usePilotProgramStore } from '../stores/pilotProgramStore';
 import { PilotProgram } from '../lib/types';
-import { Plus, Search, Calendar, Leaf, CheckCircle, XCircle, Info, ArrowLeft, Copy } from 'lucide-react';
+import { Plus, Search, Calendar, Leaf, CheckCircle, XCircle, Info, ArrowLeft, Copy, Building, AlertCircle } from 'lucide-react';
 import Card, { CardContent, CardFooter, CardHeader } from '../components/common/Card';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
@@ -14,12 +14,16 @@ import ProgramDetailsModal from '../components/pilotPrograms/ProgramDetailsModal
 import CloneProgramModal from '../components/pilotPrograms/CloneProgramModal';
 import usePilotPrograms from '../hooks/usePilotPrograms';
 import PilotProgramCard from '../components/pilotPrograms/PilotProgramCard';
+import useCompanies from '../hooks/useCompanies';
+import { useCompanyFilterStore } from '../stores/companyFilterStore';
 
 const PilotProgramsPage = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { setSelectedProgram, setLoading } = usePilotProgramStore();
   const { programs, isLoading, refetchPrograms } = usePilotPrograms();
+  const { userCompany, isSuperAdmin } = useCompanies();
+  const { selectedCompanyId } = useCompanyFilterStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isNewProgramModalOpen, setIsNewProgramModalOpen] = useState(false);
   const [selectedProgram, setSelectedProgramLocal] = useState<PilotProgram | null>(null);
@@ -72,8 +76,8 @@ const PilotProgramsPage = () => {
           <p className="text-gray-600 mt-1">Select a program to begin work</p>
         </div>
         <div className="flex space-x-2">
-          <Button 
-            variant="primary" 
+          <Button
+            variant="primary"
             size="sm"
             icon={<Plus md:mr-2 size={18} />}
             onClick={() => setIsNewProgramModalOpen(true)}
@@ -83,6 +87,27 @@ const PilotProgramsPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* Company Context Banner */}
+      {userCompany && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start space-x-3">
+          <Building className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm text-blue-900">
+              <span className="font-semibold">Viewing programs for: {userCompany.name}</span>
+              {isSuperAdmin && (
+                <span className="ml-2 text-blue-700">
+                  (You can switch companies using the dropdown in the header)
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-blue-700 mt-1">
+              Only programs assigned to {userCompany.name} are visible.
+              {programs.length === 0 && " This company has no programs yet."}
+            </p>
+          </div>
+        </div>
+      )}
       
       <div className="relative mb-6">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -101,10 +126,14 @@ const PilotProgramsPage = () => {
       {programs.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200" data-testid="empty-programs-message">
           <Leaf className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-lg font-medium text-gray-900">No pilot programs yet</h3>
-          <p className="mt-1 text-sm text-gray-500">Get started by creating your first pilot program.</p>
+          <h3 className="mt-2 text-lg font-medium text-gray-900">No pilot programs for {userCompany?.name || 'this company'}</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {isSuperAdmin
+              ? 'Create a new program or switch to a different company to view their programs.'
+              : 'Get started by creating your first pilot program.'}
+          </p>
           <div className="mt-6">
-            <Button 
+            <Button
               variant="primary"
               icon={<Plus size={16} />}
               onClick={() => setIsNewProgramModalOpen(true)}
