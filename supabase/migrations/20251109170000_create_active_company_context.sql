@@ -45,6 +45,11 @@ CREATE INDEX IF NOT EXISTS idx_user_active_company_context_company_id
 -- Enable RLS on the table
 ALTER TABLE user_active_company_context ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "Users can view own company context" ON user_active_company_context;
+DROP POLICY IF EXISTS "Users can update own company context" ON user_active_company_context;
+DROP POLICY IF EXISTS "Users can insert own company context" ON user_active_company_context;
+
 -- Users can only view their own context
 CREATE POLICY "Users can view own company context"
   ON user_active_company_context
