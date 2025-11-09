@@ -79,7 +79,7 @@ const PilotProgramsPage = () => {
           <Button
             variant="primary"
             size="sm"
-            icon={<Plus md:mr-2 size={18} />}
+            icon={<Plus size={18} />}
             onClick={() => setIsNewProgramModalOpen(true)}
             testId="new-program-button"
           >
