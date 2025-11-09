@@ -89,6 +89,7 @@ USING (
 -- Drop existing policies
 DROP POLICY IF EXISTS "Super admins can create sites" ON sites;
 DROP POLICY IF EXISTS "Company users can create sites in accessible programs" ON sites;
+DROP POLICY IF EXISTS "Users can create sites in accessible programs" ON sites;
 
 -- Recreate INSERT policies
 CREATE POLICY "Super admins can create sites"
@@ -132,6 +133,7 @@ WITH CHECK (
 -- Drop existing UPDATE policies
 DROP POLICY IF EXISTS "Super admins can update all sites" ON sites;
 DROP POLICY IF EXISTS "Admins and editors can update sites" ON sites;
+DROP POLICY IF EXISTS "Users can update sites in accessible programs" ON sites;
 
 -- Recreate UPDATE policies
 CREATE POLICY "Super admins can update all sites"
@@ -202,6 +204,7 @@ WITH CHECK (
 -- Drop existing DELETE policies
 DROP POLICY IF EXISTS "Super admins can delete all sites" ON sites;
 DROP POLICY IF EXISTS "Admins and editors can delete sites" ON sites;
+DROP POLICY IF EXISTS "Users can delete sites in accessible programs" ON sites;
 
 -- Recreate DELETE policies
 CREATE POLICY "Super admins can delete all sites"
