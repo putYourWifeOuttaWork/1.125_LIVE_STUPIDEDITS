@@ -15,27 +15,41 @@ CREATE VIEW pilot_programs_with_progress
 WITH (security_invoker = false)
 AS
 SELECT
-  pp.*,
-  COALESCE(
-    json_agg(
-      json_build_object(
-        'phase_id', ph.phase_id,
-        'phase_number', ph.phase_number,
-        'start_date', ph.start_date,
-        'end_date', ph.end_date,
-        'description', ph.description
-      ) ORDER BY ph.phase_number
-    ) FILTER (WHERE ph.phase_id IS NOT NULL),
-    '[]'::json
-  ) as phases,
-  COUNT(DISTINCT s.site_id) as total_sites,
-  COUNT(DISTINCT sub.submission_id) as total_submissions,
-  COUNT(DISTINCT CASE WHEN sub.status = 'completed' THEN sub.submission_id END) as completed_submissions
+  pp.program_id,
+  pp.name,
+  pp.description,
+  pp.start_date,
+  pp.end_date,
+  pp.status,
+  pp.total_submissions,
+  pp.total_sites,
+  pp.created_at,
+  pp.updated_at,
+  pp.lastupdated_by,
+  pp.company_id,
+  pp.cloned_from_program_id,
+  pp.phases,
+  COUNT(DISTINCT s.site_id) as site_count,
+  COUNT(DISTINCT sub.submission_id) as submission_count,
+  COUNT(DISTINCT CASE WHEN sub.status = 'completed' THEN sub.submission_id END) as completed_submission_count
 FROM pilot_programs pp
-LEFT JOIN phases ph ON ph.program_id = pp.program_id
 LEFT JOIN sites s ON s.program_id = pp.program_id
 LEFT JOIN submissions sub ON sub.program_id = pp.program_id
-GROUP BY pp.program_id;
+GROUP BY
+  pp.program_id,
+  pp.name,
+  pp.description,
+  pp.start_date,
+  pp.end_date,
+  pp.status,
+  pp.total_submissions,
+  pp.total_sites,
+  pp.created_at,
+  pp.updated_at,
+  pp.lastupdated_by,
+  pp.company_id,
+  pp.cloned_from_program_id,
+  pp.phases;
 
 -- Grant access to authenticated users
 GRANT SELECT ON pilot_programs_with_progress TO authenticated;
