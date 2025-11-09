@@ -58,14 +58,6 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
 
       logger.debug('Fetching programs for user:', user.id);
 
-      // DEBUG: Check session state
-      const session = await supabase.auth.getSession();
-      console.log('=== PROGRAM FETCH DEBUG ===');
-      console.log('User from store:', user);
-      console.log('Session user:', session.data.session?.user);
-      console.log('Session exists:', !!session.data.session);
-      console.log('Auth UID should be:', session.data.session?.user?.id);
-
       const { data, error } = await withRetry(() =>
         // Update to use the new view instead of the direct table
         supabase
@@ -73,19 +65,6 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
           .select('*, phases')
           .order('name')
       , 'fetchPilotPrograms');
-
-      // DEBUG: Log query results
-      console.log('Query result:', {
-        dataCount: data?.length,
-        error: error ? error.message : null,
-        hasData: !!data
-      });
-      if (data && data.length > 0) {
-        console.log('First program:', data[0].name);
-      } else {
-        console.log('No programs returned - possible RLS issue');
-      }
-      console.log('=== END DEBUG ===');
 
       if (error) {
         logger.error('Error fetching programs:', error);
