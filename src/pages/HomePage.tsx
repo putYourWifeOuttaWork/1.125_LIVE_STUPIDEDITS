@@ -187,20 +187,47 @@ const HomePage = () => {
   
   // Fetch recent submissions - memoized with useCallback
   const fetchRecentSubmissions = useCallback(async () => {
+    console.log('🔍 [Recent Submissions Debug] Starting fetch with params:', {
+      limit_param: 10,
+      program_id_param: selectedProgramId,
+      site_id_param: selectedSiteId
+    });
+
     setSubmissionsLoading(true);
     try {
       // Use the RPC function to get recent submissions
       const { data, error } = await supabase
-        .rpc('get_recent_submissions_v3', { 
+        .rpc('get_recent_submissions_v3', {
           limit_param: 10,
           program_id_param: selectedProgramId,
           site_id_param: selectedSiteId
         });
-      
+
+      console.log('📦 [Recent Submissions Debug] Raw response:', {
+        data,
+        error,
+        dataLength: data?.length,
+        dataType: typeof data,
+        isArray: Array.isArray(data),
+        firstItem: data?.[0]
+      });
+
       if (error) throw error;
+
+      if (data && data.length > 0) {
+        console.log('✅ [Recent Submissions Debug] Setting submissions:', data);
+      } else {
+        console.warn('⚠️ [Recent Submissions Debug] No submissions returned, checking:', {
+          hasData: !!data,
+          dataLength: data?.length,
+          selectedProgramId,
+          selectedSiteId
+        });
+      }
+
       setRecentSubmissions(data || []);
     } catch (error) {
-      console.error('Error fetching recent submissions:', error);
+      console.error('❌ [Recent Submissions Debug] Error:', error);
       toast.error('Error fetching recent submissions');
     } finally {
       setSubmissionsLoading(false);
@@ -564,6 +591,14 @@ const HomePage = () => {
               <div className="text-center py-8">
                 <Leaf className="mx-auto h-12 w-12 text-gray-300" />
                 <p className="text-gray-600 mt-2">No recent submissions found</p>
+                {/* Debug info - remove this after fixing */}
+                <div className="mt-4 p-4 bg-gray-50 rounded text-left text-xs">
+                  <p className="font-semibold mb-2">Debug Info:</p>
+                  <p>Selected Program ID: {selectedProgramId || 'None'}</p>
+                  <p>Selected Site ID: {selectedSiteId || 'None'}</p>
+                  <p>Submissions Array Length: {recentSubmissions.length}</p>
+                  <p className="mt-2 text-gray-500">Check browser console for detailed logs</p>
+                </div>
                 {selectedSite && (
                   <Button
                     variant="primary"
