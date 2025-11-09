@@ -8,7 +8,13 @@ interface UserProfile {
   email: string;
   full_name: string | null;
   company: string | null;
+  company_id: string | null;
   avatar_url: string | null;
+  is_active: boolean;
+  is_company_admin: boolean;
+  is_super_admin: boolean;
+  user_role: string | null;
+  export_rights: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -218,7 +224,15 @@ export function useUserProfile() {
     error,
     loadUserProfile,
     updateProfile,
-    updatePassword
+    updatePassword,
+    // Expose permission flags for convenience
+    isSuperAdmin: profile?.is_super_admin || false,
+    isCompanyAdmin: profile?.is_company_admin || false,
+    isActive: profile?.is_active !== false,
+    companyId: profile?.company_id || null,
+    companyName: profile?.company || null,
+    userRole: profile?.user_role || null,
+    exportRights: profile?.export_rights || null
   };
 }
 

@@ -3,6 +3,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { supabase } from '../../lib/supabaseClient';
 import { usePilotProgramStore } from '../../stores/pilotProgramStore';
 import useCompanies from '../../hooks/useCompanies';
+import { useCompanyFilterStore } from '../../stores/companyFilterStore';
 import {
   Home,
   User,
@@ -14,7 +15,9 @@ import {
   Building,
   Leaf,
   ClipboardList,
-  Cpu
+  Cpu,
+  ChevronDown,
+  Shield
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -27,7 +30,9 @@ import Button from '../common/Button';
 const AppLayout = () => {
   const { user } = useAuthStore();
   const { selectedProgram, selectedSite, resetAll } = usePilotProgramStore();
-  const { userCompany, isAdmin: isCompanyAdmin } = useCompanies();
+  const { userCompany, isAdmin: isCompanyAdmin, isSuperAdmin, companies, fetchAllCompanies } = useCompanies();
+  const { selectedCompanyId, setSelectedCompanyId, clearFilter } = useCompanyFilterStore();
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { programId } = useParams<{ programId: string }>();
@@ -42,6 +47,21 @@ const AppLayout = () => {
   } = useSessionStore();
   const [hasActiveSessions, setHasActiveSessions] = useState(false);
   const [showSessionIndicator, setShowSessionIndicator] = useState(false);
+
+  // Load all companies for super admins
+  useEffect(() => {
+    if (isSuperAdmin) {
+      fetchAllCompanies();
+    }
+  }, [isSuperAdmin, fetchAllCompanies]);
+
+  // Get display name for company filter
+  const getCompanyFilterDisplay = () => {
+    if (!selectedCompanyId) return userCompany?.name || 'No Company';
+    if (selectedCompanyId === 'all') return 'All Companies';
+    const company = companies.find(c => c.company_id === selectedCompanyId);
+    return company ? company.name : 'Unknown Company';
+  };
   
   const handleSignOut = async () => {
     try {
@@ -115,6 +135,62 @@ const AppLayout = () => {
                 <Leaf className="h-5 w-5 sm:h-6 sm:w-6 mr-1 sm:mr-2" />
                 <h1 className="text-lg sm:text-xl font-bold whitespace-nowrap overflow-hidden text-ellipsis">GasX InVivo</h1>
               </Link>
+
+              {/* Company context and super admin badge */}
+              <div className="hidden md:flex items-center space-x-2 ml-4">
+                {isSuperAdmin && (
+                  <span className="bg-accent-500 text-white text-xs px-2 py-0.5 rounded-full flex items-center space-x-1" title="Super Administrator">
+                    <Shield size={12} />
+                    <span>Super Admin</span>
+                  </span>
+                )}
+
+                {/* Company filter dropdown for super admins */}
+                {isSuperAdmin ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowCompanyDropdown(!showCompanyDropdown)}
+                      className="flex items-center space-x-1 px-3 py-1.5 bg-primary-600 rounded-md hover:bg-primary-500 transition-colors text-sm"
+                      data-testid="company-filter-dropdown"
+                    >
+                      <Building size={14} />
+                      <span>{getCompanyFilterDisplay()}</span>
+                      <ChevronDown size={14} />
+                    </button>
+
+                    {showCompanyDropdown && (
+                      <div className="absolute top-full mt-1 right-0 bg-white rounded-md shadow-lg border border-gray-200 py-1 min-w-[200px] z-50">
+                        <button
+                          onClick={() => {
+                            clearFilter();
+                            setShowCompanyDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800 text-sm"
+                        >
+                          All Companies
+                        </button>
+                        {companies.map(company => (
+                          <button
+                            key={company.company_id}
+                            onClick={() => {
+                              setSelectedCompanyId(company.company_id);
+                              setShowCompanyDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800 text-sm"
+                          >
+                            {company.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-primary-100 text-sm flex items-center space-x-1">
+                    <Building size={14} />
+                    <span>{userCompany?.name || 'No Company'}</span>
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Breadcrumbs (hide on mobile) */}

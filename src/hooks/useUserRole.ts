@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from '../stores/authStore';
-import { UserRole } from '../lib/types';
+import { ProgramAccessRole } from '../lib/types';
 import useCompanies from './useCompanies';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { withRetry } from '../utils/helpers';
@@ -15,7 +15,7 @@ interface UseUserRoleProps {
 }
 
 interface UseUserRoleResult {
-  role: UserRole | null;
+  role: ProgramAccessRole | null;
   isAdmin: boolean;
   isEditor: boolean;
   isResponder: boolean;
@@ -40,7 +40,7 @@ interface UseUserRoleResult {
 
 export const useUserRole = ({ programId }: UseUserRoleProps = {}): UseUserRoleResult => {
   const { user } = useAuthStore();
-  const { isAdmin: isCompanyAdmin } = useCompanies();
+  const { isAdmin: isCompanyAdmin, isSuperAdmin } = useCompanies();
   const queryClient = useQueryClient();
 
   // Query for user's role in the program
@@ -66,7 +66,7 @@ export const useUserRole = ({ programId }: UseUserRoleProps = {}): UseUserRoleRe
       }
       
       // Explicitly return null instead of data?.role which could be undefined
-      return data ? data.role as UserRole : null;
+      return data ? data.role as ProgramAccessRole : null;
     },
     enabled: !!user && !!programId,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -119,21 +119,22 @@ export const useUserRole = ({ programId }: UseUserRoleProps = {}): UseUserRoleRe
       : null;
 
   // Permission checks
-  const canCreateProgram = !!user; // Any authenticated user can create a program
-  const canEditProgram = isAdmin || isCompanyAdminForProgram;
-  const canDeleteProgram = isAdmin || isCompanyAdminForProgram;
-  
-  const canCreateSite = isAdmin || isEditor || isCompanyAdminForProgram;
-  const canEditSite = isAdmin || isEditor || isCompanyAdminForProgram;
-  const canDeleteSite = isAdmin || isEditor || isCompanyAdminForProgram;
-  
-  const canCreateSubmission = isAdmin || isEditor || isResponder;
-  const canEditSubmission = isAdmin || isEditor || isCompanyAdminForProgram;
-  const canDeleteSubmission = isAdmin || isEditor || isCompanyAdminForProgram;
-  
-  const canManageUsers = isAdmin || isCompanyAdminForProgram;
-  const canViewAuditLog = isAdmin || isCompanyAdminForProgram;
-  const canManageSiteTemplates = isAdmin || isEditor || isCompanyAdminForProgram;
+  // Super admins can do everything
+  const canCreateProgram = isSuperAdmin || !!user;
+  const canEditProgram = isSuperAdmin || isAdmin || isCompanyAdminForProgram;
+  const canDeleteProgram = isSuperAdmin || isAdmin || isCompanyAdminForProgram;
+
+  const canCreateSite = isSuperAdmin || isAdmin || isEditor || isCompanyAdminForProgram;
+  const canEditSite = isSuperAdmin || isAdmin || isEditor || isCompanyAdminForProgram;
+  const canDeleteSite = isSuperAdmin || isAdmin || isEditor || isCompanyAdminForProgram;
+
+  const canCreateSubmission = isSuperAdmin || isAdmin || isEditor || isResponder;
+  const canEditSubmission = isSuperAdmin || isAdmin || isEditor || isCompanyAdminForProgram;
+  const canDeleteSubmission = isSuperAdmin || isAdmin || isEditor || isCompanyAdminForProgram;
+
+  const canManageUsers = isSuperAdmin || isAdmin || isCompanyAdminForProgram;
+  const canViewAuditLog = isSuperAdmin || isAdmin || isCompanyAdminForProgram;
+  const canManageSiteTemplates = isSuperAdmin || isAdmin || isEditor || isCompanyAdminForProgram;
 
   return {
     role,

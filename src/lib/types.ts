@@ -65,9 +65,23 @@ export type Database = {
   };
 };
 
+export type UserRole = 'observer' | 'analyst' | 'maintenance' | 'sysAdmin';
+export type ExportRights = 'None' | 'history' | 'history_and_analytics' | 'all';
+
 export type User = {
   id: string;
   email: string;
+  full_name?: string;
+  company?: string;
+  company_id?: string;
+  avatar_url?: string;
+  is_active?: boolean;
+  is_company_admin?: boolean;
+  is_super_admin?: boolean;
+  user_role?: UserRole;
+  export_rights?: ExportRights;
+  created_at?: string;
+  updated_at?: string;
   user_metadata?: {
     company?: string;
     full_name?: string;
@@ -148,7 +162,7 @@ export type GasifierObservation = Database['public']['Tables']['gasifier_observa
   is_device_generated?: boolean;
   device_capture_metadata?: DeviceCaptureMetadata;
 };
-export type UserRole = 'Admin' | 'Edit' | 'Respond' | 'ReadOnly';
+export type ProgramAccessRole = 'Admin' | 'Edit' | 'Respond' | 'ReadOnly';
 export type HistoryEventType = Database['public']['Tables']['pilot_program_history_staging']['Row']['update_type'];
 export type AuditLogEntry = Database['public']['Tables']['pilot_program_history_staging']['Row'];
 

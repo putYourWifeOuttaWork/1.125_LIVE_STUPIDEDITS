@@ -3,41 +3,63 @@ import { useAuthStore } from '../../stores/authStore';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import LoadingScreen from '../common/LoadingScreen';
+import { User } from '../../lib/types';
 
 const ProtectedRoute = () => {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const location = useLocation();
-  const [isUserActive, setIsUserActive] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const checkUserStatus = async () => {
-      if (!user) {
+    const loadUserProfile = async () => {
+      // First check if we have an authenticated session
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user) {
         setIsLoading(false);
         return;
       }
 
       try {
-        const { data, error } = await supabase
+        // Load complete user profile from database
+        const { data: userProfile, error } = await supabase
           .from('users')
-          .select('is_active')
-          .eq('id', user.id)
+          .select('*')
+          .eq('id', session.user.id)
           .single();
-          
+
         if (error) throw error;
-        
-        setIsUserActive(data.is_active !== false);
+
+        // Merge auth user data with profile data
+        const fullUser: User = {
+          id: session.user.id,
+          email: session.user.email || userProfile.email,
+          full_name: userProfile.full_name,
+          company: userProfile.company,
+          company_id: userProfile.company_id,
+          avatar_url: userProfile.avatar_url,
+          is_active: userProfile.is_active,
+          is_company_admin: userProfile.is_company_admin,
+          is_super_admin: userProfile.is_super_admin,
+          user_role: userProfile.user_role,
+          export_rights: userProfile.export_rights,
+          created_at: userProfile.created_at,
+          updated_at: userProfile.updated_at,
+          user_metadata: session.user.user_metadata
+        };
+
+        setUser(fullUser);
       } catch (error) {
-        console.error('Error checking user status:', error);
-        // Default to active if there's an error
-        setIsUserActive(true);
+        console.error('Error loading user profile:', error);
+        // If we can't load the profile, clear the user
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
     };
-    
-    checkUserStatus();
-  }, [user]);
+
+    loadUserProfile();
+  }, [setUser]);
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -48,7 +70,7 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (isUserActive === false) {
+  if (user.is_active === false) {
     // Redirect to deactivated page
     return <Navigate to="/deactivated" replace />;
   }
