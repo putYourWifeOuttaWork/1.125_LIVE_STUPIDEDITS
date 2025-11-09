@@ -28,28 +28,8 @@ SELECT
   pp.lastupdated_by,
   pp.company_id,
   pp.cloned_from_program_id,
-  pp.phases,
-  COUNT(DISTINCT s.site_id) as site_count,
-  COUNT(DISTINCT sub.submission_id) as submission_count,
-  COUNT(DISTINCT CASE WHEN sub.status = 'completed' THEN sub.submission_id END) as completed_submission_count
-FROM pilot_programs pp
-LEFT JOIN sites s ON s.program_id = pp.program_id
-LEFT JOIN submissions sub ON sub.program_id = pp.program_id
-GROUP BY
-  pp.program_id,
-  pp.name,
-  pp.description,
-  pp.start_date,
-  pp.end_date,
-  pp.status,
-  pp.total_submissions,
-  pp.total_sites,
-  pp.created_at,
-  pp.updated_at,
-  pp.lastupdated_by,
-  pp.company_id,
-  pp.cloned_from_program_id,
-  pp.phases;
+  pp.phases
+FROM pilot_programs pp;
 
 -- Grant access to authenticated users
 GRANT SELECT ON pilot_programs_with_progress TO authenticated;
