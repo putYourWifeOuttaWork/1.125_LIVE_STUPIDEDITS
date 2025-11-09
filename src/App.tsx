@@ -62,14 +62,19 @@ function App() {
   // Register auth error handler
   useEffect(() => {
     // Register a handler for auth errors
-    registerAuthErrorHandler(() => {
+    const unregister = registerAuthErrorHandler(() => {
       console.log('Auth error handler triggered in App.tsx');
       setUser(null);
       setCurrentSessionId(null);
       resetAll();
       // No need to navigate here, the global handler will redirect
     });
-  }, [setUser, setCurrentSessionId, resetAll, navigate]);
+
+    // Cleanup on unmount
+    return () => {
+      unregister();
+    };
+  }, [setUser, setCurrentSessionId, resetAll]);
 
   // Check for pending submissions
   useEffect(() => {

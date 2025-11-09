@@ -50,24 +50,30 @@ const ProtectedRoute = () => {
           user_metadata: session.user.user_metadata
         };
 
-        setUser(fullUser);
-
-        // Initialize active company context in the database
-        // This ensures RLS policies have the correct company context
-        if (fullUser.company_id) {
-          console.log(`Initializing active company context for user ${fullUser.email}: ${fullUser.company_id}`);
-          const success = await setActiveCompanyContext(fullUser.company_id);
-
-          if (!success) {
-            console.error('Failed to set active company context');
-            // Don't block the user, but log the warning
-            console.warn('User may experience data visibility issues');
-          } else {
-            console.log('Active company context initialized successfully');
-          }
-        } else {
-          console.warn('User has no company_id assigned');
+        // Check for company assignment before setting user
+        if (!fullUser.company_id) {
+          console.error('User has no company_id assigned');
+          setUser(null);
+          setIsLoading(false);
+          return;
         }
+
+        // Initialize active company context in the database BEFORE setting user
+        // This ensures RLS policies have the correct company context
+        console.log(`Initializing active company context for user ${fullUser.email}: ${fullUser.company_id}`);
+        const success = await setActiveCompanyContext(fullUser.company_id);
+
+        if (!success) {
+          console.error('Failed to set active company context');
+          setUser(null);
+          setIsLoading(false);
+          return;
+        }
+
+        console.log('Active company context initialized successfully');
+
+        // Only set user AFTER company context is initialized
+        setUser(fullUser);
       } catch (error) {
         console.error('Error loading user profile:', error);
         // If we can't load the profile, clear the user
@@ -91,12 +97,6 @@ const ProtectedRoute = () => {
 
   if (user.is_active === false) {
     // Redirect to deactivated page
-    return <Navigate to="/deactivated" replace />;
-  }
-
-  // Require company assignment
-  if (!user.company_id) {
-    console.error('User has no company assignment');
     return <Navigate to="/deactivated" replace />;
   }
 

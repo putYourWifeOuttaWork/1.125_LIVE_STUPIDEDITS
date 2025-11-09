@@ -7,9 +7,25 @@ import { supabase } from './supabaseClient';
 const authErrorHandlers: Array<() => void> = [];
 
 // Register a global auth error handler
-export const registerAuthErrorHandler = (handler: () => void) => {
+// Returns an unregister function to clean up
+export const registerAuthErrorHandler = (handler: () => void): (() => void) => {
+  // Prevent duplicate registrations
+  if (authErrorHandlers.includes(handler)) {
+    console.log('Auth error handler already registered, skipping');
+    return () => {}; // Return no-op unregister function
+  }
+
   authErrorHandlers.push(handler);
   console.log('Auth error handler registered, total handlers:', authErrorHandlers.length);
+
+  // Return unregister function
+  return () => {
+    const index = authErrorHandlers.indexOf(handler);
+    if (index > -1) {
+      authErrorHandlers.splice(index, 1);
+      console.log('Auth error handler unregistered, total handlers:', authErrorHandlers.length);
+    }
+  };
 };
 
 // Trigger all registered auth error handlers
