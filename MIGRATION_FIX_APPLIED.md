@@ -50,3 +50,22 @@ Should return 6 rows.
 2. Verify functions created
 3. Test device pool at /device-pool
 4. Test user management
+
+## Why This Happened
+
+Your database likely had multiple versions of these functions from previous implementations:
+- Different parameter types
+- Different return types
+- Multiple overloaded versions
+
+PostgreSQL allows function overloading (same name, different parameters), but when you have multiple versions, you must drop them ALL before creating new ones.
+
+## What the Fix Does
+
+The new DROP block:
+1. Queries `pg_proc` system catalog to find ALL function versions
+2. Gets the full function signature using `oid::regprocedure`
+3. Drops each version with CASCADE (removes dependencies too)
+4. Repeats for all 6 target functions
+5. Allows migration to proceed cleanly
+

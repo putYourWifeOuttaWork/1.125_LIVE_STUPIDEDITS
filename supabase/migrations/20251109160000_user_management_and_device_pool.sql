@@ -34,12 +34,71 @@
 -- ==========================================
 
 -- Drop existing functions if they exist with different signatures
-DROP FUNCTION IF EXISTS search_users_by_email(text);
-DROP FUNCTION IF EXISTS add_user_to_company(text, uuid);
-DROP FUNCTION IF EXISTS remove_user_from_company(uuid);
-DROP FUNCTION IF EXISTS get_unassigned_devices();
-DROP FUNCTION IF EXISTS assign_device_to_company(uuid, uuid);
-DROP FUNCTION IF EXISTS get_device_pool_stats();
+-- Using CASCADE to remove all versions and dependencies
+DO $$
+DECLARE
+  func_name text;
+BEGIN
+  -- Drop all versions of search_users_by_email
+  FOR func_name IN
+    SELECT oid::regprocedure::text
+    FROM pg_proc
+    WHERE proname = 'search_users_by_email'
+      AND pg_function_is_visible(oid)
+  LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || func_name || ' CASCADE';
+  END LOOP;
+
+  -- Drop all versions of add_user_to_company
+  FOR func_name IN
+    SELECT oid::regprocedure::text
+    FROM pg_proc
+    WHERE proname = 'add_user_to_company'
+      AND pg_function_is_visible(oid)
+  LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || func_name || ' CASCADE';
+  END LOOP;
+
+  -- Drop all versions of remove_user_from_company
+  FOR func_name IN
+    SELECT oid::regprocedure::text
+    FROM pg_proc
+    WHERE proname = 'remove_user_from_company'
+      AND pg_function_is_visible(oid)
+  LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || func_name || ' CASCADE';
+  END LOOP;
+
+  -- Drop all versions of get_unassigned_devices
+  FOR func_name IN
+    SELECT oid::regprocedure::text
+    FROM pg_proc
+    WHERE proname = 'get_unassigned_devices'
+      AND pg_function_is_visible(oid)
+  LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || func_name || ' CASCADE';
+  END LOOP;
+
+  -- Drop all versions of assign_device_to_company
+  FOR func_name IN
+    SELECT oid::regprocedure::text
+    FROM pg_proc
+    WHERE proname = 'assign_device_to_company'
+      AND pg_function_is_visible(oid)
+  LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || func_name || ' CASCADE';
+  END LOOP;
+
+  -- Drop all versions of get_device_pool_stats
+  FOR func_name IN
+    SELECT oid::regprocedure::text
+    FROM pg_proc
+    WHERE proname = 'get_device_pool_stats'
+      AND pg_function_is_visible(oid)
+  LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || func_name || ' CASCADE';
+  END LOOP;
+END $$;
 
 -- Search for users by email (existing users only)
 CREATE OR REPLACE FUNCTION search_users_by_email(search_query text)
