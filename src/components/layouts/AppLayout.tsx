@@ -17,7 +17,8 @@ import {
   ClipboardList,
   Cpu,
   ChevronDown,
-  Shield
+  Shield,
+  Package
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -256,14 +257,27 @@ const AppLayout = () => {
                 </Link>
               )}
               {isCompanyAdmin && (
-                <Link
-                  to="/devices"
-                  className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                  data-testid="devices-link"
-                >
-                  <Cpu size={18} />
-                  <span className="hidden lg:inline">Devices</span>
-                </Link>
+                <>
+                  <Link
+                    to="/devices"
+                    className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
+                    data-testid="devices-link"
+                  >
+                    <Cpu size={18} />
+                    <span className="hidden lg:inline">Devices</span>
+                  </Link>
+                  {isSuperAdmin && (
+                    <Link
+                      to="/device-pool"
+                      className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
+                      data-testid="device-pool-link"
+                      title="Unassigned Device Pool"
+                    >
+                      <Package size={18} />
+                      <span className="hidden lg:inline">Device Pool</span>
+                    </Link>
+                  )}
+                </>
               )}
               <Link 
                 to="/profile" 

@@ -20,6 +20,7 @@ import { useSessionStore } from './stores/sessionStore';
 import { usePilotProgramStore } from './stores/pilotProgramStore';
 import NetworkStatusIndicator from './components/common/NetworkStatusIndicator';
 import { registerAuthErrorHandler } from './lib/queryClient';
+import RequireSuperAdmin from './components/routing/RequireSuperAdmin';
 
 // Lazy load pages to improve initial load time
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -35,6 +36,7 @@ const CompanyManagementPage = lazy(() => import('./pages/CompanyManagementPage')
 const UserAuditPage = lazy(() => import('./pages/UserAuditPage'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
+const DevicePoolPage = lazy(() => import('./pages/DevicePoolPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -395,6 +397,13 @@ function App() {
                 <Suspense fallback={<LoadingScreen />}>
                   <DeviceDetailPage />
                 </Suspense>
+              } />
+              <Route path="/device-pool" element={
+                <RequireSuperAdmin>
+                  <Suspense fallback={<LoadingScreen />}>
+                    <DevicePoolPage />
+                  </Suspense>
+                </RequireSuperAdmin>
               } />
             </Route>
           </Route>
