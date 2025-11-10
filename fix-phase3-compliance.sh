@@ -1,3 +1,15 @@
+#!/bin/bash
+
+# Phase 3 Compliance Fix Script
+# Applies all required changes to make edge function Phase-2.5 compliant
+
+set -e
+
+echo "🔧 Phase 3 Compliance Fix - Applying SQL Handler Integration"
+echo ""
+
+# Create updated idempotency.ts with Postgres-backed storage
+cat > supabase/functions/mqtt_device_handler/idempotency.ts << 'EOF'
 /**
  * Phase 3 - Idempotency Module (Postgres-Backed)
  *
@@ -293,3 +305,53 @@ function hashCode(str: string): number {
   }
   return Math.abs(hash);
 }
+EOF
+
+echo "✅ Updated idempotency.ts with Postgres-backed storage"
+
+# Create SQL migration for edge_chunk_buffer table
+cat > supabase/migrations/20251110170000_edge_chunk_buffer.sql << 'EOF'
+/*
+  # Edge Chunk Buffer Table
+  
+  1. Purpose
+    - Durable storage for MQTT chunks during transmission
+    - Prevents in-memory loss on edge function restart
+    - Enables idempotent chunk processing across instances
+  
+  2. Schema
+    - chunk_key: unique identifier (device_mac|image_name|chunk_index)
+    - chunk_data: BYTEA or INT[] for chunk bytes
+    - expires_at: TTL for automatic cleanup
+*/
+
+CREATE TABLE IF NOT EXISTS edge_chunk_buffer (
+  chunk_key TEXT PRIMARY KEY,
+  device_mac TEXT NOT NULL,
+  image_name TEXT NOT NULL,
+  chunk_index INT NOT NULL,
+  chunk_data INT[] NOT NULL, -- Store as integer array
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_edge_chunk_buffer_device_image 
+  ON edge_chunk_buffer(device_mac, image_name);
+
+CREATE INDEX IF NOT EXISTS idx_edge_chunk_buffer_expires 
+  ON edge_chunk_buffer(expires_at);
+
+COMMENT ON TABLE edge_chunk_buffer IS 'Temporary storage for MQTT image chunks during transmission. Auto-expires after 30 minutes.';
+EOF
+
+echo "✅ Created edge_chunk_buffer migration"
+
+echo ""
+echo "🎉 Phase 3 Compliance Fix Complete!"
+echo ""
+echo "Next steps:"
+echo "  1. Apply migration: supabase db push"
+echo "  2. Review remaining module fixes (finalize.ts, retry.ts, storage.ts)"
+echo "  3. Update index.ts to use WebSocket MQTT"
+echo "  4. Deploy: supabase functions deploy mqtt_device_handler"
+echo ""
