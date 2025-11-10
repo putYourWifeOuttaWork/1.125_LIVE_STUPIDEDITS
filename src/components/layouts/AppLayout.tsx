@@ -18,7 +18,8 @@ import {
   Cpu,
   ChevronDown,
   Shield,
-  Package
+  Package,
+  FlaskConical
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -303,9 +304,19 @@ const AppLayout = () => {
                       <span className="hidden lg:inline">Device Pool</span>
                     </Link>
                   )}
+                  {/* Lab Link - Admin Only */}
+                  <Link
+                    to="/lab/site-sessions"
+                    className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
+                    data-testid="lab-link"
+                    title="Lab - Device Monitoring"
+                  >
+                    <FlaskConical size={18} />
+                    <span className="hidden lg:inline">Lab</span>
+                  </Link>
                 </>
               )}
-              <Link 
+              <Link
                 to="/profile" 
                 className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
                 data-testid="profile-link"
@@ -407,7 +418,20 @@ const AppLayout = () => {
                 </div>
               </Link>
             )}
-            <Link 
+            {isCompanyAdmin && (
+              <Link
+                to="/lab/site-sessions"
+                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                onClick={() => setIsMobileMenuOpen(false)}
+                data-testid="mobile-lab-link"
+              >
+                <div className="flex items-center space-x-2">
+                  <FlaskConical size={18} />
+                  <span>Lab</span>
+                </div>
+              </Link>
+            )}
+            <Link
               to="/profile" 
               className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
               onClick={() => setIsMobileMenuOpen(false)}

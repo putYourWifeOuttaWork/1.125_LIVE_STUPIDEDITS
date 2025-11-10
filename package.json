@@ -16,6 +16,7 @@
     "chart.js": "^4.4.1",
     "classnames": "^2.5.1",
     "date-fns": "^3.6.0",
+    "date-fns-tz": "^3.2.0",
     "formik": "^2.4.5",
     "idb": "^8.0.0",
     "lucide-react": "^0.344.0",

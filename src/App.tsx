@@ -21,6 +21,7 @@ import { usePilotProgramStore } from './stores/pilotProgramStore';
 import NetworkStatusIndicator from './components/common/NetworkStatusIndicator';
 import { registerAuthErrorHandler } from './lib/queryClient';
 import RequireSuperAdmin from './components/routing/RequireSuperAdmin';
+import RequireCompanyAdmin from './components/routing/RequireCompanyAdmin';
 
 // Lazy load pages to improve initial load time
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -37,6 +38,8 @@ const UserAuditPage = lazy(() => import('./pages/UserAuditPage'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const DevicePoolPage = lazy(() => import('./pages/DevicePoolPage'));
+const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
+const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
 
 function App() {
   const navigate = useNavigate();
@@ -407,6 +410,22 @@ function App() {
                     <DevicePoolPage />
                   </Suspense>
                 </RequireSuperAdmin>
+              } />
+
+              {/* Lab Routes - Admin Only */}
+              <Route path="/lab/site-sessions" element={
+                <RequireCompanyAdmin>
+                  <Suspense fallback={<LoadingScreen />}>
+                    <SiteSessions />
+                  </Suspense>
+                </RequireCompanyAdmin>
+              } />
+              <Route path="/lab/ingest-feed" element={
+                <RequireCompanyAdmin>
+                  <Suspense fallback={<LoadingScreen />}>
+                    <IngestFeed />
+                  </Suspense>
+                </RequireCompanyAdmin>
               } />
             </Route>
           </Route>
