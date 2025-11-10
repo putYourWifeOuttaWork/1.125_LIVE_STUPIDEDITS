@@ -31,7 +31,7 @@ SELECT
   sds.failed_wake_count,
   sds.extra_wake_count,
   si.name as site_name,
-  'UTC' as timezone,
+  COALESCE(si.timezone, 'UTC') as timezone,
   0 as active_device_count
 FROM public.site_device_sessions sds
 JOIN public.sites si ON si.site_id = sds.site_id;

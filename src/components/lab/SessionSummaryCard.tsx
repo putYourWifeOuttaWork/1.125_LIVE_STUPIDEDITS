@@ -10,9 +10,11 @@ interface SessionData {
   extra_wake_count: number;
   site_name: string;
   timezone: string;
-  local_start: string;
-  local_end: string;
-  config_changed_flag: boolean;
+  local_start?: string | null;
+  local_end?: string | null;
+  config_changed_flag?: boolean;
+  session_start_time?: string | null;
+  session_end_time?: string | null;
 }
 
 interface SessionSummaryCardProps {
@@ -33,13 +35,16 @@ export function SessionSummaryCard({ session }: SessionSummaryCardProps) {
     return classes[status as keyof typeof classes] || 'bg-gray-100 text-gray-800';
   };
 
+  // Use session_date directly since it's already a date string
+  const displayDate = session.session_date;
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex items-start justify-between mb-4">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">{session.site_name}</h3>
           <p className="text-sm text-gray-500">
-            {formatInSiteTz(session.local_start, session.timezone, 'MMM d, yyyy')}
+            {displayDate}
           </p>
         </div>
         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusClass(session.status)}`}>
