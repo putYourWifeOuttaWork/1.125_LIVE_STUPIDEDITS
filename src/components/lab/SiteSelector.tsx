@@ -22,7 +22,7 @@ export function SiteSelector({ value, onChange }: SiteSelectorProps) {
       try {
         const { data, error } = await supabase
           .from('sites')
-          .select('site_id, name')
+          .select('site_id, name, timezone')
           .order('name');
 
         if (error) throw error;
@@ -30,7 +30,7 @@ export function SiteSelector({ value, onChange }: SiteSelectorProps) {
         const mappedSites = (data || []).map(site => ({
           site_id: site.site_id,
           site_name: site.name,
-          timezone: 'UTC' // Default timezone since sites table doesn't have this column yet
+          timezone: site.timezone || 'UTC'
         }));
         setSites(mappedSites);
       } catch (error: any) {

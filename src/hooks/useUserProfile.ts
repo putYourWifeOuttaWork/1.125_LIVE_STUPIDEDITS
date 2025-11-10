@@ -57,50 +57,24 @@ export function useUserProfile() {
       
       setProfile(profileData);
       
-      // Get pilot programs the user has direct access to
-      const { data: programsData, error: programsError } = await supabase
-        .from('pilot_program_users')
-        .select(`
-          role,
-          pilot_programs (*)
-        `)
-        .eq('user_id', user.id);
-        
-      if (programsError) throw programsError;
-      
-      let userProgramsData: UserProgram[] = [];
-      
-      if (programsData) {
-        userProgramsData = programsData
-          .filter(item => item.pilot_programs)
-          .map(item => ({
-            program: item.pilot_programs,
-            role: item.role
-          }));
-      }
-      
       // Get company-based programs the user has access to
+      // Note: pilot_program_users table was removed - access is now company-based
+      let userProgramsData: UserProgram[] = [];
+
       if (profileData.company_id) {
         const { data: companyProgramsData, error: companyProgramsError } = await supabase
           .from('pilot_programs')
           .select('*')
           .eq('company_id', profileData.company_id);
-          
+
         if (companyProgramsError) throw companyProgramsError;
-        
+
         if (companyProgramsData) {
-          // Filter out programs that are already included through direct access
-          const directProgramIds = userProgramsData.map(p => p.program.program_id);
-          
-          // Add company programs not already included
-          companyProgramsData.forEach(program => {
-            if (!directProgramIds.includes(program.program_id)) {
-              userProgramsData.push({
-                program,
-                role: 'Company Member'  // Special role for company-based access
-              });
-            }
-          });
+          // Add all company programs with role based on user's role
+          userProgramsData = companyProgramsData.map(program => ({
+            program,
+            role: profileData.user_role || 'observer'
+          }));
         }
       }
       
