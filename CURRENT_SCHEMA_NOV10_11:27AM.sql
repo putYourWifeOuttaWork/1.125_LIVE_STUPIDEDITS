@@ -510,7 +510,9 @@ CREATE TABLE public.site_device_sessions (
   config_changed_flag boolean DEFAULT false,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   locked_at timestamp with time zone,
+  device_submission_id uuid,
   CONSTRAINT site_device_sessions_pkey PRIMARY KEY (session_id),
+  CONSTRAINT site_device_sessions_device_submission_id_fkey FOREIGN KEY (device_submission_id) REFERENCES public.submissions(submission_id),
   CONSTRAINT site_device_sessions_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT site_device_sessions_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
   CONSTRAINT site_device_sessions_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id)
