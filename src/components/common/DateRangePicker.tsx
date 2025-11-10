@@ -4,11 +4,13 @@ import { Calendar } from 'lucide-react';
 interface DateRangePickerProps {
   startDate: string;
   endDate: string;
-  onDateRangeChange: (startDate: string, endDate: string) => void;
+  onStartDateChange?: (date: string) => void;
+  onEndDateChange?: (date: string) => void;
+  onDateRangeChange?: (startDate: string, endDate: string) => void;
   className?: string;
 }
 
-const DateRangePicker = ({ startDate, endDate, onDateRangeChange, className = '' }: DateRangePickerProps) => {
+export const DateRangePicker = ({ startDate, endDate, onStartDateChange, onEndDateChange, onDateRangeChange, className = '' }: DateRangePickerProps) => {
   const [preset, setPreset] = useState<string>('custom');
 
   const handlePresetChange = (presetValue: string) => {
@@ -36,17 +38,34 @@ const DateRangePicker = ({ startDate, endDate, onDateRangeChange, className = ''
         return;
     }
 
-    onDateRangeChange(start.toISOString(), now.toISOString());
+    const startStr = start.toISOString().split('T')[0];
+    const endStr = now.toISOString().split('T')[0];
+    if (onDateRangeChange) {
+      onDateRangeChange(startStr, endStr);
+    } else {
+      if (onStartDateChange) onStartDateChange(startStr);
+      if (onEndDateChange) onEndDateChange(endStr);
+    }
   };
 
   const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPreset('custom');
-    onDateRangeChange(new Date(e.target.value).toISOString(), endDate);
+    const newDate = e.target.value;
+    if (onStartDateChange) {
+      onStartDateChange(newDate);
+    } else if (onDateRangeChange) {
+      onDateRangeChange(newDate, endDate);
+    }
   };
 
   const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPreset('custom');
-    onDateRangeChange(startDate, new Date(e.target.value).toISOString());
+    const newDate = e.target.value;
+    if (onEndDateChange) {
+      onEndDateChange(newDate);
+    } else if (onDateRangeChange) {
+      onDateRangeChange(startDate, newDate);
+    }
   };
 
   const formatDateForInput = (isoDate: string) => {

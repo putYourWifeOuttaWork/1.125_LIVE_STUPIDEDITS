@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { CompanySwitcher } from '../../components/lab/CompanySwitcher';
 import { SiteSelector } from '../../components/lab/SiteSelector';
-import { DateInSiteTzPicker } from '../../components/lab/DateInSiteTzPicker';
+import { DateRangePicker } from '../../components/common/DateRangePicker';
 import { SessionSummaryCard } from '../../components/lab/SessionSummaryCard';
 import { DeviceWakeGrid } from '../../components/lab/DeviceWakeGrid';
 import { ImageDrawer } from '../../components/lab/ImageDrawer';
@@ -17,39 +17,43 @@ export default function SiteSessions() {
 
   const [siteId, setSiteId] = useState('');
   const [timezone, setTimezone] = useState('UTC');
-  const [selectedDate, setSelectedDate] = useState(todayInSiteTz('UTC'));
-  
-  const [session, setSession] = useState<any>(null);
+  const today = todayInSiteTz('UTC');
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+
+  const [sessions, setSessions] = useState<any[]>([]);
   const [payloads, setPayloads] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
 
-  // Fetch session and payloads
+  // Fetch sessions and payloads
   const fetchData = async () => {
     if (!siteId) return;
 
     setLoading(true);
     try {
-      const { start, end } = dayRangeInSiteTz(selectedDate, timezone);
+      const startRange = dayRangeInSiteTz(startDate, timezone);
+      const endRange = dayRangeInSiteTz(endDate, timezone);
 
-      // Get session
+      // Get sessions for date range
       const { data: sessionData, error: sessionError } = await supabase
         .from('vw_site_day_sessions')
         .select('*')
         .eq('site_id', siteId)
-        .gte('session_start_time', start)
-        .lte('session_end_time', end)
-        .maybeSingle();
+        .gte('session_date', startDate)
+        .lte('session_date', endDate)
+        .order('session_date', { ascending: false });
 
       if (sessionError) throw sessionError;
-      setSession(sessionData);
+      setSessions(sessionData || []);
 
-      if (sessionData) {
-        // Get payloads
+      if (sessionData && sessionData.length > 0) {
+        // Get all payloads for these sessions
+        const sessionIds = sessionData.map(s => s.session_id);
         const { data: payloadData, error: payloadError } = await supabase
           .from('vw_session_payloads')
           .select('*')
-          .eq('session_id', sessionData.session_id)
+          .in('session_id', sessionIds)
           .order('captured_at', { ascending: false });
 
         if (payloadError) throw payloadError;
@@ -68,7 +72,7 @@ export default function SiteSessions() {
   // Initial fetch
   useEffect(() => {
     fetchData();
-  }, [siteId, selectedDate]);
+  }, [siteId, startDate, endDate]);
 
   // Realtime updates
   useMultiTableRealtime(
@@ -81,7 +85,9 @@ export default function SiteSessions() {
   const handleSiteChange = (newSiteId: string, newTimezone: string) => {
     setSiteId(newSiteId);
     setTimezone(newTimezone);
-    setSelectedDate(todayInSiteTz(newTimezone));
+    const newToday = todayInSiteTz(newTimezone);
+    setStartDate(newToday);
+    setEndDate(newToday);
   };
 
   return (
@@ -100,10 +106,11 @@ export default function SiteSessions() {
           {isSuperAdmin && <CompanySwitcher />}
           <SiteSelector value={siteId} onChange={handleSiteChange} />
           {siteId && (
-            <DateInSiteTzPicker
-              value={selectedDate}
-              timezone={timezone}
-              onChange={setSelectedDate}
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
             />
           )}
         </div>
@@ -127,16 +134,18 @@ export default function SiteSessions() {
         </div>
       )}
 
-      {!loading && siteId && !session && (
+      {!loading && siteId && sessions.length === 0 && (
         <div className="bg-white rounded-lg shadow p-12 text-center text-gray-500">
-          No session found for selected date
+          No sessions found for selected date range
         </div>
       )}
 
-      {!loading && session && (
+      {!loading && sessions.length > 0 && (
         <>
-          <div className="mb-6">
-            <SessionSummaryCard session={session} />
+          <div className="mb-6 space-y-4">
+            {sessions.map(session => (
+              <SessionSummaryCard key={session.session_id} session={session} />
+            ))}
           </div>
 
           <DeviceWakeGrid
