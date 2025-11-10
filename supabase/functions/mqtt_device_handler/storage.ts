@@ -1,13 +1,15 @@
 /**
- * Phase 3 - Storage Module
- * 
+ * Phase 3 - Storage Module (Idempotent)
+ *
  * Idempotent image upload to Supabase Storage
+ * STABLE FILENAMES - no timestamps (retry-safe)
  */
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
 
 /**
  * Upload image to Supabase Storage with idempotency
+ * Uses stable filename based on device_mac and image_name (NO timestamp)
  * Returns public URL
  */
 export async function uploadImage(
@@ -18,8 +20,9 @@ export async function uploadImage(
   bucketName: string
 ): Promise<string | null> {
   try {
-    const timestamp = Date.now();
-    const fileName = `device_${deviceMac}_${timestamp}_${imageName}`;
+    // STABLE filename: deviceMac/imageName.jpg (NO timestamp)
+    // This makes retries idempotent - they overwrite the same file
+    const fileName = `${deviceMac}/${imageName}.jpg`;
 
     console.log('[Storage] Uploading image:', fileName, `(${imageBuffer.length} bytes)`);
 
@@ -27,7 +30,7 @@ export async function uploadImage(
       .from(bucketName)
       .upload(fileName, imageBuffer, {
         contentType: 'image/jpeg',
-        upsert: false, // Never overwrite
+        upsert: true, // Allow overwrite on retry
       });
 
     if (uploadError) {

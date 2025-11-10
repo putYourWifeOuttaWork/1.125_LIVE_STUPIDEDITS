@@ -1,64 +1,62 @@
 /**
- * Phase 3 - Finalize Module
- * 
- * Assemble image, upload to storage, create observation, publish ACK_OK
+ * Phase 3 - Finalize Module (SQL-Compliant)
+ *
+ * Assemble image, upload to storage, create observation via SQL handler, publish ACK_OK
+ * CALLS fn_image_completion_handler - NO INLINE SQL
  */
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
 import type { MqttClient } from 'npm:mqtt@5.3.4';
-import type { DeviceLineage } from './types.ts';
-import { getBuffer, isComplete, getMissingChunks, assembleImage, clearBuffer } from './idempotency.ts';
+import { getBuffer, getMissingChunks, assembleImage, clearBuffer, withSingleAck } from './idempotency.ts';
 import { uploadImage } from './storage.ts';
 import { publishMissingChunks, publishAckOk } from './ack.ts';
-import { calculateNextWake } from './schedule.ts';
 
 /**
  * Finalize image transmission
- * Checks for missing chunks, assembles, uploads, creates observation
+ * Checks for missing chunks, assembles, uploads, creates observation via SQL handler
  */
 export async function finalizeImage(
   supabase: SupabaseClient,
   client: MqttClient,
   deviceMac: string,
   imageName: string,
-  lineage: DeviceLineage,
+  totalChunks: number,
   bucketName: string
 ): Promise<void> {
   console.log('[Finalize] Starting finalization for:', imageName);
 
   try {
-    const buffer = getBuffer(deviceMac, imageName);
-    if (!buffer) {
-      console.error('[Finalize] No buffer found for:', imageName);
+    const buffer = await getBuffer(supabase, deviceMac, imageName);
+    if (!buffer || !buffer.imageRecord?.image_id) {
+      console.error('[Finalize] No buffer or image_id found for:', imageName);
       return;
     }
 
     // Check for missing chunks
-    const missingChunks = getMissingChunks(deviceMac, imageName);
+    const missingChunks = await getMissingChunks(supabase, deviceMac, imageName, totalChunks);
     if (missingChunks.length > 0) {
       console.log('[Finalize] Missing chunks detected:', missingChunks.length);
       publishMissingChunks(client, deviceMac, imageName, missingChunks);
       return;
     }
 
-    // Assemble image
-    const imageBuffer = assembleImage(deviceMac, imageName);
+    // Assemble image from Postgres chunks
+    const imageBuffer = await assembleImage(supabase, deviceMac, imageName, totalChunks);
     if (!imageBuffer) {
       console.error('[Finalize] Failed to assemble image:', imageName);
-      // Call fn_image_failure_handler
-      await callFailureHandler(supabase, buffer.imageRecord?.image_id, 2, 'Image assembly failed');
+      await callFailureHandler(supabase, buffer.imageRecord.image_id, 2, 'Image assembly failed');
       return;
     }
 
-    // Upload to storage
+    // Upload to storage (stable filename - idempotent)
     const imageUrl = await uploadImage(supabase, deviceMac, imageName, imageBuffer, bucketName);
     if (!imageUrl) {
       console.error('[Finalize] Failed to upload image:', imageName);
-      await callFailureHandler(supabase, buffer.imageRecord?.image_id, 1, 'Image upload failed');
+      await callFailureHandler(supabase, buffer.imageRecord.image_id, 1, 'Image upload failed');
       return;
     }
 
-    // Call fn_image_completion_handler
+    // Call fn_image_completion_handler (creates observation with correct submission_id)
     const { data: result, error } = await supabase.rpc('fn_image_completion_handler', {
       p_image_id: buffer.imageRecord.image_id,
       p_image_url: imageUrl,
@@ -66,7 +64,7 @@ export async function finalizeImage(
 
     if (error || !result || !result.success) {
       console.error('[Finalize] fn_image_completion_handler error:', error || result?.message);
-      await callFailureHandler(supabase, buffer.imageRecord?.image_id, 3, 'Completion handler failed');
+      await callFailureHandler(supabase, buffer.imageRecord.image_id, 3, 'Completion handler failed');
       return;
     }
 
@@ -74,34 +72,50 @@ export async function finalizeImage(
       image_id: result.image_id,
       observation_id: result.observation_id,
       slot_index: result.slot_index,
+      submission_id: result.submission_id,
     });
 
-    // Calculate next wake time
-    const nextWake = calculateNextWake(lineage.wake_schedule_cron, lineage.timezone);
+    // Get next_wake from handler result (computed from cron in SQL)
+    const nextWake = result.next_wake_at || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
 
-    // Publish ACK_OK
-    publishAckOk(client, deviceMac, imageName, nextWake);
+    // Publish ACK_OK exactly once using advisory lock
+    await withSingleAck(supabase, deviceMac, imageName, async () => {
+      publishAckOk(client, deviceMac, imageName, nextWake);
+      return true;
+    });
 
-    // Clear buffer
-    clearBuffer(deviceMac, imageName);
+    // Clear buffer from Postgres
+    await clearBuffer(supabase, deviceMac, imageName);
 
     console.log('[Finalize] Finalization complete for:', imageName);
   } catch (err) {
     console.error('[Finalize] Exception during finalization:', err);
+
+    // Log to async_error_logs
+    try {
+      await supabase.from('async_error_logs').insert({
+        table_name: 'device_images',
+        trigger_name: 'edge_finalize',
+        function_name: 'finalizeImage',
+        payload: { device_mac: deviceMac, image_name: imageName },
+        error_message: err instanceof Error ? err.message : String(err),
+        error_details: { stack: err instanceof Error ? err.stack : null },
+      });
+    } catch (logErr) {
+      console.error('[Finalize] Failed to log error:', logErr);
+    }
   }
 }
 
 /**
- * Call fn_image_failure_handler
+ * Call fn_image_failure_handler (SQL handler)
  */
 async function callFailureHandler(
   supabase: SupabaseClient,
-  imageId: string | undefined,
+  imageId: string,
   errorCode: number,
   errorMessage: string
 ): Promise<void> {
-  if (!imageId) return;
-
   try {
     const { data, error } = await supabase.rpc('fn_image_failure_handler', {
       p_image_id: imageId,
@@ -112,7 +126,7 @@ async function callFailureHandler(
     if (error) {
       console.error('[Finalize] fn_image_failure_handler error:', error);
     } else {
-      console.log('[Finalize] Marked image as failed:', imageId);
+      console.log('[Finalize] Marked image as failed:', imageId, 'alert_created:', data?.alert_created);
     }
   } catch (err) {
     console.error('[Finalize] Exception calling failure handler:', err);
