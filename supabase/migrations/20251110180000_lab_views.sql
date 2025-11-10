@@ -97,7 +97,7 @@ WITH (security_invoker = true)
 AS
 -- Device wake payloads
 SELECT
-  dwp.payload_id as id,
+  dwp.payload_id::text as id,
   'payload' as kind,
   dwp.received_at as ts,
   d.device_name,
@@ -113,7 +113,7 @@ UNION ALL
 
 -- Device images
 SELECT
-  di.image_id as id,
+  di.image_id::text as id,
   'image' as kind,
   di.received_at as ts,
   d.device_name,
