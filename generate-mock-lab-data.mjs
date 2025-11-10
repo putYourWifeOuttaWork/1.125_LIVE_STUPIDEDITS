@@ -14,9 +14,10 @@ import { config } from 'dotenv';
 
 config();
 
+// Use service role key for admin operations (bypasses RLS)
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  process.env.VITE_SUPABASE_SERVICE_ROLE_KEY
 );
 
 // Helper to generate random data
@@ -38,31 +39,24 @@ function addDays(date, days) {
 async function generateMockData() {
   console.log('🚀 Starting mock data generation...\n');
 
-  // Step 1: Get user's company and program
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    console.error('❌ Not authenticated. Please log in first.');
+  // Step 1: Get first company and program (using service role, no auth needed)
+  const { data: companies } = await supabase
+    .from('companies')
+    .select('company_id, name')
+    .limit(1);
+
+  if (!companies || companies.length === 0) {
+    console.error('❌ No companies found. Please create a company first.');
     process.exit(1);
   }
 
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('company_id')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!profile?.company_id) {
-    console.error('❌ No company found for user.');
-    process.exit(1);
-  }
-
-  const companyId = profile.company_id;
-  console.log(`✅ Using company: ${companyId}`);
+  const companyId = companies[0].company_id;
+  console.log(`✅ Using company: ${companies[0].name}`);
 
   // Get a pilot program
   const { data: programs } = await supabase
     .from('pilot_programs')
-    .select('program_id, program_name')
+    .select('program_id, name')
     .eq('company_id', companyId)
     .limit(1);
 
@@ -72,7 +66,7 @@ async function generateMockData() {
   }
 
   const programId = programs[0].program_id;
-  console.log(`✅ Using program: ${programs[0].program_name}\n`);
+  console.log(`✅ Using program: ${programs[0].name}\n`);
 
   // Step 2: Get or create a site
   let { data: sites } = await supabase
@@ -166,7 +160,7 @@ async function generateMockData() {
         session_start_time: new Date(sessionDate.setHours(6, 0, 0, 0)).toISOString(),
         session_end_time: new Date(sessionDate.setHours(18, 0, 0, 0)).toISOString(),
         expected_wake_count: expectedWakes,
-        status: 'active'
+        status: 'locked'
       })
       .select()
       .single();
