@@ -330,6 +330,16 @@ CREATE TABLE public.devices (
   CONSTRAINT devices_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
   CONSTRAINT devices_provisioned_by_user_id_fkey FOREIGN KEY (provisioned_by_user_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.edge_chunk_buffer (
+  chunk_key text NOT NULL,
+  device_mac text NOT NULL,
+  image_name text NOT NULL,
+  chunk_index integer NOT NULL,
+  chunk_data ARRAY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  expires_at timestamp with time zone NOT NULL,
+  CONSTRAINT edge_chunk_buffer_pkey PRIMARY KEY (chunk_key)
+);
 CREATE TABLE public.gasifier_observations (
   observation_id uuid NOT NULL DEFAULT gen_random_uuid(),
   submission_id uuid NOT NULL,
