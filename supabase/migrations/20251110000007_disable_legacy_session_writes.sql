@@ -60,15 +60,19 @@ SELECT
   'legacy' AS source,
   dws.session_id AS wake_id,
   dws.device_id,
-  dws.session_date AS captured_date,
-  dws.created_at AS captured_at,
+  DATE(dws.wake_timestamp) AS captured_date,
+  dws.wake_timestamp AS captured_at,
   NULL::UUID AS site_device_session_id,
   NULL::INT AS wake_window_index,
   NULL::BOOLEAN AS overage_flag,
   dws.image_id,
-  NULL::JSONB AS telemetry_data,
-  NULL::TEXT AS image_status,
-  NULL::TEXT AS payload_status
+  dws.telemetry_data,
+  CASE
+    WHEN dws.transmission_complete = TRUE THEN 'complete'
+    WHEN dws.image_captured = TRUE THEN 'receiving'
+    ELSE 'pending'
+  END AS image_status,
+  dws.status::TEXT AS payload_status
 FROM device_wake_sessions dws
 
 UNION ALL
