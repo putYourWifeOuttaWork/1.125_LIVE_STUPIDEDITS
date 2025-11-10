@@ -22,11 +22,17 @@ export function SiteSelector({ value, onChange }: SiteSelectorProps) {
       try {
         const { data, error } = await supabase
           .from('sites')
-          .select('site_id, site_name, timezone')
-          .order('site_name');
+          .select('site_id, name')
+          .order('name');
 
         if (error) throw error;
-        setSites(data || []);
+        // Map to expected interface format
+        const mappedSites = (data || []).map(site => ({
+          site_id: site.site_id,
+          site_name: site.name,
+          timezone: 'UTC' // Default timezone since sites table doesn't have this column yet
+        }));
+        setSites(mappedSites);
       } catch (error: any) {
         console.error('Error fetching sites:', error);
         toast.error(`Failed to load sites: ${error.message}`);
