@@ -43,29 +43,24 @@ WITH (security_invoker = true)
 AS
 SELECT
   dwp.payload_id,
-  dwp.session_id,
+  dwp.site_device_session_id as session_id,
   dwp.device_id,
   dwp.captured_at,
   dwp.received_at,
-  dwp.wake_status,
+  dwp.payload_status as wake_status,
   dwp.battery_voltage,
-  dwp.signal_strength,
+  dwp.wifi_rssi as signal_strength,
   d.device_name,
   d.device_mac,
-  d.device_type,
-  -- Count images for this payload
-  (
-    SELECT COUNT(*)
-    FROM public.device_images di
-    WHERE di.payload_id = dwp.payload_id
-  ) as image_count,
-  -- Count complete images
-  (
-    SELECT COUNT(*)
-    FROM public.device_images di
-    WHERE di.payload_id = dwp.payload_id
-    AND di.image_status = 'complete'
-  ) as complete_image_count
+  'esp32' as device_type,
+  -- Image count from single image_id reference
+  CASE WHEN dwp.image_id IS NOT NULL THEN 1 ELSE 0 END as image_count,
+  -- Complete image count
+  CASE
+    WHEN dwp.image_id IS NOT NULL AND dwp.image_status = 'complete'
+    THEN 1
+    ELSE 0
+  END as complete_image_count
 FROM public.device_wake_payloads dwp
 JOIN public.devices d ON d.device_id = dwp.device_id;
 
@@ -77,24 +72,23 @@ AS
 SELECT
   di.image_id,
   di.device_id,
-  di.payload_id,
+  NULL::uuid as payload_id,
   di.image_name,
   di.captured_at,
   di.received_at,
   di.total_chunks,
   di.received_chunks,
-  di.image_status,
+  di.status as image_status,
   di.image_url,
   di.retry_count,
   di.resent_received_at,
   d.device_name,
   d.device_mac,
   -- Observation linkage
-  po.observation_id,
-  po.submission_id
+  di.observation_id,
+  di.submission_id
 FROM public.device_images di
-JOIN public.devices d ON d.device_id = di.device_id
-LEFT JOIN public.petri_observations po ON po.image_id = di.image_id;
+JOIN public.devices d ON d.device_id = di.device_id;
 
 -- 4. Live Ingest Feed View
 -- Shows recent ingestion events across all types
@@ -108,7 +102,7 @@ SELECT
   dwp.received_at as ts,
   d.device_name,
   d.device_mac,
-  dwp.wake_status as status,
+  dwp.payload_status as status,
   NULL::text as image_name,
   NULL::integer as chunks_received,
   NULL::integer as total_chunks
@@ -124,7 +118,7 @@ SELECT
   di.received_at as ts,
   d.device_name,
   d.device_mac,
-  di.image_status as status,
+  di.status as status,
   di.image_name,
   di.received_chunks as chunks_received,
   di.total_chunks
@@ -133,17 +127,17 @@ JOIN public.devices d ON d.device_id = di.device_id
 
 UNION ALL
 
--- Petri observations
+-- Device-generated observations
 SELECT
-  po.observation_id as id,
+  di.observation_id::text as id,
   'observation' as kind,
-  po.created_at as ts,
+  di.created_at as ts,
   d.device_name,
   d.device_mac,
   'linked' as status,
   di.image_name,
   NULL::integer as chunks_received,
   NULL::integer as total_chunks
-FROM public.petri_observations po
-JOIN public.device_images di ON di.image_id = po.image_id
-JOIN public.devices d ON d.device_id = di.device_id;
+FROM public.device_images di
+JOIN public.devices d ON d.device_id = di.device_id
+WHERE di.observation_id IS NOT NULL;
