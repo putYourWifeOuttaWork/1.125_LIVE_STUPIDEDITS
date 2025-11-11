@@ -58,11 +58,16 @@ CREATE POLICY "Super admins can view session creation logs"
   ON session_creation_log FOR SELECT TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM user_roles
-      WHERE user_roles.user_id = auth.uid()
-        AND user_roles.role = 'super_admin'
+      SELECT 1 FROM users
+      WHERE users.user_id = auth.uid()
+        AND users.is_super_admin = true
     )
   );
+
+-- Service role can insert logs (for automated runs)
+CREATE POLICY "Service role can insert session creation logs"
+  ON session_creation_log FOR INSERT TO service_role
+  WITH CHECK (true);
 
 COMMENT ON TABLE session_creation_log IS 'Audit log for automatic session creation runs. Tracks successes, failures, and execution time.';
 
