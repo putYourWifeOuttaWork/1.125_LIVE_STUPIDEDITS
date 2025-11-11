@@ -266,34 +266,39 @@ COMMENT ON FUNCTION auto_create_daily_sessions_timezone_aware() IS
 'Create sessions only for sites where it is currently midnight in their local timezone. Run hourly to catch all timezones.';
 
 -- ==========================================
--- PG_CRON SETUP
+-- PG_CRON SETUP (OPTIONAL)
 -- ==========================================
 
--- Enable pg_cron extension
+-- NOTE: pg_cron may not be available in all Supabase instances
+-- If pg_cron is not available, use the edge function approach:
+-- 1. Edge function already exists: supabase/functions/auto_create_daily_sessions.ts
+-- 2. Schedule it via external cron service (cron-job.org, Vercel Cron, etc.)
+-- 3. Or use Supabase Edge Functions native scheduling
+
+-- If pg_cron IS available, uncomment these lines:
+/*
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
--- Schedule daily session creation at midnight UTC
--- This creates sessions for ALL sites at once (simple approach)
 SELECT cron.schedule(
   'auto-create-device-sessions-daily',
-  '0 0 * * *', -- Every day at midnight UTC
-  $$
-    SELECT auto_create_daily_sessions();
-  $$
+  '0 0 * * *',
+  $$ SELECT auto_create_daily_sessions(); $$
 );
-
--- Alternative: Hourly check for timezone-aware scheduling
--- Uncomment to use timezone-aware approach instead:
--- SELECT cron.schedule(
---   'auto-create-device-sessions-hourly',
---   '0 * * * *', -- Every hour
---   $$
---     SELECT auto_create_daily_sessions_timezone_aware();
---   $$
--- );
+*/
 
 -- ==========================================
--- HELPER: MANUAL TRIGGER FOR TESTING
+-- MANUAL TESTING
 -- ==========================================
 
-COMMENT ON EXTENSION pg_cron IS 'Automatic session creation scheduled at midnight UTC. Run manually with: SELECT auto_create_daily_sessions();';
+-- To test session creation manually, run:
+-- SELECT auto_create_daily_sessions();
+
+-- To test timezone-aware version:
+-- SELECT auto_create_daily_sessions_timezone_aware();
+
+COMMENT ON FUNCTION auto_create_daily_sessions() IS
+'Create daily sessions for all active sites. Can be called manually or scheduled via:
+1. pg_cron (if available in your Supabase instance)
+2. Edge function: supabase/functions/auto_create_daily_sessions.ts
+3. External cron service calling the edge function
+Run manually for testing: SELECT auto_create_daily_sessions();';

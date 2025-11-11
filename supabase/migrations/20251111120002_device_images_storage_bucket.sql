@@ -143,17 +143,9 @@ COMMENT ON FUNCTION fn_extract_company_from_path IS
 -- Add index on device_images.image_url for fast lookups
 CREATE INDEX IF NOT EXISTS idx_device_images_url ON device_images(image_url) WHERE image_url IS NOT NULL;
 
--- Add check constraint to ensure image_url uses correct bucket
-ALTER TABLE device_images
-DROP CONSTRAINT IF EXISTS chk_device_images_url_bucket;
+-- Note: NOT adding check constraint because existing rows may have URLs from other buckets
+-- New uploads will use device-images bucket, but we preserve existing data
+-- If needed in future, migrate old URLs first, then add constraint
 
-ALTER TABLE device_images
-ADD CONSTRAINT chk_device_images_url_bucket
-CHECK (
-  image_url IS NULL
-  OR image_url LIKE '%/storage/v1/object/public/device-images/%'
-  OR image_url LIKE '%/storage/v1/object/sign/device-images/%'
-);
-
-COMMENT ON CONSTRAINT chk_device_images_url_bucket ON device_images IS
-'Ensure image_url points to device-images bucket in Supabase Storage';
+COMMENT ON TABLE device_images IS
+'Device captured images. New images use device-images bucket with hierarchical paths: company_id/site_id/device_mac/image_name';
