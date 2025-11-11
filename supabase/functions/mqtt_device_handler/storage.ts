@@ -9,7 +9,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
 
 /**
  * Upload image to Supabase Storage with idempotency
- * Uses stable filename based on device_mac and image_name (NO timestamp)
+ * Uses hierarchical path: company_id/site_id/device_mac/image_name
  * Returns public URL
  */
 export async function uploadImage(
@@ -20,33 +20,73 @@ export async function uploadImage(
   bucketName: string
 ): Promise<string | null> {
   try {
-    // STABLE filename: deviceMac/imageName.jpg (NO timestamp)
-    // This makes retries idempotent - they overwrite the same file
-    const fileName = `${deviceMac}/${imageName}.jpg`;
+    // First, resolve device lineage to get company_id and site_id
+    const { data: lineageData, error: lineageError } = await supabase.rpc(
+      'fn_resolve_device_lineage',
+      { p_device_mac: deviceMac }
+    );
 
-    console.log('[Storage] Uploading image:', fileName, `(${imageBuffer.length} bytes)`);
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from(bucketName)
-      .upload(fileName, imageBuffer, {
-        contentType: 'image/jpeg',
-        upsert: true, // Allow overwrite on retry
-      });
-
-    if (uploadError) {
-      console.error('[Storage] Upload error:', uploadError);
-      return null;
+    if (lineageError || !lineageData) {
+      console.error('[Storage] Failed to resolve device lineage:', lineageError);
+      // Fallback to simple path if lineage resolution fails
+      const fileName = `${deviceMac}/${imageName}`;
+      return await uploadWithPath(supabase, bucketName, fileName, imageBuffer);
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from(bucketName)
-      .getPublicUrl(fileName);
+    // Build hierarchical path using SQL function
+    const { data: pathData, error: pathError } = await supabase.rpc(
+      'fn_build_device_image_path',
+      {
+        p_company_id: lineageData.company_id,
+        p_site_id: lineageData.site_id,
+        p_device_mac: deviceMac,
+        p_image_name: imageName,
+      }
+    );
 
-    console.log('[Storage] Upload successful:', urlData.publicUrl);
-    return urlData.publicUrl;
+    if (pathError || !pathData) {
+      console.error('[Storage] Failed to build image path:', pathError);
+      // Fallback to simple path
+      const fileName = `${deviceMac}/${imageName}`;
+      return await uploadWithPath(supabase, bucketName, fileName, imageBuffer);
+    }
+
+    return await uploadWithPath(supabase, bucketName, pathData, imageBuffer);
   } catch (err) {
     console.error('[Storage] Exception during upload:', err);
     return null;
   }
+}
+
+/**
+ * Internal helper: Upload image to storage with given path
+ */
+async function uploadWithPath(
+  supabase: SupabaseClient,
+  bucketName: string,
+  filePath: string,
+  imageBuffer: Uint8Array
+): Promise<string | null> {
+  console.log('[Storage] Uploading image:', filePath, `(${imageBuffer.length} bytes)`);
+
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from(bucketName)
+    .upload(filePath, imageBuffer, {
+      contentType: 'image/jpeg',
+      upsert: true, // Allow overwrite on retry
+      cacheControl: '3600', // Cache for 1 hour
+    });
+
+  if (uploadError) {
+    console.error('[Storage] Upload error:', uploadError);
+    return null;
+  }
+
+  // Get public URL
+  const { data: urlData } = supabase.storage
+    .from(bucketName)
+    .getPublicUrl(filePath);
+
+  console.log('[Storage] Upload successful:', urlData.publicUrl);
+  return urlData.publicUrl;
 }

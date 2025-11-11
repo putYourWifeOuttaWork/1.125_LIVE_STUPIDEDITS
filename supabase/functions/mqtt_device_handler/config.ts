@@ -19,7 +19,7 @@ export function loadConfig(): EdgeConfig {
       serviceKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     },
     storage: {
-      bucket: Deno.env.get('STORAGE_BUCKET') || 'petri-images',
+      bucket: Deno.env.get('STORAGE_BUCKET') || 'device-images',
     },
     timeouts: {
       bufferCleanupMinutes: parseInt(Deno.env.get('BUFFER_CLEANUP_MINUTES') || '30'),

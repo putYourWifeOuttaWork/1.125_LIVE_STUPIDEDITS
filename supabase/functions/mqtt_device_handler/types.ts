@@ -59,13 +59,18 @@ export interface AckMessage {
 export interface DeviceLineage {
   device_id: string; // UUID from database
   device_mac: string; // MAC address
-  company_id: string;
-  program_id: string;
+  device_name: string; // Device friendly name
   site_id: string;
+  site_name: string;
+  program_id: string;
+  program_name: string;
+  company_id: string;
+  company_name: string;
   timezone: string;
   wake_schedule_cron: string | null;
   is_active: boolean;
   provisioning_status: string;
+  error?: string; // Present if lineage incomplete
 }
 
 export interface SiteSessionInfo {

@@ -57,19 +57,43 @@ export async function handleMetadata(
   console.log('[Ingest] Metadata received:', payload.image_name, 'chunks:', payload.total_chunks_count);
 
   try {
-    // First resolve device_mac to device_id (UUID)
-    const { data: deviceData, error: deviceError } = await supabase
-      .from('devices')
-      .select('device_id')
-      .eq('device_mac', payload.device_id)
-      .maybeSingle();
+    // Resolve device MAC to complete lineage using SQL function
+    const { data: lineageData, error: lineageError } = await supabase.rpc(
+      'fn_resolve_device_lineage',
+      { p_device_mac: payload.device_id }
+    );
 
-    if (deviceError || !deviceData) {
-      console.error('[Ingest] Device not found:', payload.device_id);
+    if (lineageError) {
+      console.error('[Ingest] Error resolving device lineage:', lineageError);
       return;
     }
 
-    const deviceId = deviceData.device_id;
+    if (!lineageData) {
+      console.error('[Ingest] Device not found or inactive:', payload.device_id);
+      return;
+    }
+
+    // Check for incomplete lineage
+    if (lineageData.error) {
+      console.error('[Ingest] Incomplete device lineage:', lineageData.error, lineageData);
+      return;
+    }
+
+    // Validate complete lineage
+    if (!lineageData.device_id || !lineageData.site_id || !lineageData.program_id || !lineageData.company_id) {
+      console.error('[Ingest] Missing required lineage fields:', lineageData);
+      return;
+    }
+
+    console.log('[Ingest] Device lineage resolved:', {
+      device: lineageData.device_name,
+      site: lineageData.site_name,
+      program: lineageData.program_name,
+      company: lineageData.company_name,
+      timezone: lineageData.timezone,
+    });
+
+    const deviceId = lineageData.device_id;
 
     // Prepare telemetry data JSON with schema-compliant field names
     const telemetryData = {

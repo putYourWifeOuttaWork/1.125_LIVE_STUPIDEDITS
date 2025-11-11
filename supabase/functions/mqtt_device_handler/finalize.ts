@@ -10,6 +10,7 @@ import type { MqttClient } from 'npm:mqtt@5.3.4';
 import { getBuffer, getMissingChunks, assembleImage, clearBuffer, withSingleAck } from './idempotency.ts';
 import { uploadImage } from './storage.ts';
 import { publishMissingChunks, publishAckOk } from './ack.ts';
+import { calculateNextWake } from './scheduler.ts';
 
 /**
  * Finalize image transmission
@@ -36,7 +37,7 @@ export async function finalizeImage(
     const missingChunks = await getMissingChunks(supabase, deviceMac, imageName, totalChunks);
     if (missingChunks.length > 0) {
       console.log('[Finalize] Missing chunks detected:', missingChunks.length);
-      publishMissingChunks(client, deviceMac, imageName, missingChunks);
+      await publishMissingChunks(client, deviceMac, imageName, missingChunks, supabase);
       return;
     }
 
@@ -75,12 +76,31 @@ export async function finalizeImage(
       submission_id: result.submission_id,
     });
 
-    // Get next_wake from handler result (computed from cron in SQL)
-    const nextWake = result.next_wake_at || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    // Calculate next wake time using device's schedule
+    let nextWake: string;
+
+    if (result.next_wake_at) {
+      // Use value from SQL handler if provided
+      nextWake = result.next_wake_at;
+    } else {
+      // Fetch device lineage to get wake schedule
+      const { data: lineageData } = await supabase.rpc('fn_resolve_device_lineage', {
+        p_device_mac: deviceMac,
+      });
+
+      if (lineageData?.wake_schedule_cron) {
+        nextWake = calculateNextWake(lineageData.wake_schedule_cron);
+        console.log('[Finalize] Calculated next wake from cron:', nextWake);
+      } else {
+        // Fallback: 12 hours from now
+        nextWake = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+        console.warn('[Finalize] No wake schedule found, using 12h fallback');
+      }
+    }
 
     // Publish ACK_OK exactly once using advisory lock
     await withSingleAck(supabase, deviceMac, imageName, async () => {
-      publishAckOk(client, deviceMac, imageName, nextWake);
+      await publishAckOk(client, deviceMac, imageName, nextWake, supabase);
       return true;
     });
 
