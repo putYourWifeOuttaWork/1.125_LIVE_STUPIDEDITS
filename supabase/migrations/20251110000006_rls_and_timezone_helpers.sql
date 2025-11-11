@@ -80,9 +80,16 @@ GRANT EXECUTE ON FUNCTION fn_get_site_timezone(UUID) TO authenticated, service_r
 -- RLS POLICY: device_schedule_changes SELECT
 -- ==========================================
 
--- Drop existing restrictive policies if any
+-- Drop ALL existing policies from migration 000 and any previous attempts
 DROP POLICY IF EXISTS "Users can view device schedules" ON device_schedule_changes;
 DROP POLICY IF EXISTS "Admins manage schedules in their company" ON device_schedule_changes;
+DROP POLICY IF EXISTS "Users see schedule changes in their company" ON device_schedule_changes;
+DROP POLICY IF EXISTS "Admins manage schedule changes in their company" ON device_schedule_changes;
+DROP POLICY IF EXISTS "Admins update schedule changes in their company" ON device_schedule_changes;
+DROP POLICY IF EXISTS "Users can view device schedules in their company" ON device_schedule_changes;
+DROP POLICY IF EXISTS "Admins can create schedule changes" ON device_schedule_changes;
+DROP POLICY IF EXISTS "Admins can update schedule changes" ON device_schedule_changes;
+DROP POLICY IF EXISTS "Admins can delete schedule changes" ON device_schedule_changes;
 
 -- Allow authenticated users to view device schedules in their company
 CREATE POLICY "Users can view device schedules in their company"
