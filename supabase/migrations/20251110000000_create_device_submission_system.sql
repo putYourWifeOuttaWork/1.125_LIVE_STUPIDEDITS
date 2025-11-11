@@ -79,6 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_site_device_sessions_site_date ON site_device_ses
 -- RLS
 ALTER TABLE site_device_sessions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users see site sessions in their company" ON site_device_sessions;
 CREATE POLICY "Users see site sessions in their company"
   ON site_device_sessions FOR SELECT TO authenticated
   USING (company_id = get_active_company_id());
@@ -149,6 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_device_wake_payloads_telemetry ON device_wake_pay
 -- RLS
 ALTER TABLE device_wake_payloads ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users see payloads in their company" ON device_wake_payloads;
 CREATE POLICY "Users see payloads in their company"
   ON device_wake_payloads FOR SELECT TO authenticated
   USING (company_id = get_active_company_id());
@@ -192,10 +194,12 @@ CREATE INDEX IF NOT EXISTS idx_device_schedule_changes_pending ON device_schedul
 -- RLS
 ALTER TABLE device_schedule_changes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users see schedule changes in their company" ON device_schedule_changes;
 CREATE POLICY "Users see schedule changes in their company"
   ON device_schedule_changes FOR SELECT TO authenticated
   USING (company_id = get_active_company_id());
 
+DROP POLICY IF EXISTS "Admins manage schedule changes in their company" ON device_schedule_changes;
 CREATE POLICY "Admins manage schedule changes in their company"
   ON device_schedule_changes FOR INSERT TO authenticated
   WITH CHECK (
@@ -207,6 +211,7 @@ CREATE POLICY "Admins manage schedule changes in their company"
     )
   );
 
+DROP POLICY IF EXISTS "Admins update schedule changes in their company" ON device_schedule_changes;
 CREATE POLICY "Admins update schedule changes in their company"
   ON device_schedule_changes FOR UPDATE TO authenticated
   USING (
