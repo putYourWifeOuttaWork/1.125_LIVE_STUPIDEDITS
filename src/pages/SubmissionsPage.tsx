@@ -15,7 +15,9 @@ import { Site } from '../lib/types';
 import { toast } from 'react-toastify';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import SubmissionCard from '../components/submissions/SubmissionCard';
+import DeviceSubmissionCard, { DeviceSubmission } from '../components/submissions/DeviceSubmissionCard';
 import { useSubmissions } from '../hooks/useSubmissions';
+import { useSiteDeviceSessions } from '../hooks/useSiteDeviceSessions';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import SubmissionCardSkeleton from '../components/submissions/SubmissionCardSkeleton';
@@ -48,12 +50,19 @@ const SubmissionsPage = () => {
   const queryClient = useQueryClient();
   
   // Use the useSubmissions hook to get access to submissions and related functions
-  const { 
-    submissions, 
-    loading: submissionsLoading, 
+  const {
+    submissions,
+    loading: submissionsLoading,
     fetchSubmissions,
-    deleteSubmission 
+    deleteSubmission
   } = useSubmissions(siteId);
+
+  // Fetch device submissions for this site
+  const {
+    sessions: deviceSessions,
+    isLoading: deviceSessionsLoading,
+    refetchSessions: refetchDeviceSessions
+  } = useSiteDeviceSessions(siteId);
   
   // Session status query
   const sessionStatusesQuery = useQuery({
@@ -215,26 +224,65 @@ const SubmissionsPage = () => {
     }
   };
 
-  // Filter out cancelled sessions from the search results
+  // Merge manual submissions and device submissions into unified list
+  type UnifiedSubmission = typeof submissions[0] & { submission_type: 'manual' | 'device'; device_submission?: DeviceSubmission };
+
+  const allSubmissions: UnifiedSubmission[] = [
+    // Manual submissions
+    ...submissions.map(sub => ({
+      ...sub,
+      submission_type: 'manual' as const,
+      created_at: sub.created_at || new Date().toISOString()
+    })),
+    // Device submissions (map to match submission structure for sorting)
+    ...deviceSessions.map(session => ({
+      submission_id: session.session_id,
+      site_id: session.site_id,
+      program_id: session.program_id,
+      created_at: session.created_at,
+      submission_type: 'device' as const,
+      device_submission: session,
+      global_submission_id: null,
+      notes: null,
+      temperature: null,
+      humidity: null,
+    } as UnifiedSubmission))
+  ].sort((a, b) => {
+    // Sort by created_at descending (newest first)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  // Filter out cancelled sessions and apply search
   const filteredSubmissions = debouncedSearchQuery && searchDelayCompleted
-    ? submissions
-        .filter(submission => 
-          // First filter out cancelled sessions
-          !sessionStatuses[submission.submission_id] || 
-          sessionStatuses[submission.submission_id] !== 'Cancelled'
-        )
-        .filter(submission => 
-          // Then apply search filter
-          (submission.notes && submission.notes.toLowerCase().includes(debouncedSearchQuery.toLowerCase())) ||
-          submission.submission_id.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-          (submission.global_submission_id && 
-           submission.global_submission_id.toString().includes(debouncedSearchQuery))
-        )
-    : submissions.filter(submission => 
+    ? allSubmissions
+        .filter(submission => {
+          // Filter out cancelled manual sessions
+          if (submission.submission_type === 'manual') {
+            return !sessionStatuses[submission.submission_id] ||
+              sessionStatuses[submission.submission_id] !== 'Cancelled';
+          }
+          return true; // Include all device submissions
+        })
+        .filter(submission => {
+          // Apply search filter
+          if (submission.submission_type === 'manual') {
+            return (submission.notes && submission.notes.toLowerCase().includes(debouncedSearchQuery.toLowerCase())) ||
+              submission.submission_id.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+              (submission.global_submission_id &&
+               submission.global_submission_id.toString().includes(debouncedSearchQuery));
+          } else {
+            // Search device submissions by session date or ID
+            return submission.submission_id.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+          }
+        })
+    : allSubmissions.filter(submission => {
         // Just filter out cancelled sessions when no search query
-        !sessionStatuses[submission.submission_id] || 
-        sessionStatuses[submission.submission_id] !== 'Cancelled'
-      );
+        if (submission.submission_type === 'manual') {
+          return !sessionStatuses[submission.submission_id] ||
+            sessionStatuses[submission.submission_id] !== 'Cancelled';
+        }
+        return true;
+      });
 
   // Only show loading screen on initial load when we have no data
   if ((programLoading || submissionsLoading) && !selectedProgram) {
@@ -256,7 +304,8 @@ const SubmissionsPage = () => {
     );
   }
 
-  const isLoading = submissionsLoading || sessionStatusesQuery.isLoading || !searchDelayCompleted;
+  const isLoading = submissionsLoading || deviceSessionsLoading || sessionStatusesQuery.isLoading || !searchDelayCompleted;
+  const hasAnyData = submissions.length > 0 || deviceSessions.length > 0;
 
   return (
     <div className="animate-fade-in pb-20 md:pb-0">
@@ -308,7 +357,7 @@ const SubmissionsPage = () => {
         </div>
       </div>
 
-      {submissions.length > 0 && (
+      {hasAnyData && (
         <div className="relative mb-4 md:mb-6">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-gray-400" />
@@ -323,8 +372,8 @@ const SubmissionsPage = () => {
           />
         </div>
       )}
-      
-      {submissions.length === 0 && !isLoading ? (
+
+      {!hasAnyData && !isLoading ? (
         <div className="text-center py-8 md:py-12 bg-gray-50 rounded-lg border border-gray-200" data-testid="empty-submissions-message">
           <FileText className="mx-auto h-10 w-10 md:h-12 md:w-12 text-gray-400" />
           <h3 className="mt-2 text-lg font-medium text-gray-900">No submissions yet</h3>
@@ -361,9 +410,23 @@ const SubmissionsPage = () => {
       ) : (
         <div className="space-y-3 md:space-y-4" data-testid="submissions-list">
           {filteredSubmissions.map(submission => {
+            // Render device submission card
+            if (submission.submission_type === 'device' && submission.device_submission) {
+              return (
+                <DeviceSubmissionCard
+                  key={submission.submission_id}
+                  submission={submission.device_submission}
+                  programId={programId || ''}
+                  siteId={siteId || ''}
+                  testId={`device-submission-card-${submission.submission_id}`}
+                />
+              );
+            }
+
+            // Render manual submission card
             const sessionStatus = sessionStatuses[submission.submission_id];
             const lastActivityTime = lastActivityTimes[submission.submission_id];
-            
+
             return (
               <SubmissionCard
                 key={submission.submission_id}
