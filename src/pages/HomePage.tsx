@@ -28,6 +28,8 @@ import useWeather from '../hooks/useWeather';
 import AnalyticsChart from '../components/dashboard/AnalyticsChart';
 import UnclaimedSessionsCard from '../components/submissions/UnclaimedSessionsCard';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSiteDeviceSessions } from '../hooks/useSiteDeviceSessions';
+import SiteDeviceSessionCard from '../components/devices/SiteDeviceSessionCard';
 
 // Type for recent submission from the get_recent_submissions RPC
 interface RecentSubmission {
@@ -79,11 +81,18 @@ const HomePage = () => {
   const [hasUserManuallySetWeather, setHasUserManuallySetWeather] = useState(false);
   
   // Get session store for sessions drawer
-  const { 
+  const {
     setIsSessionsDrawerOpen,
-    unclaimedSessions, 
-    isLoading: sessionsLoading 
+    unclaimedSessions,
+    isLoading: sessionsLoading
   } = useSessionStore();
+
+  // Get device sessions for selected site
+  const {
+    sessions: deviceSessions,
+    isLoading: deviceSessionsLoading,
+    refetchSessions: refetchDeviceSessions
+  } = useSiteDeviceSessions(selectedSiteId || undefined);
   
   // Pre-select the first active program when the page loads, but only once
   useEffect(() => {
@@ -734,7 +743,53 @@ const HomePage = () => {
           </CardContent>
         </Card>
       )}
-      
+
+      {/* Device Sessions Card - Only shown if there are device sessions or a site is selected */}
+      {(deviceSessions.length > 0 || selectedSite) && (
+        <Card className="mb-6">
+          <CardHeader className="flex justify-between items-center">
+            <div className="flex items-center">
+              <Clock className="mr-2 h-5 w-5 text-blue-500" />
+              <h2 className="text-lg font-semibold">Device Sessions</h2>
+            </div>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refetchDeviceSessions}
+              >
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {deviceSessionsLoading ? (
+              <div className="flex justify-center p-6">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : deviceSessions.length === 0 ? (
+              <div className="text-center py-8">
+                <Clock className="mx-auto h-12 w-12 text-gray-300" />
+                <p className="text-gray-600 mt-2">No device sessions found</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Device sessions are automatically created when devices wake up and send data
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {deviceSessions.map((session) => (
+                  <SiteDeviceSessionCard
+                    key={session.session_id}
+                    session={session}
+                    testId={`device-session-${session.session_id}`}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Analytics Chart - Only shown if a program or site is selected */}
       {(selectedProgramId || selectedSiteId) && (
         <Card>

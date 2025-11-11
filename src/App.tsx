@@ -40,6 +40,7 @@ const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const DevicePoolPage = lazy(() => import('./pages/DevicePoolPage'));
 const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
 const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
+const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -362,6 +363,11 @@ function App() {
               <Route path="/programs/:programId/sites/:siteId/submissions/:submissionId/edit" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <SubmissionEditPage />
+                </Suspense>
+              } />
+              <Route path="/programs/:programId/sites/:siteId/device-sessions/:sessionId" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <SiteDeviceSessionDetailPage />
                 </Suspense>
               } />
               <Route path="/programs/:programId/sites/:siteId/template" element={
