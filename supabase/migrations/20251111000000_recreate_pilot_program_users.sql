@@ -219,6 +219,7 @@ DECLARE
   v_entry_count INTEGER;
   v_user_count INTEGER;
   v_program_count INTEGER;
+  v_sample_record RECORD;
 BEGIN
   -- Check table exists
   SELECT EXISTS (
@@ -241,7 +242,9 @@ BEGIN
   -- Sample some entries
   IF v_entry_count > 0 THEN
     RAISE NOTICE 'Sample entries:';
-    FOR i IN (
+    
+    -- Loop through sample records
+    FOR v_sample_record IN (
       SELECT 
         ppu.user_email,
         pp.name as program_name,
@@ -252,7 +255,11 @@ BEGIN
       JOIN companies c ON c.company_id = pp.company_id
       LIMIT 5
     ) LOOP
-      RAISE NOTICE '  - % -> % (%) [Company: %]', i.user_email, i.program_name, i.role, i.company_name;
+      RAISE NOTICE '  - % -> % (%) [Company: %]', 
+        v_sample_record.user_email, 
+        v_sample_record.program_name, 
+        v_sample_record.role, 
+        v_sample_record.company_name;
     END LOOP;
   END IF;
 END $$;
