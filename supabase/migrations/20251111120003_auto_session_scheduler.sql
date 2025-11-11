@@ -59,7 +59,7 @@ CREATE POLICY "Super admins can view session creation logs"
   USING (
     EXISTS (
       SELECT 1 FROM users
-      WHERE users.user_id = auth.uid()
+      WHERE users.id = auth.uid()
         AND users.is_super_admin = true
     )
   );
