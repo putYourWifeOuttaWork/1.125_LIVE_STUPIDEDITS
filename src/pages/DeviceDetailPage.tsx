@@ -291,6 +291,56 @@ const DeviceDetailPage = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Zone & Placement Card */}
+          <Card>
+            <CardHeader>
+              <h2 className="text-lg font-semibold">Zone & Placement</h2>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {device.zone_label ? (
+                <>
+                  <div>
+                    <p className="text-sm text-gray-500">Zone</p>
+                    <p className="font-medium">{device.zone_label}</p>
+                  </div>
+                  {device.placement_json?.x !== undefined && device.placement_json?.y !== undefined && (
+                    <div>
+                      <p className="text-sm text-gray-500">Coordinates (X, Y)</p>
+                      <p className="font-medium font-mono">
+                        {device.placement_json.x}, {device.placement_json.y}
+                      </p>
+                    </div>
+                  )}
+                  {device.placement_json?.height && (
+                    <div>
+                      <p className="text-sm text-gray-500">Height/Position</p>
+                      <p className="font-medium capitalize">{device.placement_json.height.replace(/_/g, ' ')}</p>
+                    </div>
+                  )}
+                  {device.placement_json?.notes && (
+                    <div className="pt-2 border-t">
+                      <p className="text-sm text-gray-500 mb-1">Placement Notes</p>
+                      <p className="text-sm">{device.placement_json.notes}</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <MapPin size={32} className="text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">No zone or placement assigned</p>
+                  {isAdmin && (
+                    <button
+                      onClick={() => setShowEditModal(true)}
+                      className="text-sm text-primary-600 hover:text-primary-800 mt-2"
+                    >
+                      Add placement details →
+                    </button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-6">

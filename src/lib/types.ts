@@ -320,6 +320,14 @@ export type Device = {
   next_wake_at: string | null;
   wake_schedule_cron: string | null;
   battery_voltage: number | null;
+  zone_id: string | null;
+  zone_label: string | null;
+  placement_json: {
+    x?: number;
+    y?: number;
+    height?: string;
+    notes?: string;
+  } | null;
   battery_health_percent: number | null;
   wifi_ssid: string | null;
   mqtt_client_id: string | null;

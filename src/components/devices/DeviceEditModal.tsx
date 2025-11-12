@@ -16,6 +16,13 @@ export interface DeviceUpdateData {
   device_name?: string;
   wake_schedule_cron?: string;
   notes?: string;
+  zone_label?: string;
+  placement_json?: {
+    x?: number;
+    y?: number;
+    height?: string;
+    notes?: string;
+  };
 }
 
 const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalProps) => {
@@ -23,6 +30,8 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
     device_name: device.device_name || '',
     wake_schedule_cron: device.wake_schedule_cron || '',
     notes: device.notes || '',
+    zone_label: device.zone_label || '',
+    placement_json: device.placement_json || { x: undefined, y: undefined, height: '', notes: '' },
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -171,6 +180,115 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
             <p className="text-xs text-gray-500 mt-1">
               Internal notes about this device
             </p>
+          </div>
+
+          {/* Zone and Placement Section */}
+          <div className="border-t border-gray-200 pt-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Zone & Placement</h3>
+
+            {/* Zone Label */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Zone Label
+              </label>
+              <Input
+                type="text"
+                value={formData.zone_label}
+                onChange={(e) => handleChange('zone_label', e.target.value)}
+                placeholder="e.g., North Corner, Zone A, Room 101"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Human-readable zone identifier for spatial tracking
+              </p>
+            </div>
+
+            {/* X,Y Coordinates */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  X Coordinate
+                </label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.placement_json?.x ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                    setFormData(prev => ({
+                      ...prev,
+                      placement_json: { ...prev.placement_json, x: val }
+                    }));
+                  }}
+                  placeholder="10.5"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Y Coordinate
+                </label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.placement_json?.y ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                    setFormData(prev => ({
+                      ...prev,
+                      placement_json: { ...prev.placement_json, y: val }
+                    }));
+                  }}
+                  placeholder="25.3"
+                />
+              </div>
+            </div>
+
+            {/* Placement Height */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Placement Height/Position
+              </label>
+              <select
+                value={formData.placement_json?.height || ''}
+                onChange={(e) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    placement_json: { ...prev.placement_json, height: e.target.value }
+                  }));
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="">Select height...</option>
+                <option value="floor">Floor mounted</option>
+                <option value="wall_low">Wall mounted (low)</option>
+                <option value="wall_mid">Wall mounted (mid)</option>
+                <option value="wall_high">Wall mounted (high)</option>
+                <option value="ceiling">Ceiling mounted</option>
+                <option value="shelf">On shelf</option>
+                <option value="desk">On desk/table</option>
+              </select>
+            </div>
+
+            {/* Placement Notes */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Placement Notes
+              </label>
+              <textarea
+                value={formData.placement_json?.notes || ''}
+                onChange={(e) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    placement_json: { ...prev.placement_json, notes: e.target.value }
+                  }));
+                }}
+                placeholder="e.g., Near door, above workbench, next to window..."
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Additional context about device placement
+              </p>
+            </div>
           </div>
 
           {/* Current Info */}
