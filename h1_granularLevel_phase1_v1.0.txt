@@ -1,0 +1,87 @@
+ROLE: Senior Supabase + Deno Edge + React/TS engineer. Add data foundations + telemetry-only ingestion + tiny UI hooks.
+CONSTRAINTS: No breaking changes to manual submissions. No writes to legacy device_wake_sessions. Respect RLS.
+
+A) MIGRATIONS (new file)
+1) Alter devices:
+   - add column if missing: zone_id uuid null;
+   - add column if missing: zone_label text null;
+   - add column if missing: placement_json jsonb not null default '{}';
+2) Alter sites:
+   - add column if missing: zones jsonb not null default '[]';
+3) Create company_alert_prefs:
+   company_id uuid primary key references public.companies(company_id),
+   thresholds jsonb not null default '{}',
+   channels  jsonb not null default '{}',
+   quiet_hours jsonb,
+   updated_at timestamptz not null default now()
+4) Create report_subscriptions:
+   subscription_id uuid primary key default gen_random_uuid(),
+   company_id uuid not null references public.companies(company_id),
+   user_id uuid not null references public.users(id),
+   kind text not null check (kind in ('weekly_digest','daily_rollup','threshold_alerts')),
+   filters jsonb not null default '{}',
+   schedule text not null,
+   active boolean not null default true,
+   last_sent_at timestamptz
+5) Alter site_snapshots:
+   - add column if missing: risk_snapshot jsonb not null default '{}'
+
+B) RPC FUNCTIONS (SECURITY DEFINER; company-scoped)
+1) fn_get_company_alert_prefs(p_company_id uuid)
+   - returns row from company_alert_prefs
+   - if none, return a JSON of sane defaults:
+     thresholds := {
+       telemetry: { temp_max: 40, rh_max: 85, rh_min: 20 },
+       mgi: { absolute_high: 0.60, velocity_high: 0.25, speed_high_per_day: 0.12 },
+       window_days: 5
+     }
+     channels := {}, quiet_hours := null
+2) fn_set_company_alert_prefs(p_company_id uuid, p_thresholds jsonb, p_channels jsonb, p_quiet_hours jsonb)
+   - upsert into company_alert_prefs
+
+C) EDGE: mqtt_device_handler patch (telemetry-only path)
+1) Accept payload shape for telemetry-only messages on existing topic:
+   {
+     "device_id": "<mac>",
+     "captured_at": "<ISO>",
+     "temperature": <num>, "humidity": <num>, "pressure": <num>,
+     "gas_resistance": <num>, "battery_voltage": <num>, "wifi_rssi": <int>
+   }
+2) On telemetry-only:
+   - resolve device by device_mac
+   - insert into device_telemetry (device_id, captured_at, temperature, humidity, pressure, gas_resistance, battery_voltage, wifi_rssi, company_id)
+   - DO NOT create device_images or touch session image counters
+3) Add GET /health response JSON to include { telemetry_only_supported: true }
+
+D) UI/UX minimal
+1) /lab/ingest-feed:
+   - Add a filter chip “telemetry”
+   - When selected, include device_telemetry events in the feed (ts, device, temp, rh, rssi)
+   - Keep existing behavior for payload/image/observation
+2) Admin-only page “Company Alert Prefs”:
+   - Simple JSON textarea bound to fn_get_company_alert_prefs / fn_set_company_alert_prefs
+   - Route under /lab/admin/prefs (super-admin only)
+
+E) TESTS / VERIFICATION
+- Create a small Node/Deno script to publish a telemetry-only message to MQTT using the same WS endpoint used by the Edge.
+- Verify row in device_telemetry appears with correct device_id & captured_at.
+- Call RPC get/set prefs: write thresholds, read back identical JSON.
+- Open /lab/ingest-feed → select “telemetry” → see the event.
+
+DELIVERABLES
+- 1 migration sql file (with all DDL; idempotent checks for existing columns)
+- 2 RPC sql files (get/set prefs) or one combined
+- mqtt_device_handler diff showing telemetry-only ingestion + /health payload
+- UI diffs for ingest-feed and new prefs page
+- README_PHASE1.md: how to deploy & test
+
+OUTPUT
+Return:
+- the migration SQL
+- the RPC definitions
+- the Edge handler diff (or full file if simpler)
+- the React diffs for the two UI tweaks
+- a short test script for telemetry publish
+- a concise “runbook” section (commands to deploy, how to test)
+
+DO NOT proceed to alerts/snapshots until Phase-1 tests pass.
