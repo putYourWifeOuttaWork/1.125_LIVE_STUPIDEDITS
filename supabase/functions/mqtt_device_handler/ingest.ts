@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
 import type { MqttClient } from 'npm:mqtt@5.3.4';
-import type { DeviceStatusMessage, ImageMetadata, ImageChunk } from './types.ts';
+import type { DeviceStatusMessage, ImageMetadata, ImageChunk, TelemetryOnlyMessage } from './types.ts';
 import { getOrCreateBuffer, storeChunk } from './idempotency.ts';
 
 /**
@@ -195,5 +195,92 @@ export async function handleChunk(
     }
   } catch (err) {
     console.error('[Ingest] Exception handling chunk:', err);
+  }
+}
+
+/**
+ * Handle telemetry-only message (Phase 1)
+ * Records sensor data WITHOUT creating device_images or session entries
+ */
+export async function handleTelemetryOnly(
+  supabase: SupabaseClient,
+  client: MqttClient,
+  payload: TelemetryOnlyMessage
+): Promise<void> {
+  console.log('[Ingest] Telemetry-only from device:', payload.device_id, 'temp:', payload.temperature, 'rh:', payload.humidity);
+
+  try {
+    // Resolve device MAC to get device_id and company_id
+    const { data: lineageData, error: lineageError } = await supabase.rpc(
+      'fn_resolve_device_lineage',
+      { p_device_mac: payload.device_id }
+    );
+
+    if (lineageError) {
+      console.error('[Ingest] Error resolving device lineage:', lineageError);
+      return;
+    }
+
+    if (!lineageData) {
+      console.error('[Ingest] Device not found or inactive:', payload.device_id);
+      return;
+    }
+
+    // Check for incomplete lineage
+    if (lineageData.error) {
+      console.error('[Ingest] Incomplete device lineage:', lineageData.error);
+      return;
+    }
+
+    // Validate required fields
+    if (!lineageData.device_id || !lineageData.company_id) {
+      console.error('[Ingest] Missing device_id or company_id in lineage');
+      return;
+    }
+
+    console.log('[Ingest] Telemetry device resolved:', {
+      device: lineageData.device_name,
+      company: lineageData.company_name,
+    });
+
+    // Insert into device_telemetry table
+    // DOES NOT create device_images or touch session counters
+    const { error: insertError } = await supabase
+      .from('device_telemetry')
+      .insert({
+        device_id: lineageData.device_id,
+        company_id: lineageData.company_id,
+        captured_at: payload.captured_at,
+        temperature: payload.temperature,
+        humidity: payload.humidity,
+        pressure: payload.pressure,
+        gas_resistance: payload.gas_resistance,
+        battery_voltage: payload.battery_voltage,
+        wifi_rssi: payload.wifi_rssi,
+      });
+
+    if (insertError) {
+      console.error('[Ingest] Error inserting telemetry:', insertError);
+      return;
+    }
+
+    console.log('[Ingest] Telemetry saved successfully for device:', lineageData.device_name);
+
+  } catch (err) {
+    console.error('[Ingest] Exception handling telemetry:', err);
+
+    // Log to async_error_logs
+    try {
+      await supabase.from('async_error_logs').insert({
+        table_name: 'device_telemetry',
+        trigger_name: 'edge_ingest_telemetry',
+        function_name: 'handleTelemetryOnly',
+        payload: { telemetry: payload },
+        error_message: err instanceof Error ? err.message : String(err),
+        error_details: { stack: err instanceof Error ? err.stack : null },
+      });
+    } catch (logErr) {
+      console.error('[Ingest] Failed to log error:', logErr);
+    }
   }
 }

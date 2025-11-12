@@ -9,7 +9,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.39.8';
 import * as mqtt from 'npm:mqtt@5.3.4';
 
 import { loadConfig } from './config.ts';
-import { handleHelloStatus, handleMetadata, handleChunk } from './ingest.ts';
+import { handleHelloStatus, handleMetadata, handleChunk, handleTelemetryOnly } from './ingest.ts';
 import { finalizeImage } from './finalize.ts';
 import { isComplete, cleanupStaleBuffers } from './idempotency.ts';
 import type { ImageMetadata, ImageChunk } from './types.ts';
@@ -109,8 +109,13 @@ async function handleMqttMessage(
       // HELLO status message
       await handleHelloStatus(supabase, client, payload);
     } else if (topic.includes('/data')) {
-      // Data message - distinguish metadata from chunk
-      if (payload.chunk_id !== undefined) {
+      // Data message - distinguish metadata, chunk, or telemetry-only
+
+      // TELEMETRY-ONLY: No image_name, no chunk_id, but has sensor data
+      if (!payload.image_name && payload.chunk_id === undefined &&
+          (payload.temperature !== undefined || payload.humidity !== undefined)) {
+        await handleTelemetryOnly(supabase, client, payload);
+      } else if (payload.chunk_id !== undefined) {
         // CHUNK message
         await handleChunk(supabase, client, payload as ImageChunk);
 
@@ -194,8 +199,9 @@ Deno.serve(async (req: Request) => {
         message: 'MQTT Device Handler V3 (SQL-Compliant) is running',
         connected: mqttClient?.connected || false,
         transport: 'WebSocket (wss://)',
-        version: '3.1.0',
-        phase: 'Phase 3 - SQL Handler Integration Complete',
+        version: '3.2.0',
+        phase: 'Phase 3 - SQL Handler Integration Complete + Phase 1 Telemetry',
+        telemetry_only_supported: true,
       }),
       {
         headers: {

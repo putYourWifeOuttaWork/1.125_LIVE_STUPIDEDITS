@@ -52,6 +52,17 @@ export interface AckMessage {
   };
 }
 
+export interface TelemetryOnlyMessage {
+  device_id: string; // MAC address
+  captured_at: string; // ISO 8601
+  temperature?: number;
+  humidity?: number;
+  pressure?: number;
+  gas_resistance?: number;
+  battery_voltage?: number;
+  wifi_rssi?: number;
+}
+
 // ============================================
 // Internal Data Structures
 // ============================================
