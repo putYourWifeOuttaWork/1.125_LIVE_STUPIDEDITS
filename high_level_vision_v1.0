@@ -1,0 +1,180 @@
+Paste-this “General Review Prompt” for ClaudeCode
+
+Role: You are a senior IoT backend reviewer. Your task is to check that my codebase and database schema faithfully implement the ESP32-CAM monitoring architecture in the attached spec. Strictly use the spec as ground truth and call out any drift.
+
+My stack (adjust if needed):
+
+MQTT broker: (HiveMQ / Mosquitto)
+
+Ingest app: Python/Node worker subscribing to topics
+
+Storage: (Supabase/Postgres + Object storage)
+
+Services: Scheduler, Data Collector, Retry Manager
+
+Devices: ESP32-S3 + OV2640 + BME680, SD card
+
+1) Must-match behaviors from the spec
+
+Verify we implement each item below exactly (flag any gaps or deviations):
+
+Sleepy node model
+
+Server assigns next wake time per device.
+
+Device wakes, connects Wi-Fi/MQTT, sends HELLO/alive with pending_count.
+
+If offline, device still captures and queues to SD with PendingToSend=true.
+
+On reconnect, server drains the pending queue sequentially until empty.
+(See Sections 3, 7, 8; flow/sequence on pp. 11–12.) 
+
+BrainlyTree _ESP32CAM_AWS_V4
+
+MQTT topics & payload contracts
+
+device/{id}/status: alive/hello + pending_count
+
+device/{id}/cmd: capture_image, send_image, set_next_wake
+
+device/{id}/data: metadata + chunk payloads
+
+device/{id}/ack: missing_chunks or ACK_OK with next_wake
+
+JSON fields present exactly as shown (device_id, image_name, total_chunks_count, max_chunk_size, environmental fields, etc.).
+(Section 5 shows canonical examples.) 
+
+BrainlyTree _ESP32CAM_AWS_V4
+
+Chunking & retries (reliability)
+
+Device sends chunks sequentially without per-chunk ACKs.
+
+Server tracks received indices; after complete/timeout:
+
+If gaps → send missing_chunks list.
+
+If complete → send ACK_OK + next_wake.
+
+Device retransmits only requested chunks; configurable retry limit (default 3).
+(Section 6; sequence on p. 12.) 
+
+BrainlyTree _ESP32CAM_AWS_V4
+
+SD card files (durability & recovery)
+
+metadata.txt: full log of captures with PendingToSend flag.
+
+pendingImage.txt: only unsent entries (transmission queue).
+
+On ACK_OK: remove from pending queue and flip PendingToSend=false in metadata.
+(Section 8.1–8.5; offline example 8.6.) 
+
+BrainlyTree _ESP32CAM_AWS_V4
+
+Wi-Fi retry & timestamp fallback
+
+Wi-Fi connect attempts: 3 × 8s then proceed offline.
+
+Offline timestamps: last known NTP + scheduled deltas.
+(Sections 8.2, 8.4.) 
+
+BrainlyTree _ESP32CAM_AWS_V4
+
+Server responsibilities
+
+Device Registry (credentials, last-seen, next_wake).
+
+Scheduler (stagger devices; twice-daily capture example).
+
+Data Collector (validate chunks, reassemble, CRC if implemented).
+
+Retry Manager (calculate missing_chunks, enforce retry policy).
+
+Storage Service (image binary + structured metadata).
+(Section 4; plus topic flows section 5.) 
+
+BrainlyTree _ESP32CAM_AWS_V4
+
+2) DB/schema expectations (propose concrete DDL or migrations)
+
+Check we have normalized tables and constraints to mirror the contracts:
+
+devices(id, hw_rev, fw_rev, last_seen_at, next_wake_at, location, status)
+
+device_wake_sessions(id, device_id, woke_at, wifi_ok, mqtt_ok, pending_count_reported, assigned_next_wake_at)
+
+captures(id, device_id, image_name, captured_at, temperature, humidity, pressure, gas_resistance, pending_to_send bool, origin ENUM['current','recovery'])
+
+image_chunks(id, capture_id, chunk_id, size_bytes, received_at, is_retry bool)
+
+images(id, capture_id, object_url, size_bytes, crc, reassembled_at, ack_ok_at)
+
+Integrity: unique (capture_id, chunk_id), enforce total_chunks_count match, FK cascades, server-side NOT NULL for required fields.
+
+Ask yourself:
+
+Do columns cover all JSON fields in Section 5?
+
+Do we store both the device-reported metadata and server ingest/validation timestamps?
+
+Do we retain a state machine for each capture (received, missing_requested, complete, failed)?
+
+3) Ingest & processing pipeline review
+
+Confirm code implements:
+
+Idempotency on metadata and chunk upserts (safe retries).
+
+Ordering-agnostic assembly (chunks may arrive out of order).
+
+Timeout handling to trigger missing_chunks.
+
+Atomic finalize step that writes the assembled image to storage, records CRC/size, emits ACK_OK, and sets next wake.
+
+Backpressure: stagger send_image requests across devices per scheduler rules.
+
+Observability: logs, metrics (per-device success rate, avg retries, chunk loss %, queue age).
+
+4) Scheduler behavior
+
+Staggers 100+ devices; supports twice-daily capture; avoids thundering herd.
+
+Writes the chosen next_wake_at to DB and publishes same in ACK_OK.
+
+Handles catch-up of pending files before issuing new captures.
+
+5) Acceptance tests (must exist and pass)
+
+Mirror the spec’s test plan (Section 10) with unit/integration/E2E:
+
+UT: chunk split/assemble, missing-index detection, pending queue append/remove, Wi-Fi retry logic.
+
+IT: offline queue → reconnect → sequential resend until empty.
+
+E2E/HIL: 5-day offline, online with missing_chunks, and clean online runs.
+(Use the exact scenarios on pp. 12–15 for parity.) 
+
+BrainlyTree _ESP32CAM_AWS_V4
+
+6) Drift checklist — fail the review if any are true
+
+Per-chunk ACKs (not allowed; only final missing_chunks/ACK_OK).
+
+No durable pending queue on device semantics mirrored server-side.
+
+Server requests full re-upload instead of targeted chunk retries.
+
+Next-wake not persisted + echoed in ACK_OK.
+
+No visibility into which chunks are missing or how many retries remain.
+
+Offline timestamp policy not implemented.
+
+7) Deliverables from your review
+
+A redline list of issues grouped by: Protocol, Scheduler, Ingest/Reliability, DB/Schema, Observability, Tests.
+
+Concrete diffs or migration snippets to fix each issue.
+
+A short “readiness” verdict: Go / Go with Risks / Blocked, with top 3 risks.
