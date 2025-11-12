@@ -1,18 +1,15 @@
 /*
-  # Fix Device Session View - Column Name Correction
+  # Fix All Column Names in Device Session View
 
-  1. Issue
-    - device_wake_payloads uses `site_device_session_id` not `session_id`
-    - Function was querying wrong column name
-
-  2. Fix
-    - Drop and recreate get_session_devices_with_wakes with correct column references
+  1. Fixes
+    - device_wake_payloads: use site_device_session_id (not session_id)
+    - device_images: no storage_path column, use image_url
+    - device_images: status column (not image_status)
 */
 
--- Drop the function
+-- Drop and recreate with ALL correct column names
 DROP FUNCTION IF EXISTS get_session_devices_with_wakes(UUID);
 
--- Recreate with correct column names
 CREATE OR REPLACE FUNCTION get_session_devices_with_wakes(p_session_id UUID)
 RETURNS JSONB
 SECURITY DEFINER
@@ -81,7 +78,7 @@ BEGIN
         v_session_record.session_end_time
       ) as expected_wakes_in_session,
 
-      -- Count actual wakes (FIXED: use site_device_session_id)
+      -- Count actual wakes
       (
         SELECT COUNT(*)::INT
         FROM device_wake_payloads dwp
@@ -113,7 +110,7 @@ BEGIN
         AND dwp.overage_flag = TRUE
       ) as extra_wakes,
 
-      -- Get wake payloads as JSON array (FIXED: use site_device_session_id)
+      -- Get wake payloads as JSON array
       (
         SELECT COALESCE(jsonb_agg(
           jsonb_build_object(
@@ -135,7 +132,7 @@ BEGIN
         AND dwp.site_device_session_id = p_session_id
       ) as wake_payloads,
 
-      -- Get images as JSON array (FIXED: use site_device_session_id and correct columns)
+      -- Get images as JSON array
       (
         SELECT COALESCE(jsonb_agg(
           jsonb_build_object(
@@ -203,4 +200,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_session_devices_with_wakes IS
-'Get all devices in a session with their wake payloads, images, and statistics. FIXED: Uses site_device_session_id column.';
+'Get all devices in a session with wake payloads, images, and statistics. Uses correct column names: site_device_session_id, status (not image_status), image_url (not storage_path).';
