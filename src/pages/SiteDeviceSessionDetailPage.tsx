@@ -10,21 +10,39 @@ import {
   AlertCircle,
   Wifi,
   WifiOff,
-  Battery,
-  Thermometer,
-  Droplets,
-  Gauge,
-  Wind,
-  Image as ImageIcon,
   RefreshCw,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import Button from '../components/common/Button';
 import LoadingScreen from '../components/common/LoadingScreen';
+import DeviceSessionCard from '../components/devices/DeviceSessionCard';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
 import { supabase } from '../lib/supabaseClient';
-import { SiteDeviceSession, DeviceWakePayload, useSiteDeviceSessions } from '../hooks/useSiteDeviceSessions';
+import { SiteDeviceSession } from '../hooks/useSiteDeviceSessions';
+import { useUserRole } from '../hooks/useUserRole';
+
+interface DeviceSessionData {
+  device_id: string;
+  device_code: string;
+  device_name?: string;
+  hardware_version?: string;
+  firmware_version?: string;
+  wake_schedule_cron?: string;
+  battery_voltage?: number;
+  battery_health_percent?: number;
+  wifi_ssid?: string;
+  assigned_at: string;
+  is_primary?: boolean;
+  expected_wakes_in_session: number;
+  actual_wakes: number;
+  completed_wakes: number;
+  failed_wakes: number;
+  extra_wakes: number;
+  wake_payloads: any[];
+  images: any[];
+  added_mid_session?: boolean;
+}
 
 const SiteDeviceSessionDetailPage = () => {
   const { programId, siteId, sessionId } = useParams<{
@@ -35,16 +53,17 @@ const SiteDeviceSessionDetailPage = () => {
   const navigate = useNavigate();
 
   const [session, setSession] = useState<SiteDeviceSession | null>(null);
-  const [wakePayloads, setWakePayloads] = useState<DeviceWakePayload[]>([]);
+  const [devices, setDevices] = useState<DeviceSessionData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [payloadsLoading, setPayloadsLoading] = useState(true);
+  const [devicesLoading, setDevicesLoading] = useState(true);
 
-  const { fetchWakePayloads } = useSiteDeviceSessions(siteId);
+  const { role } = useUserRole();
+  const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
 
   useEffect(() => {
     if (sessionId) {
       fetchSessionData();
-      fetchPayloadsData();
+      fetchDevicesData();
     }
   }, [sessionId]);
 
@@ -80,24 +99,48 @@ const SiteDeviceSessionDetailPage = () => {
     }
   };
 
-  const fetchPayloadsData = async () => {
+  const fetchDevicesData = async () => {
     try {
-      setPayloadsLoading(true);
+      setDevicesLoading(true);
       if (!sessionId) return;
-      const payloads = await fetchWakePayloads(sessionId);
-      setWakePayloads(payloads);
+
+      const { data, error } = await supabase.rpc('get_session_devices_with_wakes', {
+        p_session_id: sessionId
+      });
+
+      if (error) throw error;
+
+      if (data && data.devices) {
+        setDevices(data.devices);
+      }
     } catch (error: any) {
-      console.error('Error fetching wake payloads:', error);
-      toast.error('Failed to load wake payloads');
+      console.error('Error fetching devices:', error);
+      toast.error('Failed to load device data');
     } finally {
-      setPayloadsLoading(false);
+      setDevicesLoading(false);
     }
   };
 
   const handleRefresh = () => {
     fetchSessionData();
-    fetchPayloadsData();
+    fetchDevicesData();
   };
+
+  const handleEditDevice = (deviceId: string) => {
+    // Navigate to device edit or show modal
+    navigate(`/devices/${deviceId}`);
+  };
+
+  // Calculate totals from devices
+  const totalExpectedWakes = devices.reduce((sum, d) => sum + d.expected_wakes_in_session, 0);
+  const totalActualWakes = devices.reduce((sum, d) => sum + d.actual_wakes, 0);
+  const totalCompletedWakes = devices.reduce((sum, d) => sum + d.completed_wakes, 0);
+  const totalFailedWakes = devices.reduce((sum, d) => sum + d.failed_wakes, 0);
+  const totalExtraWakes = devices.reduce((sum, d) => sum + d.extra_wakes, 0);
+
+  const completionPercentage = totalExpectedWakes > 0
+    ? Math.round((totalCompletedWakes / totalExpectedWakes) * 100)
+    : 0;
 
   if (loading) {
     return <LoadingScreen />;
@@ -135,23 +178,6 @@ const SiteDeviceSessionDetailPage = () => {
     }
   };
 
-  const getPayloadStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'bg-yellow-50 text-yellow-700 border-yellow-300';
-      case 'complete':
-        return 'bg-green-50 text-green-700 border-green-300';
-      case 'failed':
-        return 'bg-red-50 text-red-700 border-red-300';
-      default:
-        return 'bg-gray-50 text-gray-700 border-gray-300';
-    }
-  };
-
-  const completionPercentage =
-    session.expected_wake_count > 0
-      ? Math.round((session.completed_wake_count / session.expected_wake_count) * 100)
-      : 0;
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -215,7 +241,7 @@ const SiteDeviceSessionDetailPage = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Wakes</p>
                 <p className="text-2xl font-bold mt-1">
-                  {session.completed_wake_count + session.failed_wake_count + session.extra_wake_count}
+                  {totalActualWakes}
                 </p>
               </div>
               <Wifi className="h-8 w-8 text-blue-500" />
@@ -234,7 +260,7 @@ const SiteDeviceSessionDetailPage = () => {
               <div className="flex justify-center mb-2">
                 <Wifi className="h-6 w-6 text-green-500" />
               </div>
-              <p className="text-2xl font-bold text-green-600">{session.completed_wake_count}</p>
+              <p className="text-2xl font-bold text-green-600">{totalCompletedWakes}</p>
               <p className="text-sm text-gray-600 mt-1">Completed</p>
             </div>
 
@@ -242,7 +268,7 @@ const SiteDeviceSessionDetailPage = () => {
               <div className="flex justify-center mb-2">
                 <WifiOff className="h-6 w-6 text-red-500" />
               </div>
-              <p className="text-2xl font-bold text-red-600">{session.failed_wake_count}</p>
+              <p className="text-2xl font-bold text-red-600">{totalFailedWakes}</p>
               <p className="text-sm text-gray-600 mt-1">Failed</p>
             </div>
 
@@ -250,7 +276,7 @@ const SiteDeviceSessionDetailPage = () => {
               <div className="flex justify-center mb-2">
                 <AlertCircle className="h-6 w-6 text-yellow-500" />
               </div>
-              <p className="text-2xl font-bold text-yellow-600">{session.extra_wake_count}</p>
+              <p className="text-2xl font-bold text-yellow-600">{totalExtraWakes}</p>
               <p className="text-sm text-gray-600 mt-1">Extra</p>
             </div>
 
@@ -258,7 +284,7 @@ const SiteDeviceSessionDetailPage = () => {
               <div className="flex justify-center mb-2">
                 <Activity className="h-6 w-6 text-blue-500" />
               </div>
-              <p className="text-2xl font-bold text-blue-600">{session.expected_wake_count}</p>
+              <p className="text-2xl font-bold text-blue-600">{totalExpectedWakes}</p>
               <p className="text-sm text-gray-600 mt-1">Expected</p>
             </div>
           </div>
@@ -333,106 +359,40 @@ const SiteDeviceSessionDetailPage = () => {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Wake Payloads ({wakePayloads.length})</h2>
-            {payloadsLoading && (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {payloadsLoading ? (
-            <div className="flex justify-center p-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            </div>
-          ) : wakePayloads.length === 0 ? (
-            <div className="text-center py-8">
-              <Activity className="mx-auto h-12 w-12 text-gray-300" />
-              <p className="text-gray-600 mt-2">No wake payloads found</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {wakePayloads.map((payload) => (
-                <div
-                  key={payload.payload_id}
-                  className={`border rounded-lg p-4 ${getPayloadStatusColor(payload.payload_status)}`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h3 className="font-semibold text-base">
-                        Wake #{payload.wake_window_index} - {payload.device_code || payload.device_name || 'Unknown Device'}
-                      </h3>
-                      <p className="text-xs mt-1">
-                        {format(new Date(payload.captured_at), 'MMM dd, yyyy HH:mm:ss')}
-                      </p>
-                    </div>
-                    <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getPayloadStatusColor(payload.payload_status)}`}>
-                      {payload.payload_status.toUpperCase()}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                    {payload.temperature && (
-                      <div className="flex items-center">
-                        <Thermometer className="h-4 w-4 mr-2 text-red-500" />
-                        <span>{payload.temperature}°C</span>
-                      </div>
-                    )}
-
-                    {payload.humidity && (
-                      <div className="flex items-center">
-                        <Droplets className="h-4 w-4 mr-2 text-blue-500" />
-                        <span>{payload.humidity}%</span>
-                      </div>
-                    )}
-
-                    {payload.battery_voltage && (
-                      <div className="flex items-center">
-                        <Battery className="h-4 w-4 mr-2 text-green-500" />
-                        <span>{payload.battery_voltage}V</span>
-                      </div>
-                    )}
-
-                    {payload.wifi_rssi && (
-                      <div className="flex items-center">
-                        <Wifi className="h-4 w-4 mr-2 text-blue-500" />
-                        <span>{payload.wifi_rssi} dBm</span>
-                      </div>
-                    )}
-
-                    {payload.image_id && (
-                      <div className="flex items-center">
-                        <ImageIcon className="h-4 w-4 mr-2 text-purple-500" />
-                        <span>Image attached</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {payload.overage_flag && (
-                    <div className="mt-3 pt-3 border-t border-yellow-300">
-                      <div className="flex items-center text-xs text-yellow-700">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        This wake was outside the expected schedule (overage)
-                      </div>
-                    </div>
-                  )}
-
-                  {payload.resent_received_at && (
-                    <div className="mt-3 pt-3 border-t border-blue-300">
-                      <div className="flex items-center text-xs text-blue-700">
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Retried at {format(new Date(payload.resent_received_at), 'MMM dd, HH:mm:ss')}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900">Devices in This Session ({devices.length})</h2>
+          {devicesLoading && (
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {devicesLoading ? (
+          <div className="flex justify-center p-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+          </div>
+        ) : devices.length === 0 ? (
+          <Card>
+            <CardContent className="py-12">
+              <div className="text-center">
+                <Activity className="mx-auto h-16 w-16 text-gray-300" />
+                <p className="text-gray-600 mt-4 text-lg">No devices found in this session</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {devices.map((device) => (
+              <DeviceSessionCard
+                key={device.device_id}
+                device={device}
+                canEdit={canEdit}
+                onEdit={handleEditDevice}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
