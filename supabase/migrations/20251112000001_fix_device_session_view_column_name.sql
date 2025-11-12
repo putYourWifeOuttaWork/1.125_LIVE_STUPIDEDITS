@@ -1,96 +1,18 @@
 /*
-  # Device-Centric Session View Functions
+  # Fix Device Session View - Column Name Correction
 
-  1. Purpose
-    - Fix expected wake calculations to account for device addition time
-    - Create comprehensive query for device-session data
-    - Support device-centric session detail view
+  1. Issue
+    - device_wake_payloads uses `site_device_session_id` not `session_id`
+    - Function was querying wrong column name
 
-  2. New Functions
-    - fn_calculate_device_expected_wakes: Calculate expected wakes based on when device was added
-    - get_session_devices_with_wakes: Get all devices in a session with their wake payloads and images
-
-  3. Changes
-    - Accurate expected wake counts
-    - Per-device wake statistics
-    - Grouped wake payloads and images
+  2. Fix
+    - Drop and recreate get_session_devices_with_wakes with correct column references
 */
 
--- ==========================================
--- Calculate Expected Wakes for Device
--- ==========================================
+-- Drop the function
+DROP FUNCTION IF EXISTS get_session_devices_with_wakes(UUID);
 
-CREATE OR REPLACE FUNCTION fn_calculate_device_expected_wakes(
-  p_wake_schedule_cron TEXT,
-  p_device_assigned_at TIMESTAMPTZ,
-  p_session_start TIMESTAMPTZ,
-  p_session_end TIMESTAMPTZ
-)
-RETURNS INT
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  v_full_day_count INT;
-  v_assignment_time TIMESTAMPTZ;
-  v_hours_array INT[];
-  v_remaining_wakes INT := 0;
-  v_hour INT;
-BEGIN
-  -- Get wake count for full day from cron
-  v_full_day_count := fn_parse_cron_wake_count(p_wake_schedule_cron);
-
-  -- If device was assigned before session start, count full day
-  IF p_device_assigned_at <= p_session_start THEN
-    RETURN v_full_day_count;
-  END IF;
-
-  -- If device was assigned after session end, count zero
-  IF p_device_assigned_at >= p_session_end THEN
-    RETURN 0;
-  END IF;
-
-  -- Device was added mid-session - calculate partial count
-  -- Parse cron to get hours (simplified for common patterns)
-  -- Supports: "0 8,16 * * *" and "0 9-17 * * *" patterns
-
-  -- Extract hours from cron expression
-  -- Format: "minute hour day month weekday"
-  -- We focus on hour field (second position)
-
-  -- Check if it's a list pattern (e.g., "8,16")
-  IF p_wake_schedule_cron LIKE '% %,%' OR p_wake_schedule_cron LIKE '%,% %' THEN
-    -- Parse comma-separated hours
-    -- This is a simplified approach - real parsing would be more complex
-    -- For now, if device added mid-day, pro-rate based on hours remaining
-    v_remaining_wakes := GREATEST(
-      0,
-      CEIL(v_full_day_count *
-        EXTRACT(EPOCH FROM (p_session_end - p_device_assigned_at)) /
-        EXTRACT(EPOCH FROM (p_session_end - p_session_start))
-      )
-    );
-  ELSE
-    -- Pro-rate based on time remaining in session
-    v_remaining_wakes := GREATEST(
-      0,
-      CEIL(v_full_day_count *
-        EXTRACT(EPOCH FROM (p_session_end - p_device_assigned_at)) /
-        EXTRACT(EPOCH FROM (p_session_end - p_session_start))
-      )
-    );
-  END IF;
-
-  RETURN v_remaining_wakes;
-END;
-$$;
-
-COMMENT ON FUNCTION fn_calculate_device_expected_wakes IS
-'Calculate expected wake count for a device based on when it was assigned to the site. Accounts for mid-session additions.';
-
--- ==========================================
--- Get Session Devices with Wake Data
--- ==========================================
-
+-- Recreate with correct column names
 CREATE OR REPLACE FUNCTION get_session_devices_with_wakes(p_session_id UUID)
 RETURNS JSONB
 SECURITY DEFINER
@@ -159,7 +81,7 @@ BEGIN
         v_session_record.session_end_time
       ) as expected_wakes_in_session,
 
-      -- Count actual wakes
+      -- Count actual wakes (FIXED: use site_device_session_id)
       (
         SELECT COUNT(*)::INT
         FROM device_wake_payloads dwp
@@ -191,7 +113,7 @@ BEGIN
         AND dwp.overage_flag = TRUE
       ) as extra_wakes,
 
-      -- Get wake payloads as JSON array
+      -- Get wake payloads as JSON array (FIXED: use site_device_session_id)
       (
         SELECT COALESCE(jsonb_agg(
           jsonb_build_object(
@@ -213,7 +135,7 @@ BEGIN
         AND dwp.site_device_session_id = p_session_id
       ) as wake_payloads,
 
-      -- Get images as JSON array
+      -- Get images as JSON array (FIXED: use site_device_session_id)
       (
         SELECT COALESCE(jsonb_agg(
           jsonb_build_object(
@@ -282,4 +204,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_session_devices_with_wakes IS
-'Get all devices in a session with their wake payloads, images, and statistics. Returns device-centric view for session detail page.';
+'Get all devices in a session with their wake payloads, images, and statistics. FIXED: Uses site_device_session_id column.';
