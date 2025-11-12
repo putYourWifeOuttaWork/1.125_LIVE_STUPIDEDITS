@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -11,6 +11,7 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -56,9 +57,13 @@ const SiteDeviceSessionDetailPage = () => {
   const [devices, setDevices] = useState<DeviceSessionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [devicesLoading, setDevicesLoading] = useState(true);
+  const [isSessionExpiring, setIsSessionExpiring] = useState(false);
+  const [isSessionExpired, setIsSessionExpired] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
 
   const { role } = useUserRole();
   const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
+  const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (sessionId) {
@@ -131,6 +136,54 @@ const SiteDeviceSessionDetailPage = () => {
     navigate(`/devices/${deviceId}`);
   };
 
+  // Handle session expiration checking with countdown
+  useEffect(() => {
+    const checkSessionExpiration = () => {
+      if (!session?.session_end_time) return;
+
+      const sessionEnd = new Date(session.session_end_time);
+      const now = new Date();
+      const secondsRemaining = Math.floor((sessionEnd.getTime() - now.getTime()) / 1000);
+
+      if (secondsRemaining <= 0) {
+        setIsSessionExpired(true);
+        setIsSessionExpiring(false);
+        setTimeRemaining('Session ended');
+      } else {
+        setIsSessionExpired(false);
+
+        // Check if expiring (less than 1 hour remaining)
+        const hoursRemaining = secondsRemaining / 3600;
+        setIsSessionExpiring(hoursRemaining <= 1);
+
+        // Format time remaining
+        const hours = Math.floor(secondsRemaining / 3600);
+        const minutes = Math.floor((secondsRemaining % 3600) / 60);
+        const seconds = secondsRemaining % 60;
+
+        if (hours > 0) {
+          setTimeRemaining(`${hours}h ${minutes}m remaining`);
+        } else if (minutes > 0) {
+          setTimeRemaining(`${minutes}m ${seconds}s remaining`);
+        } else {
+          setTimeRemaining(`${seconds}s remaining`);
+        }
+      }
+    };
+
+    // Check immediately
+    checkSessionExpiration();
+
+    // Update every second for accurate countdown
+    sessionTimerRef.current = setInterval(checkSessionExpiration, 1000);
+
+    return () => {
+      if (sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+      }
+    };
+  }, [session]);
+
   // Calculate totals from devices
   const totalExpectedWakes = devices.reduce((sum, d) => sum + d.expected_wakes_in_session, 0);
   const totalActualWakes = devices.reduce((sum, d) => sum + d.actual_wakes, 0);
@@ -195,12 +248,58 @@ const SiteDeviceSessionDetailPage = () => {
             <p className="text-gray-600 mt-1">
               {session.site_name} - {format(new Date(session.session_date), 'MMMM dd, yyyy')}
             </p>
+            {timeRemaining && (
+              <p className={`text-sm mt-1 font-medium ${
+                isSessionExpired ? 'text-red-600' :
+                isSessionExpiring ? 'text-yellow-600' :
+                'text-blue-600'
+              }`}>
+                <Clock className="inline h-4 w-4 mr-1" />
+                {timeRemaining}
+              </p>
+            )}
           </div>
         </div>
         <Button variant="outline" onClick={handleRefresh} icon={<RefreshCw size={16} />}>
           Refresh
         </Button>
       </div>
+
+      {isSessionExpired && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Session Ended</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>
+                  This device session has ended. No more device communications are expected.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSessionExpiring && !isSessionExpired && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">Session Ending Soon</h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                <p>
+                  This device session is nearing its end. Device communications will stop at the scheduled end time.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
