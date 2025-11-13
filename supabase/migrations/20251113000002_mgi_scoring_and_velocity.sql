@@ -92,16 +92,16 @@ BEGIN
     SELECT
       po.observation_id,
       po.submission_id,
-      s.captured_at,
+      s.created_at as captured_at,
       po.mgi_score,
       po.mgi_scored_at,
       po.order_index
     FROM petri_observations po
     INNER JOIN submissions s ON s.submission_id = po.submission_id
-    WHERE s.device_id = p_device_id
+    WHERE s.created_by_device_id = p_device_id
       AND po.mgi_score IS NOT NULL
-      AND s.captured_at >= NOW() - (p_window_days || ' days')::INTERVAL
-    ORDER BY s.captured_at ASC
+      AND s.created_at >= NOW() - (p_window_days || ' days')::INTERVAL
+    ORDER BY s.created_at ASC
   ),
   observations_with_previous AS (
     SELECT
@@ -168,14 +168,14 @@ BEGIN
     ROUND(AVG(po.mgi_score)::numeric, 4) AS avg_mgi_score,
     ROUND(MAX(po.mgi_score)::numeric, 4) AS max_mgi_score,
     ROUND(MIN(po.mgi_score)::numeric, 4) AS min_mgi_score,
-    MAX(s.captured_at) AS latest_reading_at
+    MAX(s.created_at) AS latest_reading_at
   FROM devices d
   INNER JOIN submissions s ON s.created_by_device_id = d.device_id
   INNER JOIN petri_observations po ON po.submission_id = s.submission_id
   WHERE d.site_id = p_site_id
     AND d.zone_id IS NOT NULL
     AND po.mgi_score IS NOT NULL
-    AND s.captured_at >= NOW() - (p_window_days || ' days')::INTERVAL
+    AND s.created_at >= NOW() - (p_window_days || ' days')::INTERVAL
   GROUP BY d.zone_id, d.zone_label
   ORDER BY avg_mgi_score DESC;
 END;
@@ -283,7 +283,7 @@ SELECT
   (d.placement_json->>'y')::numeric AS placement_y,
   po.observation_id,
   po.order_index,
-  sub.captured_at,
+  sub.created_at as captured_at,
   po.mgi_score,
   po.mgi_confidence,
   po.mgi_scored_at,
@@ -299,7 +299,7 @@ LEFT JOIN sites s ON s.site_id = COALESCE(d.site_id, sub.site_id)
 LEFT JOIN pilot_programs p ON p.program_id = COALESCE(d.program_id, sub.program_id)
 LEFT JOIN companies c ON c.company_id = COALESCE(p.company_id, sub.company_id)
 WHERE po.mgi_score IS NOT NULL
-ORDER BY sub.captured_at DESC;
+ORDER BY sub.created_at DESC;
 
 COMMENT ON VIEW public.vw_mgi_trends IS 'MGI scores with device context, zone placement, and timestamps for trend analysis';
 
