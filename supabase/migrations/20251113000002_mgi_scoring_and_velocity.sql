@@ -170,7 +170,7 @@ BEGIN
     ROUND(MIN(po.mgi_score)::numeric, 4) AS min_mgi_score,
     MAX(s.captured_at) AS latest_reading_at
   FROM devices d
-  INNER JOIN submissions s ON s.device_id = d.device_id
+  INNER JOIN submissions s ON s.created_by_device_id = d.device_id
   INNER JOIN petri_observations po ON po.submission_id = s.submission_id
   WHERE d.site_id = p_site_id
     AND d.zone_id IS NOT NULL
@@ -294,10 +294,10 @@ SELECT
   c.name AS company_name
 FROM petri_observations po
 INNER JOIN submissions sub ON sub.submission_id = po.submission_id
-INNER JOIN devices d ON d.device_id = sub.device_id
-LEFT JOIN sites s ON s.site_id = d.site_id
-LEFT JOIN pilot_programs p ON p.program_id = d.program_id
-LEFT JOIN companies c ON c.company_id = p.company_id
+LEFT JOIN devices d ON d.device_id = sub.created_by_device_id
+LEFT JOIN sites s ON s.site_id = COALESCE(d.site_id, sub.site_id)
+LEFT JOIN pilot_programs p ON p.program_id = COALESCE(d.program_id, sub.program_id)
+LEFT JOIN companies c ON c.company_id = COALESCE(p.company_id, sub.company_id)
 WHERE po.mgi_score IS NOT NULL
 ORDER BY sub.captured_at DESC;
 
