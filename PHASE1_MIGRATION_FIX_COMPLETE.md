@@ -2,11 +2,15 @@
 
 ## **What Was Fixed**
 
-The Phase 1 migrations had a critical bug where they referenced `sub.device_id` which doesn't exist in the `submissions` table.
+The Phase 1 migrations had **2 critical bugs** with incorrect column names:
 
-### **Actual Column Name:**
-- ✅ `created_by_device_id` (correct)
-- ❌ `device_id` (doesn't exist)
+### **Bug 1: Wrong device_id column**
+- ❌ `sub.device_id` (doesn't exist)
+- ✅ `sub.created_by_device_id` (correct)
+
+### **Bug 2: Wrong petri slot column**
+- ❌ `po.slot_index` (doesn't exist)
+- ✅ `po.order_index` (correct)
 
 ---
 
@@ -14,7 +18,21 @@ The Phase 1 migrations had a critical bug where they referenced `sub.device_id` 
 
 ### **File: `supabase/migrations/20251113000002_mgi_scoring_and_velocity.sql`**
 
-#### **Fix 1: vw_mgi_trends View (Line 297)**
+#### **Fix 1: Column Name - slot_index → order_index**
+```sql
+-- BEFORE (❌ BROKEN):
+po.slot_index
+
+-- AFTER (✅ FIXED):
+po.order_index
+```
+
+**Fixed in 4 locations:**
+- Line 98: fn_calculate_mgi_velocity SELECT
+- Lines 111-113: LAG window functions (PARTITION BY)
+- Line 285: vw_mgi_trends view
+
+#### **Fix 2: vw_mgi_trends View (Line 297)**
 ```sql
 -- BEFORE (❌ BROKEN):
 INNER JOIN devices d ON d.device_id = sub.device_id

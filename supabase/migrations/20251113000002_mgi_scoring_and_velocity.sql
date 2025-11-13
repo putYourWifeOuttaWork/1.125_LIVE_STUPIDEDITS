@@ -95,7 +95,7 @@ BEGIN
       s.captured_at,
       po.mgi_score,
       po.mgi_scored_at,
-      po.slot_index
+      po.order_index
     FROM petri_observations po
     INNER JOIN submissions s ON s.submission_id = po.submission_id
     WHERE s.device_id = p_device_id
@@ -108,9 +108,9 @@ BEGIN
       so.observation_id,
       so.captured_at,
       so.mgi_score,
-      LAG(so.mgi_score) OVER (PARTITION BY so.slot_index ORDER BY so.captured_at) AS previous_mgi_score,
-      LAG(so.captured_at) OVER (PARTITION BY so.slot_index ORDER BY so.captured_at) AS previous_captured_at,
-      so.slot_index
+      LAG(so.mgi_score) OVER (PARTITION BY so.order_index ORDER BY so.captured_at) AS previous_mgi_score,
+      LAG(so.captured_at) OVER (PARTITION BY so.order_index ORDER BY so.captured_at) AS previous_captured_at,
+      so.order_index
     FROM scored_observations so
   )
   SELECT
@@ -282,7 +282,7 @@ SELECT
   (d.placement_json->>'x')::numeric AS placement_x,
   (d.placement_json->>'y')::numeric AS placement_y,
   po.observation_id,
-  po.slot_index,
+  po.order_index,
   sub.captured_at,
   po.mgi_score,
   po.mgi_confidence,
