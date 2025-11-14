@@ -163,6 +163,7 @@ function startCleanupTimer(supabase: any): void {
 
 /**
  * Main Deno serve handler
+ * Accepts HTTP POST requests with MQTT message data
  */
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -183,25 +184,55 @@ Deno.serve(async (req: Request) => {
       supabaseClient = createClient(configGlobal.supabase.url, configGlobal.supabase.serviceKey);
     }
 
-    // Initialize MQTT connection
-    if (!mqttClient || !mqttClient.connected) {
-      console.log('[Init] Initializing WebSocket MQTT connection...');
-      mqttClient = await connectToMQTT(configGlobal, supabaseClient);
+    // Handle POST requests with MQTT message data
+    if (req.method === 'POST') {
+      const body = await req.json();
+      const { topic, payload } = body;
 
-      // Start cleanup timer
-      startCleanupTimer(supabaseClient);
+      if (!topic || !payload) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Missing topic or payload',
+          }),
+          {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      console.log(`[HTTP] Received ${topic}`);
+
+      // Process the message (no MQTT client needed)
+      await handleMqttMessage(topic, Buffer.from(JSON.stringify(payload)), null as any, supabaseClient, configGlobal);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Message processed',
+        }),
+        {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
 
-    // Health check response
+    // Health check response for GET requests
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'MQTT Device Handler V3 (SQL-Compliant) is running',
-        connected: mqttClient?.connected || false,
-        transport: 'WebSocket (wss://)',
-        version: '3.2.0',
-        phase: 'Phase 3 - SQL Handler Integration Complete + Phase 1 Telemetry',
-        telemetry_only_supported: true,
+        message: 'MQTT Device Handler V3 (HTTP Webhook Mode)',
+        mode: 'HTTP POST webhook (no persistent MQTT connection)',
+        version: '3.3.0',
+        phase: 'Phase 3 - HTTP Webhook Integration',
+        usage: 'POST with {topic: string, payload: object}',
       }),
       {
         headers: {

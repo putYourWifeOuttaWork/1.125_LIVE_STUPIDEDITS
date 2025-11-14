@@ -518,6 +518,28 @@ function connectToMQTT() {
         const payload = JSON.parse(message.toString());
         console.log(`[MQTT] 📨 Message on ${topic}:`, JSON.stringify(payload).substring(0, 200));
 
+        // Forward to edge function for processing
+        try {
+          const edgeResponse = await fetch(`${supabaseUrl}/functions/v1/mqtt_device_handler`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ topic, payload }),
+          });
+
+          if (edgeResponse.ok) {
+            const result = await edgeResponse.json();
+            console.log(`[EDGE] ✅ Message processed:`, result.message || 'success');
+          } else {
+            console.error(`[EDGE] ❌ Error ${edgeResponse.status}:`, await edgeResponse.text());
+          }
+        } catch (edgeError) {
+          console.error('[EDGE] ❌ Failed to forward to edge function:', edgeError.message);
+        }
+
+        // Also process locally for backward compatibility
         if (topic.includes('/status')) {
           const result = await handleStatusMessage(payload, client);
           if (result && result.pendingCount > 0) {
