@@ -89,6 +89,10 @@ BEGIN
     AND DATE(dwp.captured_at AT TIME ZONE COALESCE(v_submission_timezone, 'UTC')) = p_session_date
     AND dwp.humidity IS NOT NULL;
 
+  -- Ensure we ALWAYS have valid temperature and humidity (never NULL)
+  v_temperature := COALESCE(v_temperature, 70);
+  v_humidity := COALESCE(v_humidity, 45);
+
   -- Parse enum values with SAFE defaults
   IF v_submission_defaults IS NOT NULL THEN
     v_airflow := COALESCE(v_submission_defaults->>'airflow', 'Moderate');
