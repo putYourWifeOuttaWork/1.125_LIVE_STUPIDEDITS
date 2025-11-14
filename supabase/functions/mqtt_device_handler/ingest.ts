@@ -12,33 +12,109 @@ import { getOrCreateBuffer, storeChunk } from './idempotency.ts';
 
 /**
  * Handle device HELLO status message
- * Updates last_seen_at and queues commands if pending images exist
+ * Auto-provisions new devices or updates existing ones
+ * Updates last_seen_at, battery data, and queues commands if pending images exist
  */
 export async function handleHelloStatus(
   supabase: SupabaseClient,
   client: MqttClient,
   payload: DeviceStatusMessage
 ): Promise<void> {
-  console.log('[Ingest] HELLO from device:', payload.device_id, 'pending:', payload.pendingImg || 0);
+  console.log('[Ingest] HELLO from device:', payload.device_id, 'pending:', payload.pending_count || 0);
 
   try {
-    // Update device last_seen_at (simple update is OK here - no complex logic)
-    const { error } = await supabase
+    // Check if device exists
+    const { data: existingDevice, error: queryError } = await supabase
       .from('devices')
-      .update({
-        last_seen_at: new Date().toISOString(),
-        is_active: true,
-      })
-      .eq('device_mac', payload.device_id); // device_id in MQTT is MAC address
+      .select('device_id, device_mac')
+      .eq('device_mac', payload.device_mac || payload.device_id)
+      .maybeSingle();
 
-    if (error) {
-      console.error('[Ingest] Error updating last_seen:', error);
+    if (queryError) {
+      console.error('[Ingest] Error querying device:', queryError);
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    if (!existingDevice) {
+      // Auto-provision new device (per PDF Section 7)
+      console.log('[Ingest] Auto-provisioning new device:', payload.device_id);
+
+      const { data: newDevice, error: insertError } = await supabase
+        .from('devices')
+        .insert({
+          device_mac: payload.device_mac || payload.device_id,
+          device_name: `Device ${payload.device_id}`,
+          firmware_version: payload.firmware_version || 'unknown',
+          hardware_version: payload.hardware_version || 'ESP32-S3',
+          battery_voltage: payload.battery_voltage,
+          wifi_ssid: null, // Will be set during mapping
+          mqtt_client_id: payload.device_id,
+          provisioning_status: 'pending_mapping', // Auto-discovered, needs mapping
+          device_type: 'virtual', // Mark as virtual for testing
+          is_active: true,
+          last_seen_at: now,
+          notes: `Auto-provisioned from MQTT HELLO on ${now}`,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('[Ingest] Error auto-provisioning device:', insertError);
+        return;
+      }
+
+      console.log('[Ingest] Device auto-provisioned:', newDevice.device_id);
+    } else {
+      // Update existing device
+      const updateData: any = {
+        last_seen_at: now,
+        is_active: true,
+        last_wake_at: now,
+      };
+
+      // Update battery data if provided
+      if (payload.battery_voltage !== undefined) {
+        updateData.battery_voltage = payload.battery_voltage;
+      }
+
+      // Calculate battery health percentage if voltage provided
+      if (payload.battery_voltage !== undefined) {
+        // Simple battery health calculation (3.0V = 0%, 4.2V = 100%)
+        const minVoltage = 3.0;
+        const maxVoltage = 4.2;
+        const healthPercent = Math.max(0, Math.min(100,
+          ((payload.battery_voltage - minVoltage) / (maxVoltage - minVoltage)) * 100
+        ));
+        updateData.battery_health_percent = Math.round(healthPercent);
+      }
+
+      // Update firmware/hardware versions if changed
+      if (payload.firmware_version) {
+        updateData.firmware_version = payload.firmware_version;
+      }
+      if (payload.hardware_version) {
+        updateData.hardware_version = payload.hardware_version;
+      }
+
+      const { error: updateError } = await supabase
+        .from('devices')
+        .update(updateData)
+        .eq('device_id', existingDevice.device_id);
+
+      if (updateError) {
+        console.error('[Ingest] Error updating device:', updateError);
+        return;
+      }
+
+      console.log('[Ingest] Device updated:', existingDevice.device_id);
     }
 
     // If pending images, log for monitoring
-    if (payload.pendingImg && payload.pendingImg > 0) {
-      console.log('[Ingest] Device has pending images:', payload.pendingImg);
-      // Device will send automatically - no action needed
+    if (payload.pending_count && payload.pending_count > 0) {
+      console.log('[Ingest] Device has pending images:', payload.pending_count);
+      // Device will send automatically - no action needed per PDF Section 8.5
     }
   } catch (err) {
     console.error('[Ingest] Error handling HELLO:', err);

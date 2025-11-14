@@ -9,9 +9,15 @@
 // ============================================
 
 export interface DeviceStatusMessage {
-  device_id: string; // MAC address
+  device_id: string; // MAC address or client ID
+  device_mac?: string; // MAC address
   status: "alive";
-  pendingImg?: number; // pending_count
+  pending_count?: number; // pending images count
+  pendingImg?: number; // legacy field name support
+  firmware_version?: string; // e.g., "bt-aws-v4.0.0"
+  hardware_version?: string; // e.g., "ESP32-S3"
+  wifi_rssi?: number; // WiFi signal strength
+  battery_voltage?: number; // Battery voltage in volts
 }
 
 export interface ImageMetadata {
