@@ -287,19 +287,65 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
         throw programAssignmentError;
       }
 
-      // Step 3: Update device record
+      // Step 3: Get company_id from the site
+      const { data: siteData, error: siteError } = await supabase
+        .from('sites')
+        .select('company_id')
+        .eq('site_id', mapping.siteId)
+        .single();
+
+      if (siteError) {
+        logger.error('Error fetching site company:', siteError);
+        throw siteError;
+      }
+
+      // Step 4: Calculate next_wake_at from cron schedule
+      let nextWakeAt = null;
+      if (mapping.wakeScheduleCron) {
+        try {
+          // Parse cron and calculate next wake time
+          // For now, use a simple parser for "0 8,16 * * *" format
+          const cronParts = mapping.wakeScheduleCron.split(' ');
+          if (cronParts.length >= 5) {
+            const hours = cronParts[1].split(',').map(h => parseInt(h));
+            const now = new Date();
+            const currentHour = now.getHours();
+
+            // Find next wake hour
+            let nextHour = hours.find(h => h > currentHour);
+            if (!nextHour) {
+              // Use first hour of next day
+              nextHour = hours[0];
+              now.setDate(now.getDate() + 1);
+            }
+
+            now.setHours(nextHour, 0, 0, 0);
+            nextWakeAt = now.toISOString();
+          }
+        } catch (err) {
+          logger.warn('Could not parse cron schedule:', err);
+        }
+      }
+
+      // Step 5: Update device record with all required fields
+      const now = new Date().toISOString();
       const { data, error } = await supabase
         .from('devices')
         .update({
           site_id: mapping.siteId,
           program_id: mapping.programId,
+          company_id: siteData.company_id,
           device_name: mapping.deviceName,
           wake_schedule_cron: mapping.wakeScheduleCron,
+          next_wake_at: nextWakeAt,
           provisioning_status: 'mapped',
-          mapped_at: new Date().toISOString(),
+          mapped_at: now,
           mapped_by_user_id: userId,
+          provisioned_at: now,
+          provisioned_by_user_id: userId,
           notes: mapping.notes,
           is_active: true,
+          last_seen_at: now,
         })
         .eq('device_id', deviceId)
         .select()

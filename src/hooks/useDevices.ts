@@ -50,7 +50,8 @@ export const useDevices = (options: UseDevicesOptions = {}) => {
             name
           )
         `)
-        .or('device_type.is.null,device_type.neq.virtual') // Show physical devices (null or not virtual)
+        // Show physical devices OR mapped virtual devices (virtual devices that have been assigned)
+        .or('device_type.is.null,device_type.neq.virtual,and(device_type.eq.virtual,provisioning_status.eq.mapped)')
         .order('created_at', { ascending: false });
 
       if (programId) {
