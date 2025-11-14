@@ -114,14 +114,6 @@ CREATE POLICY "Users can update devices in their company"
     AND device_type != 'virtual'
   );
 
--- Policy 4: Prevent any updates to virtual devices
-DROP POLICY IF EXISTS "Prevent updates to virtual devices" ON devices;
-CREATE POLICY "Prevent updates to virtual devices"
-  ON devices FOR UPDATE TO authenticated
-  USING (false)
-  WITH CHECK (false)
-  USING (device_type = 'virtual');
-
 -- ==========================================
 -- VERIFICATION QUERY
 -- ==========================================
