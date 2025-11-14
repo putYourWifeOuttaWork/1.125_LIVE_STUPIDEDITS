@@ -1,12 +1,11 @@
 /**
- * Phase 3 - MQTT Device Handler (SQL-Compliant)
+ * Phase 3 - MQTT Device Handler (HTTP Webhook Mode)
  *
- * WebSocket MQTT integration with Phase 2.5 SQL handlers
+ * HTTP webhook receiver that processes MQTT messages forwarded from local MQTT service
  * Simplified routing - SQL handlers do the heavy lifting
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.39.8';
-import * as mqtt from 'npm:mqtt@5.3.4';
 
 import { loadConfig } from './config.ts';
 import { handleHelloStatus, handleMetadata, handleChunk, handleTelemetryOnly } from './ingest.ts';
@@ -20,81 +19,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
-// Global MQTT client
-let mqttClient: mqtt.MqttClient | null = null;
+// Global state
 let supabaseClient: any = null;
 let configGlobal: any = null;
 
 /**
- * Initialize WebSocket MQTT connection
- */
-function connectToMQTT(config: any, supabase: any): Promise<mqtt.MqttClient> {
-  return new Promise((resolve, reject) => {
-    // WebSocket MQTT (wss://) instead of TCP (mqtts://)
-    const wsUrl = `wss://${config.mqtt.host}:443/mqtt`;
-    console.log('[MQTT] Connecting to WebSocket:', wsUrl);
-
-    const client = mqtt.connect(wsUrl, {
-      username: config.mqtt.username,
-      password: config.mqtt.password,
-      protocol: 'wss',
-      reconnectPeriod: 5000,
-    });
-
-    client.on('connect', () => {
-      console.log('[MQTT] Connected to broker via WebSocket');
-
-      // Subscribe to device status (HELLO)
-      client.subscribe('device/+/status', (err) => {
-        if (err) {
-          console.error('[MQTT] Subscription error (status):', err);
-        } else {
-          console.log('[MQTT] Subscribed to: device/+/status');
-        }
-      });
-
-      // Subscribe to device data (metadata + chunks)
-      client.subscribe('ESP32CAM/+/data', (err) => {
-        if (err) {
-          console.error('[MQTT] Subscription error (data):', err);
-        } else {
-          console.log('[MQTT] Subscribed to: ESP32CAM/+/data');
-        }
-      });
-
-      resolve(client);
-    });
-
-    client.on('error', (error) => {
-      console.error('[MQTT] Connection error:', error);
-      reject(error);
-    });
-
-    client.on('message', async (topic: string, message: Buffer) => {
-      try {
-        await handleMqttMessage(topic, message, client, supabase, config);
-      } catch (error) {
-        console.error('[MQTT] Message processing error:', error);
-      }
-    });
-
-    client.on('close', () => {
-      console.log('[MQTT] Connection closed');
-    });
-
-    client.on('offline', () => {
-      console.log('[MQTT] Client offline');
-    });
-  });
-}
-
-/**
- * Simplified MQTT message router
+ * Process MQTT message received via HTTP webhook
  */
 async function handleMqttMessage(
   topic: string,
   message: Buffer,
-  client: mqtt.MqttClient,
+  client: any,
   supabase: any,
   config: any
 ): Promise<void> {
