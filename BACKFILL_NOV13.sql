@@ -24,7 +24,7 @@ BEGIN
     BEGIN
       -- Check if session already exists
       SELECT session_id INTO v_session_id
-      FROM device_site_sessions
+      FROM site_device_sessions
       WHERE site_id = v_site.site_id
         AND session_date = '2025-11-13';
 
@@ -41,8 +41,8 @@ BEGIN
         '2025-11-13'::DATE
       );
 
-      -- Create device_site_session
-      INSERT INTO device_site_sessions (
+      -- Create site_device_session
+      INSERT INTO site_device_sessions (
         site_id,
         session_date,
         device_submission_id,
@@ -80,6 +80,6 @@ $$;
 SELECT
   COUNT(*) as sessions_created,
   session_date
-FROM device_site_sessions
+FROM site_device_sessions
 WHERE session_date = '2025-11-13'
 GROUP BY session_date;
