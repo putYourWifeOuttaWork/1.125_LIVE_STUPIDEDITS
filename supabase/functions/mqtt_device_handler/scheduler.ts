@@ -8,9 +8,9 @@
 /**
  * Parse cron expression to get wake hours
  * Supports:
- * - Comma-separated: "0 8,16 * * *" → [8, 16]
- * - Interval: "0 */2 * * *" → [0, 2, 4, 6, ..., 22]
- * - Single: "0 14 * * *" → [14]
+ * - Comma-separated: "0 8,16 * * *" returns [8, 16]
+ * - Interval pattern: "0 STAR/2 * * *" returns [0, 2, 4, 6, ..., 22]
+ * - Single: "0 14 * * *" returns [14]
  */
 function parseWakeHours(cronExpression: string): number[] {
   if (!cronExpression || cronExpression.trim() === '') {
@@ -34,7 +34,7 @@ function parseWakeHours(cronExpression: string): number[] {
       .sort((a, b) => a - b);
   }
 
-  // Handle interval syntax: "*/2" means every 2 hours
+  // Handle interval syntax: star-slash-N means every N hours
   if (hourPart.includes('*/')) {
     const match = hourPart.match(/\*\/(\d+)/);
     if (match) {
@@ -156,7 +156,7 @@ export function isValidCron(cronExpression: string): boolean {
   const validPatterns = [
     /^\d+$/, // Single hour: "8"
     /^\d+(,\d+)+$/, // Comma-separated: "8,16,20"
-    /^\*\/\d+$/, // Interval: "*/2"
+    /^\*\/\d+$/, // Interval: star-slash-N
     /^\*$/, // Wildcard: "*"
   ];
 
