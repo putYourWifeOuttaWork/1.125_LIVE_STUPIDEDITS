@@ -65,17 +65,18 @@ async function autoProvisionDevice(deviceMac) {
 }
 
 async function handleStatusMessage(payload, client) {
-  console.log(`[STATUS] Device ${payload.device_id} is alive, pending images: ${payload.pendingImg || 0}`);
+  const deviceMac = payload.device_mac || payload.device_id;
+  console.log(`[STATUS] Device ${payload.device_id} (MAC: ${deviceMac}) is alive, pending images: ${payload.pendingImg || payload.pending_count || 0}`);
 
   let { data: device, error: deviceError } = await supabase
     .from('devices')
     .select('*')
-    .eq('device_mac', payload.device_id)
+    .eq('device_mac', deviceMac)
     .maybeSingle();
 
   if (!device && !deviceError) {
-    console.log(`[AUTO-PROVISION] Device ${payload.device_id} not found, attempting auto-provision...`);
-    device = await autoProvisionDevice(payload.device_id);
+    console.log(`[AUTO-PROVISION] Device ${deviceMac} not found, attempting auto-provision...`);
+    device = await autoProvisionDevice(deviceMac);
 
     if (!device) {
       console.error(`[ERROR] Failed to auto-provision device ${payload.device_id}`);
@@ -102,12 +103,13 @@ async function handleStatusMessage(payload, client) {
 }
 
 async function handleMetadataMessage(payload, client) {
-  console.log(`[METADATA] Received for image ${payload.image_name} from ${payload.device_id}`);
+  const deviceMac = payload.device_mac || payload.device_id;
+  console.log(`[METADATA] Received for image ${payload.image_name} from ${payload.device_id} (MAC: ${deviceMac})`);
 
   const { data: device, error: deviceError } = await supabase
     .from('devices')
     .select('*')
-    .eq('device_mac', payload.device_id)
+    .eq('device_mac', deviceMac)
     .maybeSingle();
 
   if (deviceError) {
