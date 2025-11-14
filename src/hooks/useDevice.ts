@@ -187,7 +187,7 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
           )
         `)
         .eq('device_id', deviceId)
-        .neq('device_type', 'virtual') // Exclude virtual system devices
+        .or('device_type.is.null,device_type.neq.virtual') // Show physical devices (null or not virtual)
         .maybeSingle();
 
       if (error) {

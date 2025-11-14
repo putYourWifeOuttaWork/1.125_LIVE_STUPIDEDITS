@@ -50,7 +50,7 @@ export const useDevices = (options: UseDevicesOptions = {}) => {
             name
           )
         `)
-        .neq('device_type', 'virtual') // Exclude virtual system devices
+        .or('device_type.is.null,device_type.neq.virtual') // Show physical devices (null or not virtual)
         .order('created_at', { ascending: false });
 
       if (programId) {
