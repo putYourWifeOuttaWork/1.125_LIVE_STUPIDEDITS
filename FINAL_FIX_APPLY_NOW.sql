@@ -1,17 +1,16 @@
 /*
-  QUICK FIX: Apply this immediately in Supabase SQL Editor
+  FINAL FIX - Apply this in Supabase SQL Editor
 
-  This fixes the session creation errors by:
-  1. Adding missing enum values
-  2. Creating SYSTEM device
-  3. Updating the device submission function
+  This corrects ALL schema issues:
+  - Enum values
+  - Device table columns (removed device_type, device_code)
+  - submission_sessions columns (opened_at → session_start_time)
 */
 
 -- ==========================================
 -- 1. Add Missing Enum Values
 -- ==========================================
 
--- Add 'None' to odor_distance_enum
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -22,7 +21,6 @@ BEGIN
   END IF;
 END $$;
 
--- Add 'Moderate' to airflow_enum
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -233,5 +231,5 @@ GRANT EXECUTE ON FUNCTION fn_get_or_create_device_submission(UUID, DATE) TO auth
 -- 4. Test It
 -- ==========================================
 
--- Run this to test:
--- SELECT auto_create_daily_sessions();
+-- Run this immediately after:
+SELECT auto_create_daily_sessions();

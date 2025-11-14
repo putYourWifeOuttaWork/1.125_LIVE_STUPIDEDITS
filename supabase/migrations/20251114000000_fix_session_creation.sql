@@ -285,7 +285,7 @@ BEGIN
     program_id,
     opened_by_user_id,
     session_status,
-    opened_at,
+    session_start_time,
     completion_time
   ) VALUES (
     v_submission_id,
