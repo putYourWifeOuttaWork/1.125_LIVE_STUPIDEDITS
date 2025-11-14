@@ -184,3 +184,76 @@ export const usePendingDevices = () => {
     refetchInterval: 20000
   });
 };
+
+// Hook for fetching unmapped devices (company_id is null), including virtual devices for super admins
+export const useUnmappedDevices = () => {
+  const queryClient = useQueryClient();
+
+  const {
+    data: devices = [],
+    isLoading,
+    error,
+    refetch
+  } = useQuery({
+    queryKey: ['unmappedDevices'],
+    queryFn: async () => {
+      logger.debug('Fetching unmapped devices');
+
+      const { data, error } = await supabase
+        .from('devices')
+        .select(`
+          *,
+          sites:site_id (
+            site_id,
+            name,
+            type
+          ),
+          pilot_programs:program_id (
+            program_id,
+            name
+          )
+        `)
+        .is('company_id', null)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        logger.error('Error fetching unmapped devices:', error);
+        throw error;
+      }
+
+      // Enrich devices with image counts
+      const devicesWithStats: DeviceWithStats[] = await Promise.all(
+        (data || []).map(async (device) => {
+          const { count: totalImages } = await supabase
+            .from('device_images')
+            .select('*', { count: 'exact', head: true })
+            .eq('device_id', device.device_id);
+
+          const { count: pendingImages } = await supabase
+            .from('device_images')
+            .select('*', { count: 'exact', head: true })
+            .eq('device_id', device.device_id)
+            .eq('status', 'receiving');
+
+          return {
+            ...device,
+            total_images: totalImages || 0,
+            pending_images: pendingImages || 0
+          } as DeviceWithStats;
+        })
+      );
+
+      logger.debug('Unmapped devices fetched successfully', { count: devicesWithStats.length });
+      return devicesWithStats;
+    },
+    refetchInterval: 20000,
+    staleTime: 15000,
+  });
+
+  return {
+    devices,
+    isLoading,
+    error,
+    refetch
+  };
+};

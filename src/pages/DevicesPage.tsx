@@ -8,7 +8,7 @@ import DeviceCard from '../components/devices/DeviceCard';
 import DeviceMappingModal from '../components/devices/DeviceMappingModal';
 import DeviceSetupWizard from '../components/devices/DeviceSetupWizard';
 import DeviceRegistrationModal from '../components/devices/DeviceRegistrationModal';
-import { useDevices, usePendingDevices } from '../hooks/useDevices';
+import { useDevices, usePendingDevices, useUnmappedDevices } from '../hooks/useDevices';
 import { useDevice } from '../hooks/useDevice';
 import { DeviceWithStats } from '../lib/types';
 import { debounce } from '../utils/helpers';
@@ -17,7 +17,7 @@ import { toast } from 'react-toastify';
 
 const DevicesPage = () => {
   const navigate = useNavigate();
-  const { isAdmin } = useCompanies();
+  const { isAdmin, isSuperAdmin } = useCompanies();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'inactive'>('all');
@@ -28,6 +28,7 @@ const DevicesPage = () => {
   const [useWizardMode, setUseWizardMode] = useState(true);
 
   const { devices: pendingDevices, isLoading: pendingLoading } = usePendingDevices();
+  const { devices: unmappedDevices, isLoading: unmappedLoading } = useUnmappedDevices();
   const { devices: allDevices, isLoading: devicesLoading } = useDevices({
     refetchInterval: 30000,
   });
@@ -154,6 +155,54 @@ const DevicesPage = () => {
           </Button>
         </div>
       </div>
+
+      {isSuperAdmin && unmappedDevices.length > 0 && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-blue-800">
+                {unmappedDevices.length} Unmapped {unmappedDevices.length === 1 ? 'Device' : 'Devices'} (Super Admin Only)
+              </h3>
+              <p className="text-sm text-blue-700 mt-1">
+                These devices are not assigned to any company. Click to assign them to a site and company.
+              </p>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {unmappedDevices.map((device) => (
+                  <div key={device.device_id} className="bg-white rounded-md border border-blue-300 p-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {device.device_name || device.device_mac}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          MAC: {device.device_mac}
+                        </p>
+                        {device.device_type === 'virtual' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 mt-1">
+                            Virtual Device
+                          </span>
+                        )}
+                        <p className="text-xs text-gray-600 mt-1">
+                          Status: {device.provisioning_status}
+                        </p>
+                      </div>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        icon={<MapPin size={14} />}
+                        onClick={() => handleMapDevice(device)}
+                      >
+                        Setup
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingDevices.length > 0 && (
         <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
