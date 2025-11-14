@@ -108,7 +108,11 @@ COMMENT ON FUNCTION is_physical_device IS 'Check if a device is a physical IoT d
 -- UPDATE get_unassigned_devices FUNCTION
 -- ==========================================
 
-CREATE OR REPLACE FUNCTION get_unassigned_devices()
+-- Drop existing function first (signature changed)
+DROP FUNCTION IF EXISTS get_unassigned_devices();
+
+-- Recreate with updated logic
+CREATE FUNCTION get_unassigned_devices()
 RETURNS TABLE (
   device_id UUID,
   device_code TEXT,
