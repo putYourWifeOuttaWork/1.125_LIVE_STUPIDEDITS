@@ -11,8 +11,14 @@
 -- Enable pg_cron extension (if not already enabled)
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
--- Remove any existing job with the same name
-SELECT cron.unschedule('auto-create-daily-sessions');
+-- Remove any existing job with the same name (if it exists)
+DO $$
+BEGIN
+  PERFORM cron.unschedule('auto-create-daily-sessions');
+EXCEPTION WHEN OTHERS THEN
+  -- Job doesn't exist, that's fine
+  NULL;
+END $$;
 
 -- Schedule the job to run daily at 12:05 AM UTC
 SELECT cron.schedule(
