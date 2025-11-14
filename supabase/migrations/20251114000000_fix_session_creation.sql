@@ -69,12 +69,10 @@ BEGIN
   WHERE device_mac = 'SYSTEM:AUTO:GENERATED';
 
   IF v_system_device_id IS NULL THEN
-    -- Create the SYSTEM device
+    -- Create the SYSTEM device (columns match actual devices table schema)
     INSERT INTO devices (
       device_mac,
       device_name,
-      device_code,
-      device_type,
       is_active,
       provisioning_status,
       firmware_version,
@@ -83,12 +81,10 @@ BEGIN
     ) VALUES (
       'SYSTEM:AUTO:GENERATED',
       'System Auto-Generated Submissions',
-      'SYSTEM-AUTO',
-      'SYSTEM',
       false, -- Not a real device
       'mapped', -- System device is always "mapped"
       '1.0.0',
-      'N/A',
+      'SYSTEM',
       'Virtual device used as creator for system-generated device submission shells. Not a physical device.'
     );
 
