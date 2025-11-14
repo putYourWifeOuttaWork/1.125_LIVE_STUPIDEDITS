@@ -17,7 +17,14 @@
 */
 
 -- ==========================================
--- ADD DEVICE TYPE COLUMN FIRST
+-- STEP 1: DROP OLD PROVISIONING STATUS CONSTRAINT
+-- ==========================================
+
+-- Drop the existing constraint FIRST so we can update to 'system'
+ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_provisioning_status_check;
+
+-- ==========================================
+-- STEP 2: ADD DEVICE TYPE COLUMN
 -- ==========================================
 
 DO $$
@@ -32,10 +39,10 @@ BEGIN
 END $$;
 
 -- ==========================================
--- UPDATE SYSTEM DEVICE TO 'system' STATUS
+-- STEP 3: UPDATE SYSTEM DEVICE
 -- ==========================================
 
--- Update system device to use 'system' status BEFORE adding constraint
+-- Now we can safely update to 'system' status since constraint is dropped
 UPDATE devices
 SET
   device_type = 'virtual',
@@ -48,7 +55,7 @@ WHERE device_mac = 'SYSTEM:AUTO:GENERATED'
   OR hardware_version = 'SYSTEM';
 
 -- ==========================================
--- UPDATE ALL OTHER DEVICES TO 'physical'
+-- STEP 4: UPDATE ALL OTHER DEVICES
 -- ==========================================
 
 UPDATE devices
@@ -58,32 +65,25 @@ WHERE device_type IS NULL
   AND hardware_version != 'SYSTEM';
 
 -- ==========================================
--- NOW ADD CHECK CONSTRAINTS
+-- STEP 5: ADD NEW CONSTRAINTS
 -- ==========================================
 
 -- Add device_type constraint
-DO $$
-BEGIN
-  ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_device_type_check;
-  ALTER TABLE devices ADD CONSTRAINT devices_device_type_check
-    CHECK (device_type IN ('physical', 'virtual'));
-END $$;
+ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_device_type_check;
+ALTER TABLE devices ADD CONSTRAINT devices_device_type_check
+  CHECK (device_type IN ('physical', 'virtual'));
 
--- Update provisioning_status constraint to include all values
-DO $$
-BEGIN
-  ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_provisioning_status_check;
-  ALTER TABLE devices ADD CONSTRAINT devices_provisioning_status_check
-    CHECK (provisioning_status IN (
-      'pending_approval',
-      'pending_mapping',
-      'mapped',
-      'active',
-      'inactive',
-      'decommissioned',
-      'system'
-    ));
-END $$;
+-- Add NEW provisioning_status constraint with 'system' included
+ALTER TABLE devices ADD CONSTRAINT devices_provisioning_status_check
+  CHECK (provisioning_status IN (
+    'pending_approval',
+    'pending_mapping',
+    'mapped',
+    'active',
+    'inactive',
+    'decommissioned',
+    'system'
+  ));
 
 COMMENT ON CONSTRAINT devices_provisioning_status_check ON devices IS 'Valid provisioning statuses including system for virtual devices';
 
