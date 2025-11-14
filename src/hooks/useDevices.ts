@@ -50,8 +50,7 @@ export const useDevices = (options: UseDevicesOptions = {}) => {
             name
           )
         `)
-        // Show physical devices OR mapped virtual devices (virtual devices that have been assigned)
-        .or('device_type.is.null,device_type.neq.virtual,and(device_type.eq.virtual,provisioning_status.eq.mapped)')
+        // Show all devices including virtual ones (virtual is just a label for testing)
         .order('created_at', { ascending: false });
 
       if (programId) {
