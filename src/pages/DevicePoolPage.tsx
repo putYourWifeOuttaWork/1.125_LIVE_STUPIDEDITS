@@ -38,7 +38,7 @@ const DevicePoolPage = () => {
   const loadDevicePool = async () => {
     setLoading(true);
     try {
-      // Load unassigned devices
+      // Load unassigned devices (physical devices only)
       const { data: devicesData, error: devicesError } = await supabase
         .rpc('get_unassigned_devices');
 
