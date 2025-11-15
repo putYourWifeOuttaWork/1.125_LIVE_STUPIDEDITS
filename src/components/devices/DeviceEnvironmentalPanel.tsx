@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Download, Filter, RefreshCw, Thermometer, Droplets, Gauge, Wind } from 'lucide-react';
 import { format } from 'date-fns';
 import Button from '../common/Button';
 import LoadingScreen from '../common/LoadingScreen';
 import DateRangePicker from '../common/DateRangePicker';
+import EnvironmentalTrendsChart from '../charts/EnvironmentalTrendsChart';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-toastify';
 
@@ -125,6 +126,19 @@ const DeviceEnvironmentalPanel = ({ deviceId }: DeviceEnvironmentalPanelProps) =
     ? (telemetry.reduce((sum, r) => sum + (r.pressure || 0), 0) / telemetry.filter(r => r.pressure).length).toFixed(0)
     : 'N/A';
 
+  // Transform data for D3 chart
+  const chartData = useMemo(() => {
+    return telemetry
+      .map(reading => ({
+        timestamp: new Date(reading.captured_at),
+        temperature: reading.temperature,
+        humidity: reading.humidity,
+        pressure: reading.pressure,
+        gasResistance: reading.gas_resistance
+      }))
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  }, [telemetry]);
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -166,6 +180,22 @@ const DeviceEnvironmentalPanel = ({ deviceId }: DeviceEnvironmentalPanelProps) =
           </div>
         </div>
       </div>
+
+      {/* Environmental Trends Chart */}
+      {telemetry.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Environmental Trends</h3>
+          <EnvironmentalTrendsChart
+            data={chartData}
+            width={Math.min(window.innerWidth - 100, 1000)}
+            height={400}
+            showLegend={true}
+          />
+          <p className="text-xs text-gray-500 mt-4">
+            Click legend items to toggle metrics. Hover over chart to see detailed values.
+          </p>
+        </div>
+      )}
 
       {/* Filters and Actions */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
