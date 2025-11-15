@@ -110,6 +110,20 @@ const DeviceEnvironmentalPanel = ({ deviceId }: DeviceEnvironmentalPanelProps) =
     }
   };
 
+  // Transform data for D3 chart - MUST be before any early returns (hooks rule)
+  const chartData = useMemo(() => {
+    return telemetry
+      .map(reading => ({
+        timestamp: new Date(reading.captured_at),
+        temperature: reading.temperature,
+        humidity: reading.humidity,
+        pressure: reading.pressure,
+        gasResistance: reading.gas_resistance
+      }))
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  }, [telemetry]);
+
+  // Early return AFTER all hooks
   if (loading && telemetry.length === 0) {
     return <LoadingScreen />;
   }
@@ -125,19 +139,6 @@ const DeviceEnvironmentalPanel = ({ deviceId }: DeviceEnvironmentalPanelProps) =
   const avgPressure = telemetry.length > 0
     ? (telemetry.reduce((sum, r) => sum + (r.pressure || 0), 0) / telemetry.filter(r => r.pressure).length).toFixed(0)
     : 'N/A';
-
-  // Transform data for D3 chart
-  const chartData = useMemo(() => {
-    return telemetry
-      .map(reading => ({
-        timestamp: new Date(reading.captured_at),
-        temperature: reading.temperature,
-        humidity: reading.humidity,
-        pressure: reading.pressure,
-        gasResistance: reading.gas_resistance
-      }))
-      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-  }, [telemetry]);
 
   return (
     <div className="space-y-6">
