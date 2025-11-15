@@ -127,17 +127,17 @@ DECLARE
   v_severity event_severity;
 BEGIN
   -- Determine description and severity based on status
-  IF NEW.status = 'completed' THEN
+  IF NEW.status = 'success'::device_session_status THEN
     v_description := format('Wake session completed successfully (%s ms)', NEW.session_duration_ms);
     v_severity := 'info';
-  ELSIF NEW.status = 'failed' THEN
+  ELSIF NEW.status = 'failed'::device_session_status THEN
     v_description := format('Wake session failed: %s', array_to_string(NEW.error_codes, ', '));
     v_severity := 'error';
-  ELSIF NEW.status = 'timeout' THEN
-    v_description := 'Wake session timed out';
+  ELSIF NEW.status = 'partial'::device_session_status THEN
+    v_description := format('Wake session partially completed (%s ms)', NEW.session_duration_ms);
     v_severity := 'warning';
   ELSE
-    v_description := format('Wake session %s', NEW.status);
+    v_description := format('Wake session %s', NEW.status::text);
     v_severity := 'info';
   END IF;
 
@@ -167,10 +167,10 @@ BEGIN
       NEW.session_id,
       'WakeSession',
       CASE
-        WHEN NEW.status = 'completed' THEN 'wake_completed'
-        WHEN NEW.status = 'failed' THEN 'wake_failed'
-        WHEN NEW.status = 'timeout' THEN 'wake_timeout'
-        ELSE 'wake_' || NEW.status
+        WHEN NEW.status = 'success'::device_session_status THEN 'wake_completed'
+        WHEN NEW.status = 'failed'::device_session_status THEN 'wake_failed'
+        WHEN NEW.status = 'partial'::device_session_status THEN 'wake_partial'
+        ELSE 'wake_' || NEW.status::text
       END,
       v_severity,
       v_description,
@@ -580,19 +580,19 @@ SELECT
   dws.session_id,
   'WakeSession'::device_event_category,
   CASE
-    WHEN dws.status = 'completed' THEN 'wake_completed'
-    WHEN dws.status = 'failed' THEN 'wake_failed'
-    WHEN dws.status = 'timeout' THEN 'wake_timeout'
+    WHEN dws.status = 'success'::device_session_status THEN 'wake_completed'
+    WHEN dws.status = 'failed'::device_session_status THEN 'wake_failed'
+    WHEN dws.status = 'partial'::device_session_status THEN 'wake_partial'
     ELSE 'wake_' || dws.status::text
   END,
   CASE
-    WHEN dws.status = 'completed' THEN 'info'::event_severity
-    WHEN dws.status = 'failed' THEN 'error'::event_severity
+    WHEN dws.status = 'success'::device_session_status THEN 'info'::event_severity
+    WHEN dws.status = 'failed'::device_session_status THEN 'error'::event_severity
     ELSE 'warning'::event_severity
   END,
   CASE
-    WHEN dws.status = 'completed' THEN format('Wake session completed successfully (%s ms)', dws.session_duration_ms)
-    WHEN dws.status = 'failed' THEN format('Wake session failed: %s', array_to_string(dws.error_codes, ', '))
+    WHEN dws.status = 'success'::device_session_status THEN format('Wake session completed successfully (%s ms)', dws.session_duration_ms)
+    WHEN dws.status = 'failed'::device_session_status THEN format('Wake session failed: %s', array_to_string(dws.error_codes, ', '))
     ELSE format('Wake session %s', dws.status::text)
   END,
   jsonb_build_object(
@@ -620,7 +620,7 @@ SELECT
   dws.wake_timestamp,
   dws.created_at
 FROM device_wake_sessions dws
-WHERE dws.status IN ('completed', 'failed', 'timeout')
+WHERE dws.status IN ('success'::device_session_status, 'failed'::device_session_status, 'partial'::device_session_status)
   AND NOT EXISTS (
     SELECT 1 FROM device_history
     WHERE source_table = 'device_wake_sessions'
