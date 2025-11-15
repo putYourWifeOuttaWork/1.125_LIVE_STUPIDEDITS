@@ -357,13 +357,47 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
         throw error;
       }
 
+      // Step 6: Queue set_wake_schedule command if wake schedule changed
+      if (mapping.wakeScheduleCron && device?.wake_schedule_cron !== mapping.wakeScheduleCron) {
+        logger.debug('Wake schedule changed, queuing command', {
+          oldSchedule: device?.wake_schedule_cron,
+          newSchedule: mapping.wakeScheduleCron
+        });
+
+        const { error: commandError } = await supabase
+          .from('device_commands')
+          .insert({
+            device_id: deviceId,
+            command_type: 'set_wake_schedule',
+            command_payload: {
+              cron: mapping.wakeScheduleCron,
+              timestamp: new Date().toISOString()
+            },
+            created_by_user_id: userId,
+            notes: 'Wake schedule updated during device setup'
+          });
+
+        if (commandError) {
+          logger.warn('Failed to queue wake schedule command', commandError);
+          // Don't fail the mapping if command queue fails
+        } else {
+          logger.debug('Wake schedule command queued successfully');
+        }
+      }
+
       logger.debug('Device mapped successfully with junction records');
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
       queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
-      toast.success('Device mapped successfully');
+
+      // Show different message if wake schedule was changed
+      if (device?.wake_schedule_cron) {
+        toast.success('Device mapped successfully. Schedule changes will be sent at next wake.');
+      } else {
+        toast.success('Device mapped successfully');
+      }
     },
     onError: (error: Error) => {
       toast.error(`Failed to map device: ${error.message}`);

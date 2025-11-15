@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Check, AlertCircle, Loader, MapPin, Clock, Zap, Info } from 'lucide-react';
+import { X, Check, AlertCircle, Loader, MapPin, Clock, Info } from 'lucide-react';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
 import Input from '../common/Input';
@@ -33,8 +33,7 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
   const [customSchedule, setCustomSchedule] = useState('');
   const [notes, setNotes] = useState(device.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [testResult, setTestResult] = useState<any>(null);
-  const [isTesting, setIsTesting] = useState(false);
+  // Test connection removed - devices only wake on schedule, so immediate ping isn't useful
 
   const { programs, loading: programsLoading } = usePilotPrograms();
   const { sites, loading: sitesLoading } = useSites(selectedProgramId);
@@ -87,23 +86,7 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
     }
   };
 
-  const handleTestConnection = async () => {
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      const result = await DeviceService.testDeviceConnection(device.device_id);
-      setTestResult(result);
-      if (result.success) {
-        toast.success('Device connection verified!');
-      } else {
-        toast.warning(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to test connection');
-    } finally {
-      setIsTesting(false);
-    }
-  };
+  // Test connection removed - not applicable for scheduled-wake IoT devices
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -491,24 +474,20 @@ const DeviceSetupWizard = ({ isOpen, onClose, device, onComplete }: DeviceSetupW
         </div>
 
         <div className="pt-4 border-t">
-          <Button
-            variant="outline"
-            onClick={handleTestConnection}
-            isLoading={isTesting}
-            className="w-full"
-            icon={<Zap size={16} />}
-          >
-            Test Connection
-          </Button>
-          {testResult && (
-            <div className={`mt-3 p-3 rounded-md ${
-              testResult.success ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
-            }`}>
-              <p className={`text-sm ${testResult.success ? 'text-green-800' : 'text-yellow-800'}`}>
-                {testResult.message}
+          <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-blue-800">
+              <p className="font-medium mb-1">Setup Complete</p>
+              <p className="text-blue-700">
+                Review your configuration below and click "Complete Setup" to activate the device.
+                {device.wake_schedule_cron !== selectedSchedule && (
+                  <span className="block mt-1 font-medium">
+                    ⚠️ Schedule changes will be sent to the device at its next wake.
+                  </span>
+                )}
               </p>
             </div>
-          )}
+          </div>
         </div>
       </div>
     );
