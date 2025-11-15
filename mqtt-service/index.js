@@ -65,6 +65,94 @@ async function autoProvisionDevice(deviceMac) {
   }
 }
 
+async function sendPendingCommands(device, client) {
+  // Query pending commands for this device
+  const { data: commands, error } = await supabase
+    .from('device_commands')
+    .select('*')
+    .eq('device_id', device.device_id)
+    .eq('status', 'pending')
+    .order('issued_at', { ascending: true })
+    .limit(5); // Process up to 5 commands per wake
+
+  if (error) {
+    console.error(`[CMD] Error fetching commands:`, error);
+    return;
+  }
+
+  if (!commands || commands.length === 0) {
+    console.log(`[CMD] No pending commands for device ${device.device_code || device.device_mac}`);
+    return;
+  }
+
+  console.log(`[CMD] Found ${commands.length} pending commands for ${device.device_code || device.device_mac}`);
+
+  for (const command of commands) {
+    try {
+      let message = {};
+
+      switch (command.command_type) {
+        case 'ping':
+          message = {
+            device_id: device.device_code || device.device_id,
+            ping: true,
+            timestamp: command.command_payload?.timestamp || new Date().toISOString()
+          };
+          break;
+
+        case 'capture_image':
+          message = {
+            device_id: device.device_code || device.device_id,
+            capture_image: true
+          };
+          break;
+
+        case 'set_wake_schedule':
+          message = {
+            device_id: device.device_code || device.device_id,
+            set_wake_schedule: command.command_payload?.wake_schedule_cron
+          };
+          break;
+
+        case 'send_image':
+          message = {
+            device_id: device.device_code || device.device_id,
+            send_image: command.command_payload?.image_name
+          };
+          break;
+
+        default:
+          console.log(`[CMD] Unknown command type: ${command.command_type}`);
+          continue;
+      }
+
+      // Publish command to device
+      const topic = `device/${device.device_code || device.device_id}/cmd`;
+      client.publish(topic, JSON.stringify(message));
+      console.log(`[CMD] Sent ${command.command_type} to ${device.device_code || device.device_mac} on ${topic}`);
+
+      // Update command status
+      await supabase
+        .from('device_commands')
+        .update({
+          status: 'sent',
+          delivered_at: new Date().toISOString()
+        })
+        .eq('command_id', command.command_id);
+
+    } catch (cmdError) {
+      console.error(`[CMD] Error sending command ${command.command_id}:`, cmdError);
+      await supabase
+        .from('device_commands')
+        .update({
+          status: 'failed',
+          retry_count: (command.retry_count || 0) + 1
+        })
+        .eq('command_id', command.command_id);
+    }
+  }
+}
+
 async function handleStatusMessage(payload, client) {
   const deviceMac = payload.device_mac || payload.device_id;
   console.log(`[STATUS] Device ${payload.device_id} (MAC: ${deviceMac}) is alive, pending images: ${payload.pendingImg || payload.pending_count || 0}`);
@@ -99,6 +187,9 @@ async function handleStatusMessage(payload, client) {
     .eq('device_id', device.device_id);
 
   console.log(`[STATUS] Device ${device.device_code || device.device_mac} updated (status: ${device.provisioning_status})`);
+
+  // Send any pending commands to the device
+  await sendPendingCommands(device, client);
 
   return { device, pendingCount: payload.pendingImg || 0 };
 }

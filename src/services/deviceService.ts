@@ -214,7 +214,8 @@ export class DeviceService {
   }
 
   /**
-   * Test device connectivity via MQTT
+   * Test device connectivity via MQTT ping command
+   * Sends a ping command that will be delivered when device wakes up
    */
   static async testDeviceConnection(deviceId: string): Promise<DeviceTestResult> {
     logger.debug('Testing device connection', { deviceId });
@@ -222,10 +223,10 @@ export class DeviceService {
     try {
       const startTime = Date.now();
 
-      // Check device's last seen timestamp
+      // Check if device exists
       const { data: device, error } = await supabase
         .from('devices')
-        .select('last_seen_at, device_mac, is_active')
+        .select('last_seen_at, device_mac, device_code, is_active, wake_schedule_cron')
         .eq('device_id', deviceId)
         .single();
 
@@ -236,36 +237,54 @@ export class DeviceService {
         };
       }
 
-      if (!device.last_seen_at) {
+      // Issue a ping command
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { data: command, error: commandError } = await supabase
+        .from('device_commands')
+        .insert({
+          device_id: deviceId,
+          command_type: 'ping',
+          command_payload: { timestamp: new Date().toISOString() },
+          created_by_user_id: user?.id || null,
+          notes: 'Connection test ping'
+        })
+        .select()
+        .single();
+
+      if (commandError) {
+        logger.error('Failed to create ping command', commandError);
         return {
           success: false,
-          message: 'Device has never connected. Please ensure device is powered on and has WiFi connectivity.'
+          message: 'Failed to send ping command: ' + commandError.message
+        };
+      }
+
+      const latencyMs = Date.now() - startTime;
+
+      // Return based on last seen time
+      if (!device.last_seen_at) {
+        return {
+          success: true,
+          message: 'Ping command queued. Device has never connected - waiting for first connection.',
+          latencyMs
         };
       }
 
       const lastSeenDate = new Date(device.last_seen_at);
-      const now = new Date();
-      const minutesSinceLastSeen = (now.getTime() - lastSeenDate.getTime()) / (1000 * 60);
-      const latencyMs = Date.now() - startTime;
+      const minutesSinceLastSeen = (Date.now() - lastSeenDate.getTime()) / (1000 * 60);
 
       if (minutesSinceLastSeen < 5) {
         return {
           success: true,
-          message: 'Device is online and responsive',
-          latencyMs,
-          lastSeen: device.last_seen_at
-        };
-      } else if (minutesSinceLastSeen < 120) {
-        return {
-          success: true,
-          message: `Device was last seen ${Math.floor(minutesSinceLastSeen)} minutes ago`,
+          message: 'Ping command sent! Device is online and will respond shortly.',
           latencyMs,
           lastSeen: device.last_seen_at
         };
       } else {
         return {
-          success: false,
-          message: `Device appears offline. Last seen: ${lastSeenDate.toLocaleString()}`,
+          success: true,
+          message: `Ping command queued. Device will respond at next wake (last seen ${Math.floor(minutesSinceLastSeen)} min ago).`,
           latencyMs,
           lastSeen: device.last_seen_at
         };
@@ -276,6 +295,63 @@ export class DeviceService {
         success: false,
         message: error instanceof Error ? error.message : 'Connection test failed'
       };
+    }
+  }
+
+  /**
+   * Update device settings and queue command for next wake
+   */
+  static async updateDeviceSettings(params: {
+    deviceId: string;
+    wakeScheduleCron?: string;
+    deviceName?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    logger.debug('Updating device settings', params);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Update device record
+      const updates: any = {};
+      if (params.wakeScheduleCron !== undefined) updates.wake_schedule_cron = params.wakeScheduleCron;
+      if (params.deviceName !== undefined) updates.device_name = params.deviceName;
+      if (params.notes !== undefined) updates.notes = params.notes;
+
+      const { error: updateError } = await supabase
+        .from('devices')
+        .update(updates)
+        .eq('device_id', params.deviceId);
+
+      if (updateError) {
+        logger.error('Failed to update device', updateError);
+        return { success: false, error: updateError.message };
+      }
+
+      // Queue update_config command for device
+      if (params.wakeScheduleCron !== undefined) {
+        const { error: commandError } = await supabase
+          .from('device_commands')
+          .insert({
+            device_id: params.deviceId,
+            command_type: 'set_wake_schedule',
+            command_payload: { wake_schedule_cron: params.wakeScheduleCron },
+            created_by_user_id: user?.id || null,
+            notes: 'Wake schedule updated via UI'
+          });
+
+        if (commandError) {
+          logger.error('Failed to queue wake schedule command', commandError);
+          return { success: false, error: 'Settings updated but command failed: ' + commandError.message };
+        }
+      }
+
+      logger.info('Device settings updated successfully', params);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error in updateDeviceSettings', { error: errorMessage });
+      return { success: false, error: errorMessage };
     }
   }
 

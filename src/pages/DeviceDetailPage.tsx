@@ -12,6 +12,7 @@ import DeviceReassignModal from '../components/devices/DeviceReassignModal';
 import DeviceHistoryPanel from '../components/devices/DeviceHistoryPanel';
 import DeviceImagesPanel from '../components/devices/DeviceImagesPanel';
 import DeviceEditModal from '../components/devices/DeviceEditModal';
+import DeviceSettingsModal from '../components/devices/DeviceSettingsModal';
 import { useDevice, useDeviceImages } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
@@ -22,7 +23,7 @@ const DeviceDetailPage = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
   const navigate = useNavigate();
   const { isAdmin } = useCompanies();
-  const { device, isLoading, activateDevice, deactivateDevice, unassignDevice, reassignDevice, updateDevice } = useDevice(deviceId);
+  const { device, isLoading, activateDevice, deactivateDevice, unassignDevice, reassignDevice, updateDevice, refetch } = useDevice(deviceId);
   const { images } = useDeviceImages(deviceId || '');
 
   // Compute image counts from actual images
@@ -32,6 +33,7 @@ const DeviceDetailPage = () => {
   const [showUnassignModal, setShowUnassignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   if (isLoading) {
@@ -105,6 +107,14 @@ const DeviceDetailPage = () => {
                     onClick={() => setShowEditModal(true)}
                   >
                     Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={<Settings size={14} />}
+                    onClick={() => setShowSettingsModal(true)}
+                  >
+                    Settings
                   </Button>
                   <Button
                     variant="outline"
@@ -507,6 +517,17 @@ const DeviceDetailPage = () => {
           onClose={() => setShowEditModal(false)}
           device={device}
           onSubmit={handleUpdate}
+        />
+      )}
+
+      {showSettingsModal && (
+        <DeviceSettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          device={device}
+          onSuccess={() => {
+            refetch();
+          }}
         />
       )}
     </div>
