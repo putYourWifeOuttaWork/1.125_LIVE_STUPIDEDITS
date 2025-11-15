@@ -527,13 +527,13 @@ function connectToMQTT() {
         const payload = JSON.parse(message.toString());
         console.log(`[MQTT] 📨 Message on ${topic}:`, JSON.stringify(payload).substring(0, 200));
 
-        // NOTE: Edge Function forwarding disabled - local processing handles everything
-        // The Edge Function doesn't send MQTT commands back to devices per the protocol,
-        // so it causes 2-minute timeouts without adding value during testing.
-        // Uncomment below if you need parallel Edge Function processing for production.
-
-        /*
+        // Forward to edge function with timeout
+        // NOTE: Edge Function can't send MQTT commands back (receives via HTTP webhook)
+        // Local processing below handles actual device communication
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
           const edgeResponse = await fetch(`${supabaseUrl}/functions/v1/mqtt_device_handler`, {
             method: 'POST',
             headers: {
@@ -541,20 +541,26 @@ function connectToMQTT() {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ topic, payload }),
+            signal: controller.signal
           });
+
+          clearTimeout(timeoutId);
 
           if (edgeResponse.ok) {
             const result = await edgeResponse.json();
-            console.log(`[EDGE] ✅ Message processed:`, result.message || 'success');
+            console.log(`[EDGE] ✅ Processed:`, result.message || 'success');
           } else {
-            console.error(`[EDGE] ❌ Error ${edgeResponse.status}:`, await edgeResponse.text());
+            console.error(`[EDGE] ❌ Error ${edgeResponse.status}`);
           }
         } catch (edgeError) {
-          console.error('[EDGE] ❌ Failed to forward to edge function:', edgeError.message);
+          if (edgeError.name === 'AbortError') {
+            console.error('[EDGE] ⏱️  Timeout (5s) - continuing with local processing');
+          } else {
+            console.error('[EDGE] ❌', edgeError.message);
+          }
         }
-        */
 
-        // Process locally (full protocol implementation)
+        // Process locally (full protocol implementation - sends MQTT commands to devices)
         if (topic.includes('/ack') && commandQueueProcessor) {
           // Handle command acknowledgment
           const deviceMac = topic.split('/')[1];
