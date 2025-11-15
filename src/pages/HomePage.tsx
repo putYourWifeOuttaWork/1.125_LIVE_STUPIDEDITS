@@ -25,7 +25,6 @@ import { supabase } from '../lib/supabaseClient';
 import { PilotProgram, Site } from '../lib/types';
 import { toast } from 'react-toastify';
 import useWeather from '../hooks/useWeather';
-import AnalyticsChart from '../components/dashboard/AnalyticsChart';
 import UnclaimedSessionsCard from '../components/submissions/UnclaimedSessionsCard';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSiteDeviceSessions } from '../hooks/useSiteDeviceSessions';
@@ -786,21 +785,6 @@ const HomePage = () => {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Analytics Chart - Only shown if a program or site is selected */}
-      {(selectedProgramId || selectedSiteId) && (
-        <Card>
-          <CardHeader className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold">Analytics</h2>
-          </CardHeader>
-          <CardContent>
-            <AnalyticsChart 
-              programId={selectedProgramId}
-              siteId={selectedSiteId}
-            />
           </CardContent>
         </Card>
       )}

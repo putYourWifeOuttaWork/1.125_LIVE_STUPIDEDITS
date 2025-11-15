@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit, Thermometer } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -11,13 +11,14 @@ import DeviceUnassignModal from '../components/devices/DeviceUnassignModal';
 import DeviceReassignModal from '../components/devices/DeviceReassignModal';
 import DeviceHistoryPanel from '../components/devices/DeviceHistoryPanel';
 import DeviceImagesPanel from '../components/devices/DeviceImagesPanel';
+import DeviceEnvironmentalPanel from '../components/devices/DeviceEnvironmentalPanel';
 import DeviceEditModal from '../components/devices/DeviceEditModal';
 import DeviceSettingsModal from '../components/devices/DeviceSettingsModal';
 import { useDevice, useDeviceImages } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
 
-type TabType = 'overview' | 'history' | 'images';
+type TabType = 'overview' | 'environmental' | 'history' | 'images';
 
 const DeviceDetailPage = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -170,6 +171,17 @@ const DeviceDetailPage = () => {
             >
               <Activity className="inline-block mr-2" size={18} />
               Overview
+            </button>
+            <button
+              onClick={() => setActiveTab('environmental')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'environmental'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Thermometer className="inline-block mr-2" size={18} />
+              Environmental
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -483,6 +495,10 @@ const DeviceDetailPage = () => {
           )}
         </div>
       </div>
+      )}
+
+      {activeTab === 'environmental' && deviceId && (
+        <DeviceEnvironmentalPanel deviceId={deviceId} />
       )}
 
       {activeTab === 'history' && deviceId && (
