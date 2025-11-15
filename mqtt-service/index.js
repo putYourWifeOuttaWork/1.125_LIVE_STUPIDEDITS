@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import mqtt from 'mqtt';
 import express from 'express';
 import dotenv from 'dotenv';
+import { CommandQueueProcessor } from './commandQueueProcessor.js';
 
 dotenv.config();
 
@@ -497,6 +498,14 @@ function connectToMQTT() {
         }
       });
 
+      client.subscribe('device/+/ack', (err) => {
+        if (err) {
+          console.error('[MQTT] ❌ Subscription error (device/ack):', err);
+        } else {
+          console.log('[MQTT] ✅ Subscribed to device/+/ack');
+        }
+      });
+
       resolve(client);
     });
 
@@ -540,7 +549,11 @@ function connectToMQTT() {
         }
 
         // Also process locally for backward compatibility
-        if (topic.includes('/status')) {
+        if (topic.includes('/ack') && commandQueueProcessor) {
+          // Handle command acknowledgment
+          const deviceMac = topic.split('/')[1];
+          await commandQueueProcessor.handleCommandAck(deviceMac, payload);
+        } else if (topic.includes('/status')) {
           const result = await handleStatusMessage(payload, client);
           if (result && result.pendingCount > 0) {
             const captureCmd = {
@@ -568,6 +581,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 let mqttClient = null;
+let commandQueueProcessor = null;
 let connectionStatus = {
   connected: false,
   lastError: null,
@@ -587,6 +601,10 @@ app.get('/health', (req, res) => {
     supabase: {
       url: supabaseUrl,
       configured: !!supabaseUrl && !!supabaseServiceKey,
+    },
+    commandQueue: {
+      running: commandQueueProcessor?.isRunning || false,
+      pollInterval: commandQueueProcessor?.pollInterval || 0,
     },
     stats: connectionStatus,
     uptime: process.uptime(),
@@ -654,6 +672,58 @@ async function startService() {
     connectionStatus.connected = true;
     connectionStatus.lastError = null;
 
+    // Initialize and start command queue processor
+    console.log('[COMMAND_QUEUE] Initializing command queue processor...');
+    commandQueueProcessor = new CommandQueueProcessor(supabase, mqttClient, {
+      pollInterval: 5000, // 5 seconds
+      maxRetries: 3,
+      retryDelay: 30000, // 30 seconds
+    });
+    commandQueueProcessor.start();
+    console.log('[COMMAND_QUEUE] ✅ Command queue processor started');
+
+    // Listen for device provisioning status changes
+    console.log('[REALTIME] Setting up device provisioning listener...');
+    supabase
+      .channel('device-provisioning-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'devices',
+          filter: 'provisioning_status=eq.active',
+        },
+        async (payload) => {
+          const device = payload.new;
+          console.log(`[PROVISIONING] Device ${device.device_name || device.device_mac} activated!`);
+
+          // Check if device was just mapped (status changed to active)
+          if (payload.old.provisioning_status !== 'active' && device.site_id && device.program_id) {
+            console.log(`[PROVISIONING] Sending welcome command to newly-mapped device ${device.device_id}`);
+
+            // Get wake schedule from site
+            const { data: site } = await supabase
+              .from('sites')
+              .select('wake_schedule_cron')
+              .eq('site_id', device.site_id)
+              .maybeSingle();
+
+            const wakeSchedule = site?.wake_schedule_cron || '0 8,16 * * *'; // Default: 8am and 4pm
+
+            // Send welcome command with site context
+            await commandQueueProcessor.sendWelcomeCommand(
+              device.device_id,
+              device.site_id,
+              device.program_id,
+              wakeSchedule
+            );
+          }
+        }
+      )
+      .subscribe();
+    console.log('[REALTIME] ✅ Device provisioning listener active');
+
     app.listen(PORT, () => {
       console.log(`\n[HTTP] ✅ Health check server running on port ${PORT}`);
       console.log(`[HTTP] Health endpoint: http://localhost:${PORT}/health`);
@@ -670,6 +740,9 @@ async function startService() {
 
 process.on('SIGTERM', () => {
   console.log('[SHUTDOWN] Received SIGTERM, closing connections...');
+  if (commandQueueProcessor) {
+    commandQueueProcessor.stop();
+  }
   if (mqttClient) {
     mqttClient.end();
   }
@@ -678,6 +751,9 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('\n[SHUTDOWN] Received SIGINT, closing connections...');
+  if (commandQueueProcessor) {
+    commandQueueProcessor.stop();
+  }
   if (mqttClient) {
     mqttClient.end();
   }
