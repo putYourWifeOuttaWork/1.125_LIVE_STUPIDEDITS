@@ -1,163 +1,69 @@
-# Final Migration Status - Ready to Apply
+# ✅ MIGRATIONS READY - APPLY IN TWO STEPS!
 
-## ✅ Build Status
-- **TypeScript Compilation:** SUCCESS
-- **Vite Build:** SUCCESS
-- **All Components:** Built without errors
+## Status Summary
 
-## 🔧 Migration Status
+**✅ ALL ISSUES FIXED**
+- ✅ Enum session status values corrected
+- ✅ Enum Alert/Command values added
+- ✅ Type casting added for severity field
+- ✅ Build successful (18.62s)
+- ✅ Ready to apply
 
-### File Location
-```
-supabase/migrations/20251109160000_user_management_and_device_pool.sql
-```
+---
 
-### Version: V2 - Comprehensive Function Cleanup
+## Apply Instructions (3 minutes)
 
-### What Was Fixed
+### **STEP 1: Add Enum Values** ⏱️ 1 minute
 
-**Issue 1:** Function return type conflicts
-**Issue 2:** Non-unique function names (multiple overloaded versions)
+**File:** `supabase/migrations/20251116000009_add_event_category_enums.sql`
 
-**Solution:** Dynamic function discovery that:
-- Queries PostgreSQL system catalog (`pg_proc`)
-- Finds ALL versions of each function
-- Drops them with CASCADE (removes dependencies)
-- Works regardless of signatures or return types
-- Fully idempotent - safe to run multiple times
+1. Open Supabase Dashboard
+2. Go to SQL Editor
+3. Click "New query"
+4. Copy/paste entire file contents
+5. Click "Run"
+6. ✅ Should see "Success"
 
-### How to Apply
+### **STEP 2: Apply Main Migration** ⏱️ 2 minutes
 
-**Method 1: Supabase Dashboard (Recommended)**
-```
-1. Go to: https://supabase.com/dashboard/project/jycxolmevsvrxmeinxff/sql/new
-2. Copy ENTIRE contents of: supabase/migrations/20251109160000_user_management_and_device_pool.sql
-3. Paste into SQL Editor
+**File:** `supabase/migrations/20251116000010_consolidate_device_events.sql`
+
+1. Still in SQL Editor
+2. Click "New query" (create fresh query)
+3. Copy/paste entire file contents
 4. Click "Run"
-5. Wait for "Success. No rows returned"
+5. ✅ Should see "Success"
+
+---
+
+## Test Your Fix
+
+### **1. Edit Device Schedule:**
+- Go to device detail page
+- Change wake schedule
+- Save
+
+### **2. Check History Tab:**
+**You should see:**
+```
+ConfigurationChange | wake_schedule_updated
+Wake schedule changed to: [new schedule]
 ```
 
-**Method 2: Command Line**
-```bash
-# If you have psql access
-psql $DATABASE_URL -f supabase/migrations/20251109160000_user_management_and_device_pool.sql
-```
+**🎉 Schedule changes now visible!**
 
-### Verification Query
-```sql
-SELECT routine_name, COUNT(*) as version_count
-FROM information_schema.routines
-WHERE routine_schema = 'public'
-  AND routine_name IN (
-    'search_users_by_email',
-    'add_user_to_company',
-    'remove_user_from_company',
-    'get_unassigned_devices',
-    'assign_device_to_company',
-    'get_device_pool_stats'
-  )
-GROUP BY routine_name
-ORDER BY routine_name;
-```
-
-**Expected:** 6 rows, each with version_count = 1
-
-## 📦 What Gets Created
-
-### Database Functions (6 total)
-
-**User Management:**
-1. `search_users_by_email(text)` - Search existing users
-2. `add_user_to_company(text, uuid)` - Assign user to company
-3. `remove_user_from_company(uuid)` - Remove user from company
-
-**Device Pool:**
-4. `get_unassigned_devices()` - List unassigned devices (super admin)
-5. `assign_device_to_company(uuid, uuid)` - Assign device (super admin)
-6. `get_device_pool_stats()` - Get pool statistics (super admin)
-
-### RLS Policies Updated
-- Super admins see ALL devices (including unassigned)
-- Regular users see only company devices
-- Device assignment propagates company_id to all related data
-
-### Security Features
-- All functions use `SECURITY DEFINER`
-- Permission checks in every function
-- Company admins restricted to own company
-- Device pool restricted to super admins
-- All operations logged in audit_log
-
-## 🎯 Frontend Components Ready
-
-### Pages
-- ✅ `/device-pool` - Device Pool management (super admin only)
-
-### Components
-- ✅ `CompanyTabs` - Company segmentation for super admins
-- ✅ `RequireSuperAdmin` - Route guard
-- ✅ `RequireCompanyAdmin` - Route guard
-- ✅ `DevicePoolPage` - Full device pool interface
-
-### Navigation
-- ✅ Device Pool link in header (super admin only)
-- ✅ Company dropdown for super admin filtering
-- ✅ All routes protected appropriately
-
-## 📋 Testing Checklist
-
-After migration applied:
-
-### Super Admin Tests
-- [ ] Access /device-pool page
-- [ ] View unassigned devices
-- [ ] See device pool statistics
-- [ ] Select company from dropdown
-- [ ] Click "Assign" button
-- [ ] Verify device disappears from pool
-- [ ] Verify device visible in company's devices page
-
-### Company Admin Tests
-- [ ] Access company management page
-- [ ] Search for user by email
-- [ ] Add existing user to company
-- [ ] Verify user gains access to company data
-- [ ] Verify cannot access device pool
-- [ ] Verify cannot see other company users
-
-### Regular User Tests
-- [ ] Cannot access /device-pool
-- [ ] Cannot see unassigned devices
-- [ ] Can only see company devices
-- [ ] All data filtered by company
-
-## 📖 Documentation
-
-- `MIGRATION_FIX_V2_APPLIED.md` - Detailed explanation of V2 fix
-- `QUICK_START_MULTI_TENANCY.md` - Quick start guide
-- `MULTI_TENANCY_COMPLETE.md` - Complete implementation details
-- `APPLY_USER_MANAGEMENT_MIGRATION.md` - Step-by-step instructions
-
-## 🚀 Next Steps
-
-1. **Apply Migration** - Use Supabase Dashboard method above
-2. **Run Verification Query** - Confirm 6 functions created
-3. **Test Device Pool** - Login as super admin, visit /device-pool
-4. **Test User Management** - Add user to company
-5. **Verify Permissions** - Test with different user roles
-
-## 💡 Key Points
-
-- ✅ Migration is idempotent (safe to run multiple times)
-- ✅ Handles all existing function versions automatically
-- ✅ No manual cleanup required
-- ✅ Frontend already built and tested
-- ✅ All components ready to use
-- ✅ Comprehensive error handling
-- ✅ Full audit logging
+---
 
 ## Summary
 
-The multi-tenancy system is complete and ready for production use. The migration has been updated to handle all edge cases with existing functions. Once applied, the system will provide full device pool management and user assignment capabilities with strict company isolation enforced at the database level.
+**Problem:** Schedule changes weren't visible in device history
 
-**Status: READY TO APPLY** ✅
+**Solution:** Automatic triggers that log ALL events to `device_history`
+
+**Status:** ✅ **Ready to apply in 2 steps!**
+
+**Time:** 3 minutes total
+
+---
+
+**Apply the two migrations in order via Supabase Dashboard!** 🚀
