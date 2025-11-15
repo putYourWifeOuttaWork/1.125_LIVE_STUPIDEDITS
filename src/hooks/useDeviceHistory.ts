@@ -27,6 +27,11 @@ interface UseDeviceHistoryResult {
   exportSessionsCsv: () => Promise<string | null>;
   currentFilters: HistoryFilterOptions;
   currentSessionFilters: SessionFilterOptions;
+  totalCount: number;
+  currentPage: number;
+  pageSize: number;
+  setPage: (page: number) => void;
+  totalPages: number;
 }
 
 export interface HistoryFilterOptions {
@@ -37,6 +42,10 @@ export interface HistoryFilterOptions {
   userId?: string;
   hasErrors?: boolean;
   searchText?: string;
+  programId?: string;
+  siteId?: string;
+  sessionId?: string;
+  zoneId?: string;
   limit?: number;
   offset?: number;
 }
@@ -62,6 +71,9 @@ export function useDeviceHistory({
   const [error, setError] = useState<string | null>(null);
   const [currentFilters, setCurrentFilters] = useState<HistoryFilterOptions>({});
   const [currentSessionFilters, setCurrentSessionFilters] = useState<SessionFilterOptions>({});
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize] = useState<number>(50);
 
   const fetchHistory = async () => {
     if (!deviceId && !siteId && !programId) {
@@ -74,12 +86,12 @@ export function useDeviceHistory({
     setError(null);
 
     try {
-      // Query device_history table directly
+      // Query device_history table directly with pagination
       let query = supabase
         .from('device_history')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('event_timestamp', { ascending: false })
-        .limit(25);
+        .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
 
       if (deviceId) {
         query = query.eq('device_id', deviceId);
@@ -91,10 +103,11 @@ export function useDeviceHistory({
         query = query.eq('program_id', programId);
       }
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
 
       if (error) throw error;
       setHistory(data || []);
+      setTotalCount(count || 0);
       setCurrentFilters({});
     } catch (err) {
       console.error('Error fetching device history:', err);
@@ -152,33 +165,64 @@ export function useDeviceHistory({
   };
 
   const filterHistory = async (filters: HistoryFilterOptions) => {
-    if (!deviceId && !siteId && !programId) {
-      setHistory([]);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error } = await supabase.rpc('get_device_history', {
-        p_device_id: deviceId || null,
-        p_site_id: siteId || null,
-        p_program_id: programId || null,
-        p_start_date: filters.startDate || null,
-        p_end_date: filters.endDate || null,
-        p_categories: filters.categories || null,
-        p_severity_levels: filters.severityLevels || null,
-        p_user_id: filters.userId || null,
-        p_has_errors: filters.hasErrors || null,
-        p_search_text: filters.searchText || null,
-        p_limit: filters.limit || 25,
-        p_offset: filters.offset || 0
-      });
+      // Build query with filters
+      let query = supabase
+        .from('device_history')
+        .select('*', { count: 'exact' })
+        .order('event_timestamp', { ascending: false })
+        .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
+
+      // Apply deviceId from props or filter
+      if (deviceId) {
+        query = query.eq('device_id', deviceId);
+      }
+
+      // Apply additional filters
+      if (filters.programId) {
+        query = query.eq('program_id', filters.programId);
+      } else if (programId) {
+        query = query.eq('program_id', programId);
+      }
+
+      if (filters.siteId) {
+        query = query.eq('site_id', filters.siteId);
+      } else if (siteId) {
+        query = query.eq('site_id', siteId);
+      }
+
+      if (filters.sessionId) {
+        query = query.eq('session_id', filters.sessionId);
+      }
+
+      if (filters.startDate) {
+        query = query.gte('event_timestamp', filters.startDate);
+      }
+
+      if (filters.endDate) {
+        query = query.lte('event_timestamp', filters.endDate);
+      }
+
+      if (filters.categories && filters.categories.length > 0) {
+        query = query.in('event_category', filters.categories);
+      }
+
+      if (filters.severityLevels && filters.severityLevels.length > 0) {
+        query = query.in('severity', filters.severityLevels);
+      }
+
+      if (filters.searchText) {
+        query = query.or(`description.ilike.%${filters.searchText}%,event_type.ilike.%${filters.searchText}%`);
+      }
+
+      const { data, error, count } = await query;
 
       if (error) throw error;
       setHistory(data || []);
+      setTotalCount(count || 0);
       setCurrentFilters(filters);
     } catch (err) {
       console.error('Error filtering device history:', err);
@@ -281,10 +325,16 @@ export function useDeviceHistory({
     }
   };
 
+  const setPage = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const totalPages = Math.ceil(totalCount / pageSize);
+
   useEffect(() => {
     fetchHistory();
     fetchSessions();
-  }, [deviceId, siteId, programId]);
+  }, [deviceId, siteId, programId, currentPage]);
 
   return {
     history,
@@ -298,7 +348,12 @@ export function useDeviceHistory({
     exportHistoryCsv,
     exportSessionsCsv,
     currentFilters,
-    currentSessionFilters
+    currentSessionFilters,
+    totalCount,
+    currentPage,
+    pageSize,
+    setPage,
+    totalPages
   };
 }
 

@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { Download, Filter, RefreshCw, Clock, User } from 'lucide-react';
+import { Download, Filter, RefreshCw, Clock, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { useDeviceHistory, HistoryFilterOptions } from '../../hooks/useDeviceHistory';
 import { DeviceEventCategory, EventSeverity } from '../../lib/types';
@@ -23,7 +23,12 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
     fetchHistory,
     filterHistory,
     exportHistoryCsv,
-    currentFilters
+    currentFilters,
+    totalCount,
+    currentPage,
+    pageSize,
+    setPage,
+    totalPages
   } = useDeviceHistory({ deviceId });
 
   const [showFilters, setShowFilters] = useState(false);
@@ -105,7 +110,7 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Device Event History</h3>
           <p className="text-sm text-gray-500 mt-1">
-            {history.length} events found
+            {totalCount} total events | Page {currentPage} of {totalPages} | Showing {history.length} events
           </p>
         </div>
         <div className="flex gap-2">
@@ -212,6 +217,47 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Program ID
+              </label>
+              <input
+                type="text"
+                placeholder="Filter by program ID..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                value={localFilters.programId || ''}
+                onChange={(e) => setLocalFilters({ ...localFilters, programId: e.target.value || undefined })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Site ID
+              </label>
+              <input
+                type="text"
+                placeholder="Filter by site ID..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                value={localFilters.siteId || ''}
+                onChange={(e) => setLocalFilters({ ...localFilters, siteId: e.target.value || undefined })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Session ID
+              </label>
+              <input
+                type="text"
+                placeholder="Filter by session ID..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                value={localFilters.sessionId || ''}
+                onChange={(e) => setLocalFilters({ ...localFilters, sessionId: e.target.value || undefined })}
+              />
+            </div>
+          </div>
+
           <div className="flex gap-2">
             <Button variant="primary" size="sm" onClick={handleApplyFilters}>
               Apply Filters
@@ -235,6 +281,7 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
           <p className="text-gray-500">No device events found</p>
         </div>
       ) : (
+        <>
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -305,6 +352,65 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
             </table>
           </div>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="bg-white rounded-lg shadow-sm p-4 flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Showing <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> to{' '}
+              <span className="font-medium">{Math.min(currentPage * pageSize, totalCount)}</span> of{' '}
+              <span className="font-medium">{totalCount}</span> events
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<ChevronLeft size={16} />}
+                onClick={() => setPage(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setPage(pageNum)}
+                      className={`px-3 py-1 text-sm rounded ${
+                        currentPage === pageNum
+                          ? 'bg-primary-600 text-white font-medium'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+                <ChevronRight size={16} className="ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </div>
   );
