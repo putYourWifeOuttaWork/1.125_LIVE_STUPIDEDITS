@@ -88,6 +88,24 @@ const DeviceMappingModal = ({ isOpen, onClose, device, onSubmit }: DeviceMapping
           </div>
         </div>
 
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <Info size={18} className="text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-green-800">
+              <p className="font-medium mb-1">Automated Provisioning</p>
+              <p className="text-xs">
+                When you map this device, the system will automatically:
+              </p>
+              <ul className="mt-2 space-y-1 text-xs list-disc list-inside">
+                <li>Populate company and program information</li>
+                <li>Calculate the next wake time based on the site schedule</li>
+                <li>Send a welcome command with wake schedule to the device</li>
+                <li>Activate the device for data collection</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <div>
           <label htmlFor="deviceName" className="block text-sm font-medium text-gray-700 mb-1">
             Device Name (Optional)
