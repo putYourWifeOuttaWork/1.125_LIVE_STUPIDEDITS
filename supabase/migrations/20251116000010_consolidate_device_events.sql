@@ -347,18 +347,14 @@ BEGIN
     v_event_type := 'command_issued_' || NEW.command_type;
     v_severity := 'info';
   ELSIF TG_OP = 'UPDATE' AND OLD.status != NEW.status THEN
-    IF NEW.status = 'completed' THEN
-      v_description := format('Command completed: %s', NEW.command_type);
-      v_event_type := 'command_completed_' || NEW.command_type;
+    IF NEW.status = 'acknowledged' THEN
+      v_description := format('Command acknowledged: %s', NEW.command_type);
+      v_event_type := 'command_ack_' || NEW.command_type;
       v_severity := 'info';
     ELSIF NEW.status = 'failed' THEN
       v_description := format('Command failed: %s - %s', NEW.command_type, NEW.error_message);
       v_event_type := 'command_failed_' || NEW.command_type;
       v_severity := 'error';
-    ELSIF NEW.status = 'acknowledged' THEN
-      v_description := format('Command acknowledged: %s', NEW.command_type);
-      v_event_type := 'command_ack_' || NEW.command_type;
-      v_severity := 'info';
     ELSE
       v_description := format('Command %s: %s', NEW.status, NEW.command_type);
       v_event_type := 'command_' || NEW.status || '_' || NEW.command_type;
@@ -410,7 +406,7 @@ BEGIN
     'device_commands',
     NEW.command_id,
     NEW.issued_by,
-    COALESCE(NEW.completed_at, NEW.acknowledged_at, NEW.issued_at)
+    COALESCE(NEW.acknowledged_at, NEW.delivered_at, NEW.issued_at)
   );
 
   RETURN NEW;
@@ -662,32 +658,30 @@ INSERT INTO device_history (
 SELECT
   da.device_id,
   da.company_id,
-  da.program_id,
-  da.site_id,
+  d.program_id,
+  d.site_id,
   'Alert'::device_event_category,
   'alert_triggered_' || da.alert_type,
   da.severity::text::event_severity,
   format('Alert triggered: %s', da.message),
   jsonb_build_object(
     'alert_type', da.alert_type,
-    'message', da.message,
-    'metric_name', da.metric_name,
-    'metric_value', da.metric_value,
-    'threshold_value', da.threshold_value
+    'message', da.message
   ),
   jsonb_build_object(
     'alert_id', da.alert_id,
-    'is_resolved', da.is_resolved,
+    'metadata', da.metadata,
     'resolved_at', da.resolved_at,
-    'resolution_note', da.resolution_note
+    'resolution_notes', da.resolution_notes
   ),
   'device',
   'device_alerts',
   da.alert_id,
   NULL,
   da.triggered_at,
-  da.created_at
+  da.triggered_at
 FROM device_alerts da
+INNER JOIN devices d ON d.device_id = da.device_id
 WHERE NOT EXISTS (
   SELECT 1 FROM device_history dh
   WHERE dh.source_table = 'device_alerts'
@@ -725,21 +719,20 @@ SELECT
   format('Command issued: %s', dc.command_type),
   jsonb_build_object(
     'command_type', dc.command_type,
-    'parameters', dc.parameters,
-    'status', dc.status,
-    'priority', dc.priority
+    'command_payload', dc.command_payload,
+    'status', dc.status
   ),
   jsonb_build_object(
     'command_id', dc.command_id,
     'issued_at', dc.issued_at,
     'acknowledged_at', dc.acknowledged_at,
-    'completed_at', dc.completed_at,
-    'error_message', dc.error_message
+    'delivered_at', dc.delivered_at,
+    'notes', dc.notes
   ),
   'user',
   'device_commands',
   dc.command_id,
-  dc.issued_by,
+  dc.created_by_user_id,
   dc.issued_at,
   dc.created_at
 FROM device_commands dc
