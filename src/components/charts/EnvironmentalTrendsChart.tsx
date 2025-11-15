@@ -67,13 +67,25 @@ const EnvironmentalTrendsChart = ({
 
     const xAxis = d3.axisBottom(xScale)
       .ticks(6)
-      .tickFormat(d3.timeFormat('%b %d'));
+      .tickFormat(d3.timeFormat('%b %d %H:%M'));
 
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
       .call(xAxis)
       .selectAll('text')
-      .style('font-size', '11px');
+      .attr('transform', 'rotate(-45)')
+      .style('text-anchor', 'end')
+      .style('font-size', '10px');
+
+    // X-axis label
+    g.append('text')
+      .attr('x', innerWidth / 2)
+      .attr('y', innerHeight + margin.bottom - 5)
+      .style('text-anchor', 'middle')
+      .style('font-size', '12px')
+      .style('font-weight', '600')
+      .style('fill', '#374151')
+      .text('Time');
 
     const lineGenerators = {
       temperature: d3.line<TelemetryData>()
@@ -98,6 +110,17 @@ const EnvironmentalTrendsChart = ({
         .curve(d3.curveMonotoneX)
     };
 
+    // Y-axes labels (left side - shared for multiple metrics)
+    g.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -innerHeight / 2)
+      .attr('y', -margin.left + 15)
+      .style('text-anchor', 'middle')
+      .style('font-size', '12px')
+      .style('font-weight', '600')
+      .style('fill', '#374151')
+      .text('Value');
+
     if (activeMetrics.temperature) {
       g.append('path')
         .datum(data)
@@ -105,6 +128,13 @@ const EnvironmentalTrendsChart = ({
         .attr('stroke', colorScale.temperature)
         .attr('stroke-width', 2)
         .attr('d', lineGenerators.temperature);
+
+      // Add Y-axis for temperature
+      const tempAxis = d3.axisLeft(yScales.temperature).ticks(5);
+      g.append('g')
+        .call(tempAxis)
+        .selectAll('text')
+        .style('font-size', '10px');
     }
 
     if (activeMetrics.humidity) {
