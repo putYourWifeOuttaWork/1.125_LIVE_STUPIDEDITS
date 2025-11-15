@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Device } from '../lib/types';
 import { toast } from 'react-toastify';
 import { createLogger } from '../utils/logger';
+import { DeviceService } from '../services/deviceService';
 
 const logger = createLogger('useDevice');
 
@@ -603,24 +604,55 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
       device_name?: string;
       wake_schedule_cron?: string;
       notes?: string;
+      zone_label?: string;
+      placement_json?: any;
     }) => {
       if (!deviceId) throw new Error('Device ID is required');
 
       logger.debug('Updating device', { deviceId, updates });
 
-      const { data, error } = await supabase
+      // Check if wake_schedule_cron is being changed
+      const isScheduleChange = updates.wake_schedule_cron !== undefined &&
+                               updates.wake_schedule_cron !== device?.wake_schedule_cron;
+
+      // If schedule is changing, use DeviceService to queue command
+      if (isScheduleChange) {
+        const result = await DeviceService.updateDeviceSettings({
+          deviceId,
+          deviceName: updates.device_name,
+          wakeScheduleCron: updates.wake_schedule_cron,
+          notes: updates.notes,
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to update device settings');
+        }
+      } else {
+        // No schedule change, just update directly
+        const { error } = await supabase
+          .from('devices')
+          .update({
+            ...updates,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('device_id', deviceId);
+
+        if (error) {
+          logger.error('Error updating device:', error);
+          throw error;
+        }
+      }
+
+      // Fetch updated device
+      const { data, error: fetchError } = await supabase
         .from('devices')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
+        .select('*')
         .eq('device_id', deviceId)
-        .select()
         .single();
 
-      if (error) {
-        logger.error('Error updating device:', error);
-        throw error;
+      if (fetchError) {
+        logger.error('Error fetching updated device:', fetchError);
+        throw fetchError;
       }
 
       return data;
@@ -628,7 +660,7 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
       queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
-      toast.success('Device updated successfully');
+      toast.success('Device updated successfully. Schedule change will apply at next wake.');
     },
     onError: (error: Error) => {
       toast.error(`Failed to update device: ${error.message}`);

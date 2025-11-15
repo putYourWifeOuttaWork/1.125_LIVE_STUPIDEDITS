@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { X, Clock, Info } from 'lucide-react';
 import Button from '../common/Button';
 import Input from '../common/Input';
 import Modal from '../common/Modal';
 import { Device } from '../../lib/types';
+import { DeviceService } from '../../services/deviceService';
 
 interface DeviceEditModalProps {
   isOpen: boolean;
@@ -90,6 +91,16 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
     { label: 'Twice daily (6am, 6pm)', value: '0 6,18 * * *' },
   ];
 
+  // Calculate next wake time if schedule is valid
+  const nextWakeTime = useMemo(() => {
+    if (!formData.wake_schedule_cron || !validateCronExpression(formData.wake_schedule_cron)) {
+      return null;
+    }
+    return DeviceService.calculateNextWake(formData.wake_schedule_cron);
+  }, [formData.wake_schedule_cron]);
+
+  const isScheduleChanged = formData.wake_schedule_cron !== device.wake_schedule_cron;
+
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -163,6 +174,38 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
                 ))}
               </div>
             </div>
+
+            {/* Next Wake Time Display */}
+            {nextWakeTime && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start">
+                  <Clock size={16} className="text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-medium text-blue-900">Next Wake Time</p>
+                    <p className="text-blue-700 mt-1">{nextWakeTime.toLocaleString()}</p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      {Math.round((nextWakeTime.getTime() - Date.now()) / (1000 * 60))} minutes from now
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Schedule Change Warning */}
+            {isScheduleChanged && (
+              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-start">
+                  <Info size={16} className="text-yellow-600 mr-2 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-yellow-800">
+                    <p className="font-medium">Schedule Change Detected</p>
+                    <p className="mt-1 text-xs">
+                      A command will be sent to the device at its next wake to update the schedule.
+                      The new schedule will take effect on the wake cycle after that.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Notes */}
