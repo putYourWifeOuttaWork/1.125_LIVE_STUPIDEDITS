@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Download, Filter, RefreshCw, Clock, User } from 'lucide-react';
 import { format } from 'date-fns';
 import { useDeviceHistory, HistoryFilterOptions } from '../../hooks/useDeviceHistory';
@@ -259,9 +259,8 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {history.map((event) => (
-                  <>
+                  <Fragment key={event.history_id}>
                     <tr
-                      key={event.history_id}
                       className="hover:bg-gray-50 cursor-pointer"
                       onClick={() => toggleRowExpansion(event.history_id)}
                     >
@@ -294,13 +293,13 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
                       </td>
                     </tr>
                     {expandedRows.has(event.history_id) && (
-                      <tr key={`${event.history_id}-details`}>
+                      <tr>
                         <td colSpan={5} className="px-6 py-4 bg-gray-50">
                           <DeviceEventDetails event={event} />
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
