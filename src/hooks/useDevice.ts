@@ -410,12 +410,39 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
 
       logger.debug('Activating device', { deviceId });
 
+      // Calculate next wake if schedule exists
+      const updateData: any = {
+        provisioning_status: 'active',
+        is_active: true,
+      };
+
+      // If device has a wake schedule but no next_wake_at, calculate it
+      const { data: currentDevice } = await supabase
+        .from('devices')
+        .select('wake_schedule_cron, next_wake_at, site_id, sites(timezone)')
+        .eq('device_id', deviceId)
+        .single();
+
+      if (currentDevice?.wake_schedule_cron && !currentDevice.next_wake_at) {
+        // Calculate next wake using RPC function
+        const timezone = (currentDevice as any).sites?.timezone || 'America/New_York';
+        const { data: nextWake } = await supabase.rpc(
+          'fn_calculate_next_wake_time',
+          {
+            p_last_wake_at: new Date().toISOString(),
+            p_cron_expression: currentDevice.wake_schedule_cron,
+            p_timezone: timezone
+          }
+        );
+
+        if (nextWake) {
+          updateData.next_wake_at = nextWake;
+        }
+      }
+
       const { data, error } = await supabase
         .from('devices')
-        .update({
-          provisioning_status: 'active',
-          is_active: true,
-        })
+        .update(updateData)
         .eq('device_id', deviceId)
         .select()
         .single();

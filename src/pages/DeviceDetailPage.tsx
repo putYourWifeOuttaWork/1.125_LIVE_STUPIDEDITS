@@ -77,6 +77,30 @@ const DeviceDetailPage = () => {
     setShowEditModal(false);
   };
 
+  // Calculate next wake estimate if not set but schedule exists
+  const getNextWakeDisplay = () => {
+    if (device.next_wake_at) {
+      return formatDistanceToNow(new Date(device.next_wake_at), { addSuffix: true });
+    }
+
+    if (device.wake_schedule_cron) {
+      // Simple cron parser for common patterns
+      const parts = device.wake_schedule_cron.split(' ');
+      if (parts.length === 5) {
+        const hours = parts[1];
+        if (hours === '*/3') return 'Every 3 hours (not yet calculated)';
+        if (hours === '*/6') return 'Every 6 hours (not yet calculated)';
+        if (hours === '*/12') return 'Every 12 hours (not yet calculated)';
+        if (hours.includes(',')) {
+          return `${hours.split(',').length} times daily (not yet calculated)`;
+        }
+      }
+      return 'Scheduled (activate device to calculate)';
+    }
+
+    return 'Not scheduled';
+  };
+
   return (
     <div className="animate-fade-in">
       <div className="flex items-center mb-6">
@@ -247,9 +271,7 @@ const DeviceDetailPage = () => {
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Next Wake</p>
                   <p className="font-medium">
-                    {device.next_wake_at
-                      ? formatDistanceToNow(new Date(device.next_wake_at), { addSuffix: true })
-                      : 'Not scheduled'}
+                    {getNextWakeDisplay()}
                   </p>
                 </div>
                 <div>
