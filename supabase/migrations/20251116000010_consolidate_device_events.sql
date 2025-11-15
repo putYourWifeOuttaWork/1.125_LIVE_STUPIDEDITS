@@ -734,7 +734,7 @@ SELECT
   dc.command_id,
   dc.created_by_user_id,
   dc.issued_at,
-  dc.created_at
+  dc.issued_at
 FROM device_commands dc
 WHERE NOT EXISTS (
   SELECT 1 FROM device_history dh

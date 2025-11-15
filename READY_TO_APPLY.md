@@ -6,7 +6,8 @@
 - ✅ Enum values corrected (success/failed/partial, not completed/timeout)
 - ✅ Column names corrected for all tables
 - ✅ JOINs added where needed (schedule_changes, alerts)
-- ✅ Build successful (12.67s)
+- ✅ device_commands backfill: use issued_at (no created_at)
+- ✅ Build successful (15.70s)
 - ✅ Ready to apply
 
 ---
@@ -59,8 +60,9 @@
 - ✅ Enum values (success/failed/partial)
 - ✅ Column names for all tables
 - ✅ JOINs for program_id/site_id
-- ✅ device_commands status values
-- ✅ Build verified
+- ✅ device_commands: removed 'completed' status
+- ✅ device_commands backfill: use issued_at (no created_at)
+- ✅ Build verified (15.70s)
 
 ---
 
