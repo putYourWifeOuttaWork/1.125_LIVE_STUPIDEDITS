@@ -10,23 +10,34 @@ import type { MqttClient } from 'npm:mqtt@5.3.4';
 import type { DeviceStatusMessage, ImageMetadata, ImageChunk, TelemetryOnlyMessage } from './types.ts';
 import { getOrCreateBuffer, storeChunk } from './idempotency.ts';
 
+// System user UUID for automated updates
+const SYSTEM_USER_UUID = '00000000-0000-0000-0000-000000000001';
+
 /**
  * Handle device HELLO status message
  * Auto-provisions new devices or updates existing ones
- * Updates last_seen_at, battery data, and queues commands if pending images exist
+ * Updates last_seen_at, battery data, wifi_rssi, mqtt_client_id, and calculates next_wake_at
  */
 export async function handleHelloStatus(
   supabase: SupabaseClient,
   client: MqttClient,
   payload: DeviceStatusMessage
 ): Promise<void> {
-  console.log('[Ingest] HELLO from device:', payload.device_id, 'pending:', payload.pending_count || 0);
+  console.log('[Ingest] HELLO from device:', payload.device_id, 'MAC:', payload.device_mac, 'pending:', payload.pending_count || 0);
 
   try {
+    // First, resolve lineage to get timezone for next wake calculation
+    const { data: lineageData } = await supabase.rpc(
+      'fn_resolve_device_lineage',
+      { p_device_mac: payload.device_mac || payload.device_id }
+    );
+
+    const deviceTimezone = lineageData?.timezone || 'America/New_York'; // Fallback to Eastern
+
     // Check if device exists
     const { data: existingDevice, error: queryError } = await supabase
       .from('devices')
-      .select('device_id, device_mac')
+      .select('device_id, device_mac, wake_schedule_cron, company_id')
       .eq('device_mac', payload.device_mac || payload.device_id)
       .maybeSingle();
 
@@ -45,16 +56,19 @@ export async function handleHelloStatus(
         .from('devices')
         .insert({
           device_mac: payload.device_mac || payload.device_id,
+          mqtt_client_id: payload.device_id, // Store firmware-reported ID
           device_name: `Device ${payload.device_id}`,
           firmware_version: payload.firmware_version || 'unknown',
           hardware_version: payload.hardware_version || 'ESP32-S3',
-          battery_voltage: payload.battery_voltage,
+          battery_voltage: payload.battery_voltage, // Trigger auto-calculates health
+          wifi_rssi: payload.wifi_rssi,
           wifi_ssid: null, // Will be set during mapping
-          mqtt_client_id: payload.device_id,
           provisioning_status: 'pending_mapping', // Auto-discovered, needs mapping
-          device_type: 'physical', // Mark as virtual for testing
+          device_type: 'physical',
           is_active: true,
           last_seen_at: now,
+          last_wake_at: now, // Track actual wake time
+          last_updated_by_user_id: SYSTEM_USER_UUID, // System update
           notes: `Auto-provisioned from MQTT HELLO on ${now}`,
         })
         .select()
@@ -66,28 +80,25 @@ export async function handleHelloStatus(
       }
 
       console.log('[Ingest] Device auto-provisioned:', newDevice.device_id);
+      return; // Done with auto-provisioning
     } else {
       // Update existing device
       const updateData: any = {
         last_seen_at: now,
+        last_wake_at: now, // CRITICAL: Track actual wake time for next wake calculation
         is_active: true,
-        last_wake_at: now,
+        mqtt_client_id: payload.device_id, // Store/update firmware ID
+        last_updated_by_user_id: SYSTEM_USER_UUID, // System update
       };
 
-      // Update battery data if provided
+      // Update battery voltage (trigger auto-calculates health_percent)
       if (payload.battery_voltage !== undefined) {
         updateData.battery_voltage = payload.battery_voltage;
       }
 
-      // Calculate battery health percentage if voltage provided
-      if (payload.battery_voltage !== undefined) {
-        // Simple battery health calculation (3.0V = 0%, 4.2V = 100%)
-        const minVoltage = 3.0;
-        const maxVoltage = 4.2;
-        const healthPercent = Math.max(0, Math.min(100,
-          ((payload.battery_voltage - minVoltage) / (maxVoltage - minVoltage)) * 100
-        ));
-        updateData.battery_health_percent = Math.round(healthPercent);
+      // Update WiFi signal strength
+      if (payload.wifi_rssi !== undefined) {
+        updateData.wifi_rssi = payload.wifi_rssi;
       }
 
       // Update firmware/hardware versions if changed
@@ -98,6 +109,26 @@ export async function handleHelloStatus(
         updateData.hardware_version = payload.hardware_version;
       }
 
+      // Calculate next wake time based on THIS actual wake + schedule
+      if (existingDevice.wake_schedule_cron) {
+        const { data: nextWakeCalc, error: calcError } = await supabase.rpc(
+          'fn_calculate_next_wake_time',
+          {
+            p_last_wake_at: now,
+            p_cron_expression: existingDevice.wake_schedule_cron,
+            p_timezone: deviceTimezone
+          }
+        );
+
+        if (!calcError && nextWakeCalc) {
+          updateData.next_wake_at = nextWakeCalc;
+          console.log('[Ingest] Next wake calculated:', nextWakeCalc, 'timezone:', deviceTimezone);
+        } else if (calcError) {
+          console.error('[Ingest] Error calculating next wake:', calcError);
+        }
+      }
+
+      // Update device record
       const { error: updateError } = await supabase
         .from('devices')
         .update(updateData)
@@ -108,7 +139,28 @@ export async function handleHelloStatus(
         return;
       }
 
-      console.log('[Ingest] Device updated:', existingDevice.device_id);
+      // Create historical telemetry record for battery & wifi tracking
+      if (payload.battery_voltage !== undefined || payload.wifi_rssi !== undefined) {
+        const { error: telemetryError } = await supabase
+          .from('device_telemetry')
+          .insert({
+            device_id: existingDevice.device_id,
+            company_id: existingDevice.company_id,
+            captured_at: now,
+            battery_voltage: payload.battery_voltage,
+            wifi_rssi: payload.wifi_rssi,
+            // No environmental sensors in HELLO message
+          });
+
+        if (telemetryError) {
+          console.error('[Ingest] Error creating telemetry record:', telemetryError);
+          // Don't return - telemetry is secondary to device update
+        }
+      }
+
+      console.log('[Ingest] Device updated:', existingDevice.device_id,
+                  'Battery:', payload.battery_voltage, 'WiFi:', payload.wifi_rssi,
+                  'Next wake:', updateData.next_wake_at);
     }
 
     // If pending images, log for monitoring
@@ -211,6 +263,31 @@ export async function handleMetadata(
       wake_index: result.wake_index,
       is_overage: result.is_overage,
     });
+
+    // Create historical telemetry record if environmental data present
+    if (payload.temperature !== undefined || payload.humidity !== undefined ||
+        payload.pressure !== undefined || payload.gas_resistance !== undefined) {
+
+      const { error: telemetryError } = await supabase
+        .from('device_telemetry')
+        .insert({
+          device_id: lineageData.device_id,
+          company_id: lineageData.company_id,
+          captured_at: payload.capture_timestamp,
+          temperature: payload.temperature,
+          humidity: payload.humidity,
+          pressure: payload.pressure,
+          gas_resistance: payload.gas_resistance,
+          // battery_voltage and wifi_rssi not in metadata payload
+        });
+
+      if (telemetryError) {
+        console.error('[Ingest] Error creating telemetry from metadata:', telemetryError);
+        // Don't fail - telemetry is secondary
+      } else {
+        console.log('[Ingest] Telemetry recorded: temp=', payload.temperature, 'rh=', payload.humidity);
+      }
+    }
 
     // Store in buffer for chunk assembly
     const buffer = await getOrCreateBuffer(
@@ -318,6 +395,34 @@ export async function handleTelemetryOnly(
       device: lineageData.device_name,
       company: lineageData.company_name,
     });
+
+    // Update device properties if battery or wifi data present
+    if (payload.battery_voltage !== undefined || payload.wifi_rssi !== undefined) {
+      const deviceUpdates: any = {
+        last_seen_at: payload.captured_at,
+        last_updated_by_user_id: SYSTEM_USER_UUID, // System update
+      };
+
+      if (payload.battery_voltage !== undefined) {
+        deviceUpdates.battery_voltage = payload.battery_voltage; // Trigger calculates health
+      }
+      if (payload.wifi_rssi !== undefined) {
+        deviceUpdates.wifi_rssi = payload.wifi_rssi;
+      }
+
+      const { error: updateError } = await supabase
+        .from('devices')
+        .update(deviceUpdates)
+        .eq('device_id', lineageData.device_id);
+
+      if (updateError) {
+        console.error('[Ingest] Error updating device from telemetry:', updateError);
+        // Don't return - continue with telemetry insert
+      } else {
+        console.log('[Ingest] Device properties updated from telemetry:',
+                    'Battery:', payload.battery_voltage, 'WiFi:', payload.wifi_rssi);
+      }
+    }
 
     // Insert into device_telemetry table
     // DOES NOT create device_images or touch session counters

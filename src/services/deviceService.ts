@@ -313,7 +313,11 @@ export class DeviceService {
       const { data: { user } } = await supabase.auth.getUser();
 
       // Update device record
-      const updates: any = {};
+      const updates: any = {
+        updated_at: new Date().toISOString(),
+        last_updated_by_user_id: user?.id || null, // Track who made change
+      };
+
       if (params.wakeScheduleCron !== undefined) updates.wake_schedule_cron = params.wakeScheduleCron;
       if (params.deviceName !== undefined) updates.device_name = params.deviceName;
       if (params.notes !== undefined) updates.notes = params.notes;
@@ -328,7 +332,7 @@ export class DeviceService {
         return { success: false, error: updateError.message };
       }
 
-      // Queue update_config command for device
+      // Queue update_config command for device IF wake schedule changed
       if (params.wakeScheduleCron !== undefined) {
         const { error: commandError } = await supabase
           .from('device_commands')
@@ -344,6 +348,10 @@ export class DeviceService {
           logger.error('Failed to queue wake schedule command', commandError);
           return { success: false, error: 'Settings updated but command failed: ' + commandError.message };
         }
+
+        // NOTE: next_wake_at will NOT be recalculated here
+        // It will recalculate when device ACTUALLY wakes and receives the new schedule
+        logger.debug('Wake schedule command queued, next_wake_at will update on device wake');
       }
 
       logger.info('Device settings updated successfully', params);
@@ -377,55 +385,78 @@ export class DeviceService {
   }
 
   /**
+   * Get user-friendly wake schedule presets
+   */
+  static getWakeSchedulePresets(): Array<{
+    label: string;
+    interval_hours: number;
+    cron: string;
+    description: string;
+  }> {
+    return [
+      {
+        label: 'Every 3 hours',
+        interval_hours: 3,
+        cron: '0 */3 * * *',
+        description: '8 times per day'
+      },
+      {
+        label: 'Every 6 hours',
+        interval_hours: 6,
+        cron: '0 */6 * * *',
+        description: '4 times per day'
+      },
+      {
+        label: 'Every 12 hours',
+        interval_hours: 12,
+        cron: '0 */12 * * *',
+        description: '2 times per day'
+      },
+      {
+        label: 'Once daily at 8am',
+        interval_hours: 24,
+        cron: '0 8 * * *',
+        description: 'Single daily check'
+      },
+      {
+        label: 'Twice daily (8am & 8pm)',
+        interval_hours: 12,
+        cron: '0 8,20 * * *',
+        description: 'Morning and evening'
+      },
+      {
+        label: 'Three times daily (8am, 2pm, 8pm)',
+        interval_hours: 8,
+        cron: '0 8,14,20 * * *',
+        description: 'Throughout the day'
+      },
+    ];
+  }
+
+  /**
    * Get recommended wake schedule based on site type
+   * @deprecated Use getWakeSchedulePresets() instead
    */
   static getRecommendedWakeSchedule(siteType?: string): {
     label: string;
     cron: string;
     description: string;
   }[] {
-    const schedules = [
-      {
-        label: 'Twice Daily (8am & 4pm)',
-        cron: '0 8,16 * * *',
-        description: 'Standard monitoring schedule for most sites'
-      },
-      {
-        label: 'Three Times Daily (8am, 2pm & 8pm)',
-        cron: '0 8,14,20 * * *',
-        description: 'Increased monitoring for high-activity areas'
-      },
-      {
-        label: 'Once Daily (8am)',
-        cron: '0 8 * * *',
-        description: 'Light monitoring for low-risk areas'
-      },
-      {
-        label: 'Every 6 Hours',
-        cron: '0 */6 * * *',
-        description: 'Intensive monitoring for critical areas'
-      },
-      {
-        label: 'Business Hours Only (9am-5pm, hourly)',
-        cron: '0 9-17 * * *',
-        description: 'Active monitoring during work hours'
-      }
-    ];
-
-    // Reorder based on site type if provided
-    if (siteType === 'petri') {
-      return schedules;
-    }
-
-    return schedules;
+    const presets = this.getWakeSchedulePresets();
+    return presets.map(p => ({
+      label: p.label,
+      cron: p.cron,
+      description: p.description
+    }));
   }
 
   /**
    * Calculate next wake time based on cron schedule
+   * @deprecated Use database RPC fn_calculate_next_wake_time for accurate calculation
    */
   static calculateNextWake(cronExpression: string): Date | null {
     // This is a simplified calculation
-    // In production, you'd use a proper cron parser library
+    // In production, use database RPC function for accurate timezone-aware calculation
     try {
       const now = new Date();
 
@@ -457,6 +488,84 @@ export class DeviceService {
     } catch (error) {
       logger.error('Error calculating next wake', error);
       return null;
+    }
+  }
+
+  /**
+   * Preview wake schedule changes with estimated next wake times
+   */
+  static async previewWakeSchedule(params: {
+    deviceId: string;
+    newCron: string;
+  }): Promise<{
+    current_next_wake: string | null;
+    new_next_wake_after_current: string | null;
+    interval_description: string;
+  }> {
+    try {
+      // Get device's current next_wake_at and timezone
+      const { data: device } = await supabase
+        .from('devices')
+        .select(`
+          next_wake_at,
+          last_wake_at,
+          device_site_assignments!inner(
+            sites(
+              timezone
+            )
+          )
+        `)
+        .eq('device_id', params.deviceId)
+        .eq('device_site_assignments.is_active', true)
+        .maybeSingle();
+
+      if (!device) {
+        return {
+          current_next_wake: null,
+          new_next_wake_after_current: null,
+          interval_description: 'Device not found'
+        };
+      }
+
+      // Get timezone from site
+      const timezone = (device.device_site_assignments?.[0] as any)?.sites?.timezone || 'America/New_York';
+
+      // Calculate what next wake would be AFTER current expected wake
+      // (device will get new schedule at current_next_wake)
+      const { data: calculatedNextWake } = await supabase.rpc(
+        'fn_calculate_next_wake_time',
+        {
+          p_last_wake_at: device.next_wake_at || device.last_wake_at || new Date().toISOString(),
+          p_cron_expression: params.newCron,
+          p_timezone: timezone
+        }
+      );
+
+      // Parse cron for human description
+      let description = 'Custom schedule';
+      const hourPart = params.newCron.split(' ')[1];
+      if (hourPart?.includes('*/')) {
+        const hours = hourPart.replace('*/', '');
+        description = `Every ${hours} hours`;
+      } else if (hourPart?.includes(',')) {
+        const times = hourPart.split(',').length;
+        description = `${times} times per day`;
+      } else if (hourPart && !hourPart.includes('*')) {
+        description = `Once daily at ${hourPart}:00`;
+      }
+
+      return {
+        current_next_wake: device.next_wake_at,
+        new_next_wake_after_current: calculatedNextWake,
+        interval_description: description
+      };
+    } catch (error) {
+      logger.error('Error previewing wake schedule', error);
+      return {
+        current_next_wake: null,
+        new_next_wake_after_current: null,
+        interval_description: 'Error calculating preview'
+      };
     }
   }
 
