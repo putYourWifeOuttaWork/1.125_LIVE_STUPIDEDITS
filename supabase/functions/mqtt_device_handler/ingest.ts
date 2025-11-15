@@ -52,7 +52,7 @@ export async function handleHelloStatus(
           wifi_ssid: null, // Will be set during mapping
           mqtt_client_id: payload.device_id,
           provisioning_status: 'pending_mapping', // Auto-discovered, needs mapping
-          device_type: 'virtual', // Mark as virtual for testing
+          device_type: 'physical', // Mark as virtual for testing
           is_active: true,
           last_seen_at: now,
           notes: `Auto-provisioned from MQTT HELLO on ${now}`,
