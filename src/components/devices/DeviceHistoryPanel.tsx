@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useEffect } from 'react';
 import { Download, Filter, RefreshCw, Clock, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { useDeviceHistory, HistoryFilterOptions } from '../../hooks/useDeviceHistory';
@@ -28,7 +28,13 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
     currentPage,
     pageSize,
     setPage,
-    totalPages
+    totalPages,
+    availablePrograms,
+    availableSites,
+    availableSessions,
+    loadingFilters,
+    fetchAvailableSites,
+    fetchAvailableSessions
   } = useDeviceHistory({ deviceId });
 
   const [showFilters, setShowFilters] = useState(false);
@@ -220,41 +226,71 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Program ID
+                Program
               </label>
-              <input
-                type="text"
-                placeholder="Filter by program ID..."
+              <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 value={localFilters.programId || ''}
-                onChange={(e) => setLocalFilters({ ...localFilters, programId: e.target.value || undefined })}
-              />
+                onChange={(e) => {
+                  const programId = e.target.value || undefined;
+                  setLocalFilters({ ...localFilters, programId, siteId: undefined, sessionId: undefined });
+                  if (programId) {
+                    fetchAvailableSites(programId);
+                  }
+                }}
+                disabled={loadingFilters}
+              >
+                <option value="">All Programs</option>
+                {availablePrograms.map(prog => (
+                  <option key={prog.program_id} value={prog.program_id}>
+                    {prog.program_name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Site ID
+                Site
               </label>
-              <input
-                type="text"
-                placeholder="Filter by site ID..."
+              <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 value={localFilters.siteId || ''}
-                onChange={(e) => setLocalFilters({ ...localFilters, siteId: e.target.value || undefined })}
-              />
+                onChange={(e) => {
+                  const siteId = e.target.value || undefined;
+                  setLocalFilters({ ...localFilters, siteId, sessionId: undefined });
+                  if (siteId && localFilters.programId) {
+                    fetchAvailableSessions(localFilters.programId, siteId);
+                  }
+                }}
+                disabled={!localFilters.programId || loadingFilters}
+              >
+                <option value="">All Sites</option>
+                {availableSites.map(site => (
+                  <option key={site.site_id} value={site.site_id}>
+                    {site.site_name} {site.site_code ? `(${site.site_code})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Session ID
+                Session
               </label>
-              <input
-                type="text"
-                placeholder="Filter by session ID..."
+              <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 value={localFilters.sessionId || ''}
                 onChange={(e) => setLocalFilters({ ...localFilters, sessionId: e.target.value || undefined })}
-              />
+                disabled={!localFilters.programId || !localFilters.siteId || loadingFilters}
+              >
+                <option value="">All Sessions</option>
+                {availableSessions.map(session => (
+                  <option key={session.session_id} value={session.session_id}>
+                    {session.session_label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

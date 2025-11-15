@@ -14,6 +14,23 @@ interface UseDeviceHistoryProps {
   programId?: string;
 }
 
+export interface ProgramOption {
+  program_id: string;
+  program_name: string;
+}
+
+export interface SiteOption {
+  site_id: string;
+  site_name: string;
+  site_code: string;
+}
+
+export interface SessionOption {
+  session_id: string;
+  session_date: string;
+  session_label: string;
+}
+
 interface UseDeviceHistoryResult {
   history: DeviceHistory[];
   sessions: DeviceWakeSession[];
@@ -32,6 +49,13 @@ interface UseDeviceHistoryResult {
   pageSize: number;
   setPage: (page: number) => void;
   totalPages: number;
+  availablePrograms: ProgramOption[];
+  availableSites: SiteOption[];
+  availableSessions: SessionOption[];
+  loadingFilters: boolean;
+  fetchAvailablePrograms: () => Promise<void>;
+  fetchAvailableSites: (programId: string) => Promise<void>;
+  fetchAvailableSessions: (programId: string, siteId: string) => Promise<void>;
 }
 
 export interface HistoryFilterOptions {
@@ -74,6 +98,10 @@ export function useDeviceHistory({
   const [totalCount, setTotalCount] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize] = useState<number>(50);
+  const [availablePrograms, setAvailablePrograms] = useState<ProgramOption[]>([]);
+  const [availableSites, setAvailableSites] = useState<SiteOption[]>([]);
+  const [availableSessions, setAvailableSessions] = useState<SessionOption[]>([]);
+  const [loadingFilters, setLoadingFilters] = useState<boolean>(false);
 
   const fetchHistory = async () => {
     if (!deviceId && !siteId && !programId) {
@@ -325,6 +353,141 @@ export function useDeviceHistory({
     }
   };
 
+  const fetchAvailablePrograms = async () => {
+    if (!deviceId) return;
+
+    setLoadingFilters(true);
+    try {
+      // Get distinct programs from device_history
+      const { data, error } = await supabase
+        .from('device_history')
+        .select('program_id')
+        .eq('device_id', deviceId)
+        .not('program_id', 'is', null);
+
+      if (error) throw error;
+
+      const uniqueProgramIds = [...new Set(data.map(d => d.program_id))];
+
+      // Fetch program details
+      const { data: programs, error: progError } = await supabase
+        .from('pilot_programs')
+        .select('program_id, program_name')
+        .in('program_id', uniqueProgramIds);
+
+      if (progError) throw progError;
+
+      setAvailablePrograms(programs || []);
+    } catch (err) {
+      console.error('Error fetching programs:', err);
+    } finally {
+      setLoadingFilters(false);
+    }
+  };
+
+  const fetchAvailableSites = async (selectedProgramId: string) => {
+    if (!deviceId || !selectedProgramId) return;
+
+    setLoadingFilters(true);
+    try {
+      // Get distinct sites for this program
+      const { data, error } = await supabase
+        .from('device_history')
+        .select('site_id')
+        .eq('device_id', deviceId)
+        .eq('program_id', selectedProgramId)
+        .not('site_id', 'is', null);
+
+      if (error) throw error;
+
+      const uniqueSiteIds = [...new Set(data.map(d => d.site_id))];
+
+      // Fetch site details
+      const { data: sites, error: siteError } = await supabase
+        .from('sites')
+        .select('site_id, site_name, site_code')
+        .in('site_id', uniqueSiteIds);
+
+      if (siteError) throw siteError;
+
+      setAvailableSites(sites || []);
+    } catch (err) {
+      console.error('Error fetching sites:', err);
+    } finally {
+      setLoadingFilters(false);
+    }
+  };
+
+  const fetchAvailableSessions = async (selectedProgramId: string, selectedSiteId: string) => {
+    if (!deviceId || !selectedProgramId || !selectedSiteId) return;
+
+    setLoadingFilters(true);
+    try {
+      // Get distinct sessions from site_device_sessions
+      const { data, error } = await supabase
+        .from('site_device_sessions')
+        .select('session_id, session_date')
+        .eq('device_id', deviceId)
+        .eq('program_id', selectedProgramId)
+        .eq('site_id', selectedSiteId)
+        .order('session_date', { ascending: false });
+
+      if (error) {
+        console.warn('site_device_sessions not found, checking device_history');
+        // Fallback: check for session_id in device_history
+        const { data: historyData, error: histError } = await supabase
+          .from('device_history')
+          .select('session_id, event_timestamp')
+          .eq('device_id', deviceId)
+          .eq('program_id', selectedProgramId)
+          .eq('site_id', selectedSiteId)
+          .not('session_id', 'is', null)
+          .order('event_timestamp', { ascending: false });
+
+        if (histError) throw histError;
+
+        // Group by session_id and take earliest timestamp
+        const sessionMap = new Map<string, string>();
+        historyData?.forEach(item => {
+          if (item.session_id && !sessionMap.has(item.session_id)) {
+            sessionMap.set(item.session_id, item.event_timestamp);
+          }
+        });
+
+        const sessionOptions: SessionOption[] = Array.from(sessionMap.entries()).map(([id, timestamp]) => ({
+          session_id: id,
+          session_date: timestamp,
+          session_label: new Date(timestamp).toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })
+        }));
+
+        setAvailableSessions(sessionOptions);
+      } else {
+        const sessionOptions: SessionOption[] = (data || []).map(s => ({
+          session_id: s.session_id,
+          session_date: s.session_date,
+          session_label: new Date(s.session_date).toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })
+        }));
+
+        setAvailableSessions(sessionOptions);
+      }
+    } catch (err) {
+      console.error('Error fetching sessions:', err);
+      setAvailableSessions([]);
+    } finally {
+      setLoadingFilters(false);
+    }
+  };
+
   const setPage = (page: number) => {
     setCurrentPage(page);
   };
@@ -335,6 +498,12 @@ export function useDeviceHistory({
     fetchHistory();
     fetchSessions();
   }, [deviceId, siteId, programId, currentPage]);
+
+  useEffect(() => {
+    if (deviceId) {
+      fetchAvailablePrograms();
+    }
+  }, [deviceId]);
 
   return {
     history,
@@ -353,7 +522,14 @@ export function useDeviceHistory({
     currentPage,
     pageSize,
     setPage,
-    totalPages
+    totalPages,
+    availablePrograms,
+    availableSites,
+    availableSessions,
+    loadingFilters,
+    fetchAvailablePrograms,
+    fetchAvailableSites,
+    fetchAvailableSessions
   };
 }
 
