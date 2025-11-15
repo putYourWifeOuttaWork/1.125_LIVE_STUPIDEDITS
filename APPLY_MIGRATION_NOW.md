@@ -1,14 +1,20 @@
-# ✅ FIXED MIGRATION - READY TO APPLY
+# ✅ FULLY FIXED MIGRATION - READY TO APPLY
 
-## Issue Fixed
+## All Issues Fixed
 
+### **Issue #1: device_session_status enum** ✅ FIXED
 **Error:** Invalid enum value 'completed' - should be 'success'
-
-**Fixed:** All references to enum values now use correct types:
+**Fixed:** All references now use correct types:
 - ✅ 'success' (not 'completed')
 - ✅ 'failed'
 - ✅ 'partial' (not 'timeout')
 - ✅ 'in_progress'
+
+### **Issue #2: device_event_category enum** ✅ FIXED
+**Error:** Missing enum values 'Alert' and 'Command'
+**Fixed:** Added missing enum values:
+- ✅ 'Alert' (added to enum)
+- ✅ 'Command' (added to enum)
 
 ## How to Apply
 

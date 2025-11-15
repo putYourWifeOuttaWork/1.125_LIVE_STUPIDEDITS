@@ -49,6 +49,28 @@ BEGIN
   END IF;
 END $$;
 
+-- Add missing enum values to device_event_category
+DO $$
+BEGIN
+  -- Add 'Alert' if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_enum
+    WHERE enumlabel = 'Alert'
+    AND enumtypid = 'device_event_category'::regtype
+  ) THEN
+    ALTER TYPE device_event_category ADD VALUE 'Alert';
+  END IF;
+
+  -- Add 'Command' if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_enum
+    WHERE enumlabel = 'Command'
+    AND enumtypid = 'device_event_category'::regtype
+  ) THEN
+    ALTER TYPE device_event_category ADD VALUE 'Command';
+  END IF;
+END $$;
+
 -- Add indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_device_history_source
   ON device_history(source_table, source_id);
