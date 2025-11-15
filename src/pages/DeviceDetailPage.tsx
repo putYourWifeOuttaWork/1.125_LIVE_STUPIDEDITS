@@ -12,13 +12,14 @@ import DeviceReassignModal from '../components/devices/DeviceReassignModal';
 import DeviceHistoryPanel from '../components/devices/DeviceHistoryPanel';
 import DeviceImagesPanel from '../components/devices/DeviceImagesPanel';
 import DeviceEnvironmentalPanel from '../components/devices/DeviceEnvironmentalPanel';
+import DeviceProgramHistoryPanel from '../components/devices/DeviceProgramHistoryPanel';
 import DeviceEditModal from '../components/devices/DeviceEditModal';
 import DeviceSettingsModal from '../components/devices/DeviceSettingsModal';
 import { useDevice, useDeviceImages } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
 
-type TabType = 'overview' | 'environmental' | 'history' | 'images';
+type TabType = 'overview' | 'programs' | 'environmental' | 'history' | 'images';
 
 const DeviceDetailPage = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -173,6 +174,17 @@ const DeviceDetailPage = () => {
               Overview
             </button>
             <button
+              onClick={() => setActiveTab('programs')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'programs'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Activity className="inline-block mr-2" size={18} />
+              Programs
+            </button>
+            <button
               onClick={() => setActiveTab('environmental')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'environmental'
@@ -260,6 +272,127 @@ const DeviceDetailPage = () => {
                       Voltage: {device.battery_voltage}V
                     </p>
                   )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Device Statistics Card - NEW */}
+          <Card>
+            <CardHeader>
+              <h2 className="text-lg font-semibold">Device Statistics</h2>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Total Wakes</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {device.total_wakes || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Total Alerts</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {device.total_alerts || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Images Taken</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {device.total_images_taken || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Expected Images</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {device.total_images_expected_to_date || 0}
+                  </p>
+                </div>
+              </div>
+
+              {/* Image Success Rate */}
+              {device.total_images_expected_to_date && device.total_images_expected_to_date > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm text-gray-500">Image Success Rate</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {((device.total_images_taken || 0) / device.total_images_expected_to_date * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${
+                        ((device.total_images_taken || 0) / device.total_images_expected_to_date) >= 0.9
+                          ? 'bg-green-500'
+                          : ((device.total_images_taken || 0) / device.total_images_expected_to_date) >= 0.7
+                          ? 'bg-yellow-500'
+                          : 'bg-red-500'
+                      }`}
+                      style={{
+                        width: `${Math.min(((device.total_images_taken || 0) / device.total_images_expected_to_date * 100), 100)}%`
+                      }}
+                    ></div>
+                  </div>
+                  {device.total_images_expected_to_date > (device.total_images_taken || 0) && (
+                    <p className="text-xs text-red-600 mt-1">
+                      Missing {device.total_images_expected_to_date - (device.total_images_taken || 0)} images
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Wake Variance */}
+              {device.last_wake_variance_minutes !== null && device.last_wake_variance_minutes !== undefined && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-sm text-gray-500 mb-2">Last Wake Timing</p>
+                  <div className="flex items-center gap-2">
+                    {device.last_wake_variance_minutes === 0 ? (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                        ✓ On time
+                      </span>
+                    ) : device.last_wake_variance_minutes < 0 ? (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                        {Math.abs(device.last_wake_variance_minutes)} min early
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                        {device.last_wake_variance_minutes} min late
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Wake variance helps identify timing drift or connectivity issues
+                  </p>
+                </div>
+              )}
+
+              {/* Battery Health Alerts */}
+              {device.total_battery_health_alerts && device.total_battery_health_alerts > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500">Battery Health Alerts</p>
+                      <p className="text-xs text-gray-400 mt-1">Lifetime low battery warnings</p>
+                    </div>
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-lg font-bold bg-orange-100 text-orange-800">
+                      {device.total_battery_health_alerts}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Overtime Mode Warning */}
+              {device.is_overtime_mode && (
+                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <AlertCircle size={16} className="mr-2 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-yellow-900">Overtime Mode</p>
+                      <p className="text-xs text-yellow-800 mt-1">
+                        Program has ended but device is still collecting data. Please reassign to an active program.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -495,6 +628,10 @@ const DeviceDetailPage = () => {
           )}
         </div>
       </div>
+      )}
+
+      {activeTab === 'programs' && deviceId && (
+        <DeviceProgramHistoryPanel deviceId={deviceId} />
       )}
 
       {activeTab === 'environmental' && deviceId && (
