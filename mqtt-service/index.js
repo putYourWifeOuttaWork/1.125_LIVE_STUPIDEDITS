@@ -527,7 +527,12 @@ function connectToMQTT() {
         const payload = JSON.parse(message.toString());
         console.log(`[MQTT] 📨 Message on ${topic}:`, JSON.stringify(payload).substring(0, 200));
 
-        // Forward to edge function for processing
+        // NOTE: Edge Function forwarding disabled - local processing handles everything
+        // The Edge Function doesn't send MQTT commands back to devices per the protocol,
+        // so it causes 2-minute timeouts without adding value during testing.
+        // Uncomment below if you need parallel Edge Function processing for production.
+
+        /*
         try {
           const edgeResponse = await fetch(`${supabaseUrl}/functions/v1/mqtt_device_handler`, {
             method: 'POST',
@@ -547,8 +552,9 @@ function connectToMQTT() {
         } catch (edgeError) {
           console.error('[EDGE] ❌ Failed to forward to edge function:', edgeError.message);
         }
+        */
 
-        // Also process locally for backward compatibility
+        // Process locally (full protocol implementation)
         if (topic.includes('/ack') && commandQueueProcessor) {
           // Handle command acknowledgment
           const deviceMac = topic.split('/')[1];
