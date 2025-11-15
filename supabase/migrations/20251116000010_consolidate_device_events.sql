@@ -49,27 +49,9 @@ BEGIN
   END IF;
 END $$;
 
--- Add missing enum values to device_event_category
-DO $$
-BEGIN
-  -- Add 'Alert' if it doesn't exist
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_enum
-    WHERE enumlabel = 'Alert'
-    AND enumtypid = 'device_event_category'::regtype
-  ) THEN
-    ALTER TYPE device_event_category ADD VALUE 'Alert';
-  END IF;
-
-  -- Add 'Command' if it doesn't exist
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_enum
-    WHERE enumlabel = 'Command'
-    AND enumtypid = 'device_event_category'::regtype
-  ) THEN
-    ALTER TYPE device_event_category ADD VALUE 'Command';
-  END IF;
-END $$;
+-- NOTE: Enum values 'Alert' and 'Command' must already exist in device_event_category
+-- They are added by migration 20251116000009_add_event_category_enums.sql
+-- Run that migration first if you haven't already!
 
 -- Add indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_device_history_source
