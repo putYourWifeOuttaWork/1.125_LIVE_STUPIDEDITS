@@ -29,6 +29,7 @@ import UnclaimedSessionsCard from '../components/submissions/UnclaimedSessionsCa
 import { useSessionStore } from '../stores/sessionStore';
 import { useSiteDeviceSessions } from '../hooks/useSiteDeviceSessions';
 import SiteDeviceSessionCard from '../components/devices/SiteDeviceSessionCard';
+import ActiveAlertsPanel from '../components/devices/ActiveAlertsPanel';
 
 // Type for recent submission from the get_recent_submissions RPC
 interface RecentSubmission {
@@ -384,10 +385,15 @@ const HomePage = () => {
       
       {/* Unclaimed Sessions Card - NEW COMPONENT */}
       <UnclaimedSessionsCard />
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        {/* Program/Site Selection Card */}
-        <Card className="md:col-span-2">
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Active Alerts Panel - MOST PROMINENT (Top Left) */}
+        <div className="lg:col-span-2">
+          <ActiveAlertsPanel />
+        </div>
+
+        {/* Program/Site Selection Card - Moved to Top Right */}
+        <Card>
           <CardHeader>
             <h2 className="text-lg font-semibold">Select Program & Site</h2>
           </CardHeader>
@@ -506,7 +512,10 @@ const HomePage = () => {
             </div>
           </CardContent>
         </Card>
-        
+      </div>
+
+      {/* Second Row - Weather Card (Moved Down) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         {/* Today's Weather Card */}
         <Card>
           <CardHeader>

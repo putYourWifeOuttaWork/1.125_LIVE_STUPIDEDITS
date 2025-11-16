@@ -41,6 +41,7 @@ const DevicePoolPage = lazy(() => import('./pages/DevicePoolPage'));
 const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
 const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
+const CompanyAlertThresholds = lazy(() => import('./pages/lab/admin/CompanyAlertThresholds'));
 
 function App() {
   const navigate = useNavigate();
@@ -430,6 +431,13 @@ function App() {
                 <RequireCompanyAdmin>
                   <Suspense fallback={<LoadingScreen />}>
                     <IngestFeed />
+                  </Suspense>
+                </RequireCompanyAdmin>
+              } />
+              <Route path="/lab/admin/alert-thresholds" element={
+                <RequireCompanyAdmin>
+                  <Suspense fallback={<LoadingScreen />}>
+                    <CompanyAlertThresholds />
                   </Suspense>
                 </RequireCompanyAdmin>
               } />
