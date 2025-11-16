@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit, Thermometer } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit, Thermometer, Bell } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -15,6 +15,7 @@ import DeviceEnvironmentalPanel from '../components/devices/DeviceEnvironmentalP
 import DeviceProgramHistoryPanel from '../components/devices/DeviceProgramHistoryPanel';
 import DeviceEditModal from '../components/devices/DeviceEditModal';
 import DeviceSettingsModal from '../components/devices/DeviceSettingsModal';
+import DeviceAlertThresholdsModal from '../components/devices/DeviceAlertThresholdsModal';
 import { useDevice, useDeviceImages } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
@@ -36,6 +37,7 @@ const DeviceDetailPage = () => {
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showAlertThresholdsModal, setShowAlertThresholdsModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   if (isLoading) {
@@ -141,6 +143,14 @@ const DeviceDetailPage = () => {
                     onClick={() => setShowSettingsModal(true)}
                   >
                     Settings
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={<Bell size={14} />}
+                    onClick={() => setShowAlertThresholdsModal(true)}
+                  >
+                    Alert Thresholds
                   </Button>
                   <Button
                     variant="outline"
@@ -703,6 +713,16 @@ const DeviceDetailPage = () => {
           onSuccess={() => {
             refetch();
           }}
+        />
+      )}
+
+      {showAlertThresholdsModal && device.company_id && (
+        <DeviceAlertThresholdsModal
+          isOpen={showAlertThresholdsModal}
+          onClose={() => setShowAlertThresholdsModal(false)}
+          deviceId={device.device_id}
+          deviceCode={device.device_code}
+          companyId={device.company_id}
         />
       )}
     </div>

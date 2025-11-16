@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Save, AlertTriangle, TrendingUp, Activity, Zap } from 'lucide-react';
+import { Save, AlertTriangle, TrendingUp, Activity, Zap, Info, ExternalLink } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../../../components/common/Card';
 import Button from '../../../components/common/Button';
 import { supabase } from '../../../lib/supabaseClient';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 import LoadingScreen from '../../../components/common/LoadingScreen';
 import useCompanies from '../../../hooks/useCompanies';
 
@@ -48,8 +49,10 @@ interface AlertThresholds {
 }
 
 const CompanyAlertThresholds = () => {
+  const navigate = useNavigate();
   const { userCompany, loading: companyLoading } = useCompanies();
   const [thresholds, setThresholds] = useState<AlertThresholds | null>(null);
+  const [devicesWithOverrides, setDevicesWithOverrides] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -70,6 +73,20 @@ const CompanyAlertThresholds = () => {
 
         if (data) {
           setThresholds(data as AlertThresholds);
+        }
+
+        // Load devices with custom overrides
+        const { data: overrideDevices, error: overrideError } = await supabase
+          .from('device_alert_thresholds')
+          .select(`
+            device_id,
+            devices!inner(device_id, device_code, device_name)
+          `)
+          .eq('company_id', userCompany.company_id)
+          .not('device_id', 'is', null);
+
+        if (!overrideError && overrideDevices) {
+          setDevicesWithOverrides(overrideDevices);
         }
       } catch (error) {
         console.error('Error loading thresholds:', error);
@@ -143,6 +160,40 @@ const CompanyAlertThresholds = () => {
           Save Changes
         </Button>
       </div>
+
+      {/* Info Card - Devices with Overrides */}
+      {devicesWithOverrides.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Info className="w-5 h-5 text-blue-600" />
+              <h2 className="text-lg font-semibold">Device-Specific Overrides</h2>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600 mb-3">
+              The following devices have custom alert thresholds that override these company defaults:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {devicesWithOverrides.map((item: any) => (
+                <button
+                  key={item.device_id}
+                  onClick={() => navigate(`/devices/${item.device_id}`)}
+                  className="flex items-center gap-1 px-3 py-1 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 transition-colors"
+                >
+                  <span className="text-sm font-medium text-orange-900">
+                    {item.devices.device_code}
+                  </span>
+                  <ExternalLink className="w-3 h-3 text-orange-600" />
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-3 italic">
+              Click a device to view or edit its custom thresholds
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Absolute Thresholds */}
       <Card>
