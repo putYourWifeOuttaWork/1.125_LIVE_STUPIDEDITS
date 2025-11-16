@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, CheckCircle, X, ExternalLink, Bell, BellOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle, X, ExternalLink, Bell, BellOff, Settings } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import useCompanies from '../../hooks/useCompanies';
 
 interface DeviceAlert {
@@ -34,7 +35,8 @@ interface DeviceAlert {
 }
 
 const ActiveAlertsPanel = () => {
-  const { userCompany } = useCompanies();
+  const navigate = useNavigate();
+  const { userCompany, isAdmin } = useCompanies();
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
@@ -175,7 +177,7 @@ const ActiveAlertsPanel = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-4 text-gray-500 text-sm">
             Loading alerts...
           </div>
         </CardContent>
@@ -187,11 +189,11 @@ const ActiveAlertsPanel = () => {
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <AlertTriangle className={`w-5 h-5 ${criticalCount > 0 ? 'text-red-600' : 'text-gray-400'}`} />
             <div>
               <h2 className="text-lg font-semibold">Active Alerts</h2>
-              <div className="flex items-center gap-3 mt-1">
+              <div className="flex items-center gap-2 mt-0.5">
                 {criticalCount > 0 && (
                   <span className="text-xs font-medium text-red-600">
                     {criticalCount} CRITICAL
@@ -209,39 +211,51 @@ const ActiveAlertsPanel = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => setShowResolved(!showResolved)}
-            className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1"
-          >
-            {showResolved ? <BellOff className="w-3 h-3" /> : <Bell className="w-3 h-3" />}
-            {showResolved ? 'Hide' : 'Show'} Resolved
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={() => navigate('/lab/admin/alert-thresholds')}
+                className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 px-2 py-1 hover:bg-gray-100 rounded transition-colors"
+                title="Configure Alert Thresholds"
+              >
+                <Settings className="w-3 h-3" />
+                Configure
+              </button>
+            )}
+            <button
+              onClick={() => setShowResolved(!showResolved)}
+              className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1"
+            >
+              {showResolved ? <BellOff className="w-3 h-3" /> : <Bell className="w-3 h-3" />}
+              {showResolved ? 'Hide' : 'Show'} Resolved
+            </button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
         {alerts.length === 0 ? (
-          <div className="text-center py-8">
-            <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-            <p className="text-gray-600 font-medium">No active alerts</p>
-            <p className="text-sm text-gray-500 mt-1">All systems operating normally</p>
+          <div className="text-center py-6">
+            <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-2" />
+            <p className="text-sm text-gray-600 font-medium">No active alerts</p>
+            <p className="text-xs text-gray-500 mt-0.5">All systems operating normally</p>
           </div>
         ) : (
-          <div className="space-y-3 max-h-96 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-y-auto">
             {alerts.map((alert) => (
               <div
                 key={alert.alert_id}
-                className={`border rounded-lg p-4 ${getSeverityColor(alert.severity)} ${
+                className={`border rounded-lg p-3 ${getSeverityColor(alert.severity)} ${
                   alert.resolved_at ? 'opacity-60' : ''
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 flex-1">
                     <div className="mt-0.5">
                       {getSeverityIcon(alert.severity)}
                     </div>
                     <div className="flex-1 min-w-0">
                       {/* Category & Severity */}
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-1.5 mb-1">
                         <span className="text-xs font-medium">
                           {getCategoryLabel(alert.alert_category)}
                         </span>
@@ -251,10 +265,10 @@ const ActiveAlertsPanel = () => {
                       </div>
 
                       {/* Message */}
-                      <p className="text-sm font-medium mb-2">{alert.message}</p>
+                      <p className="text-sm font-medium mb-1.5">{alert.message}</p>
 
                       {/* Routing Context */}
-                      <div className="text-xs space-y-1">
+                      <div className="text-xs space-y-0.5">
                         {alert.metadata?.device_code && (
                           <div>
                             <span className="font-medium">Device:</span> {alert.metadata.device_code}
@@ -282,11 +296,11 @@ const ActiveAlertsPanel = () => {
 
                       {/* Threshold Context */}
                       {alert.threshold_context && Object.keys(alert.threshold_context).length > 0 && (
-                        <details className="mt-2">
+                        <details className="mt-1.5">
                           <summary className="text-xs font-medium cursor-pointer hover:text-gray-900">
                             View Details
                           </summary>
-                          <div className="mt-1 text-xs space-y-1 pl-3 border-l-2 border-gray-300">
+                          <div className="mt-1 text-xs space-y-0.5 pl-2 border-l-2 border-gray-300">
                             {Object.entries(alert.threshold_context).map(([key, value]) => (
                               <div key={key}>
                                 <span className="font-medium">{key}:</span> {JSON.stringify(value)}
@@ -300,22 +314,21 @@ const ActiveAlertsPanel = () => {
 
                   {/* Actions */}
                   {!alert.resolved_at && (
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
+                    <div className="flex flex-col gap-1">
+                      <button
                         onClick={() => acknowledgeAlert(alert.alert_id)}
+                        className="p-1.5 border border-gray-300 rounded hover:bg-white transition-colors"
                         title="Acknowledge"
                       >
-                        <CheckCircle className="w-4 h-4" />
-                      </Button>
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      </button>
                       {alert.device_id && (
                         <a
                           href={`/devices/${alert.device_id}`}
-                          className="p-2 border border-gray-300 rounded-md hover:bg-white transition-colors"
+                          className="p-1.5 border border-gray-300 rounded hover:bg-white transition-colors"
                           title="View Device"
                         >
-                          <ExternalLink className="w-4 h-4" />
+                          <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                       )}
                     </div>
