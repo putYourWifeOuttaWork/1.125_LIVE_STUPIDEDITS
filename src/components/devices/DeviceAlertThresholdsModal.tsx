@@ -205,16 +205,16 @@ const DeviceAlertThresholdsModal = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Alert Thresholds - ${deviceCode}`} size="xl">
-      <div className="space-y-6">
+      <div className="space-y-3">
         {/* Header Actions */}
-        <div className="flex items-center justify-between border-b pb-4">
+        <div className="flex items-center justify-between border-b pb-2">
           <div className="flex items-center gap-3">
-            <AlertTriangle className={`w-5 h-5 ${hasOverride ? 'text-orange-600' : 'text-gray-400'}`} />
+            <AlertTriangle className={`w-4 h-4 ${hasOverride ? 'text-orange-600' : 'text-gray-400'}`} />
             <div>
-              <p className="font-medium">
+              <p className="text-sm font-medium">
                 {hasOverride ? 'Custom Override Active' : 'Using Company Defaults'}
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-xs text-gray-600">
                 {hasOverride
                   ? 'This device has custom thresholds that override company defaults'
                   : 'This device inherits thresholds from company template'}
@@ -222,15 +222,13 @@ const DeviceAlertThresholdsModal = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setViewMode(viewMode === 'override' ? 'comparison' : 'override')}
-            >
-              {viewMode === 'override' ? 'Compare' : 'Edit'}
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setViewMode(viewMode === 'override' ? 'comparison' : 'override')}
+          >
+            {viewMode === 'override' ? 'Compare' : 'Edit'}
+          </Button>
         </div>
 
         {/* View Mode Toggle */}
@@ -249,7 +247,7 @@ const DeviceAlertThresholdsModal = ({
         )}
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between border-t pt-4">
+        <div className="flex items-center justify-between border-t pt-3">
           <div className="flex gap-2">
             {hasOverride && (
               <Button
@@ -370,14 +368,14 @@ const OverrideEditForm = ({
   };
 
   return (
-    <div className="space-y-6 max-h-96 overflow-y-auto">
-      <div className="grid grid-cols-2 gap-6">
+    <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+      <div className="grid grid-cols-2 gap-4">
         {/* Temperature */}
-        <div className="space-y-3">
-          <h3 className="font-medium text-gray-900">Temperature (°F)</h3>
-          <div className="space-y-2">
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-900 mb-1">Temperature (°F)</h3>
+          <div className="space-y-1.5">
             <div>
-              <label className="block text-xs text-gray-700 mb-1">
+              <label className="block text-xs text-gray-700 mb-0.5">
                 Min Warning {isDifferent('temp_min_warning') && '🔸'}
               </label>
               <input
@@ -385,11 +383,11 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.temp_min_warning}
                 onChange={(e) => onChange({ ...thresholds, temp_min_warning: parseFloat(e.target.value) })}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-700 mb-1">
+              <label className="block text-xs text-gray-700 mb-0.5">
                 Min Critical {isDifferent('temp_min_critical') && '🔸'}
               </label>
               <input
@@ -397,11 +395,11 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.temp_min_critical}
                 onChange={(e) => onChange({ ...thresholds, temp_min_critical: parseFloat(e.target.value) })}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-700 mb-1">
+              <label className="block text-xs text-gray-700 mb-0.5">
                 Max Warning {isDifferent('temp_max_warning') && '🔸'}
               </label>
               <input
@@ -409,11 +407,11 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.temp_max_warning}
                 onChange={(e) => onChange({ ...thresholds, temp_max_warning: parseFloat(e.target.value) })}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-700 mb-1">
+              <label className="block text-xs text-gray-700 mb-0.5">
                 Max Critical {isDifferent('temp_max_critical') && '🔸'}
               </label>
               <input
@@ -421,18 +419,18 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.temp_max_critical}
                 onChange={(e) => onChange({ ...thresholds, temp_max_critical: parseFloat(e.target.value) })}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
           </div>
         </div>
 
         {/* Humidity */}
-        <div className="space-y-3">
-          <h3 className="font-medium text-gray-900">Relative Humidity (%)</h3>
-          <div className="space-y-2">
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-900 mb-1">Relative Humidity (%)</h3>
+          <div className="space-y-1.5">
             <div>
-              <label className="block text-xs text-gray-700 mb-1">
+              <label className="block text-xs text-gray-700 mb-0.5">
                 Min Warning {isDifferent('rh_min_warning') && '🔸'}
               </label>
               <input
@@ -440,11 +438,11 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.rh_min_warning}
                 onChange={(e) => onChange({ ...thresholds, rh_min_warning: parseFloat(e.target.value) })}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-700 mb-1">
+              <label className="block text-xs text-gray-700 mb-0.5">
                 Min Critical {isDifferent('rh_min_critical') && '🔸'}
               </label>
               <input
@@ -452,11 +450,11 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.rh_min_critical}
                 onChange={(e) => onChange({ ...thresholds, rh_min_critical: parseFloat(e.target.value) })}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-700 mb-1">
+              <label className="block text-xs text-gray-700 mb-0.5">
                 Max Warning {isDifferent('rh_max_warning') && '🔸'}
               </label>
               <input
@@ -464,11 +462,11 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.rh_max_warning}
                 onChange={(e) => onChange({ ...thresholds, rh_max_warning: parseFloat(e.target.value) })}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-700 mb-1">
+              <label className="block text-xs text-gray-700 mb-0.5">
                 Max Critical {isDifferent('rh_max_critical') && '🔸'}
               </label>
               <input
@@ -476,7 +474,7 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.rh_max_critical}
                 onChange={(e) => onChange({ ...thresholds, rh_max_critical: parseFloat(e.target.value) })}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
           </div>
