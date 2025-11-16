@@ -89,8 +89,9 @@ const DeviceAlertThresholdsModal = ({
           setDeviceThresholds(deviceData as AlertThresholds);
           setHasOverride(true);
         } else {
-          // Use company defaults as starting point
-          setDeviceThresholds({ ...companyData, device_id: deviceId } as AlertThresholds);
+          // Use company defaults as starting point (remove IDs to avoid conflicts)
+          const { threshold_config_id, created_at, created_by_user_id, updated_by_user_id, ...cleanCompanyData } = companyData;
+          setDeviceThresholds({ ...cleanCompanyData, device_id: deviceId } as AlertThresholds);
           setHasOverride(false);
         }
       } catch (error) {
@@ -109,18 +110,33 @@ const DeviceAlertThresholdsModal = ({
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('device_alert_thresholds')
-        .upsert({
-          ...deviceThresholds,
-          company_id: companyId,
-          device_id: deviceId,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'company_id,device_id'
-        });
+      // Remove fields that shouldn't be in upsert
+      const { threshold_config_id, created_at, created_by_user_id, updated_by_user_id, ...thresholdData } = deviceThresholds;
 
-      if (error) throw error;
+      if (threshold_config_id) {
+        // Update existing override
+        const { error } = await supabase
+          .from('device_alert_thresholds')
+          .update({
+            ...thresholdData,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('threshold_config_id', threshold_config_id);
+
+        if (error) throw error;
+      } else {
+        // Insert new override
+        const { error } = await supabase
+          .from('device_alert_thresholds')
+          .insert({
+            ...thresholdData,
+            company_id: companyId,
+            device_id: deviceId,
+            updated_at: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+      }
 
       toast.success(`Custom thresholds saved for ${deviceCode}`);
       setHasOverride(true);
@@ -160,7 +176,9 @@ const DeviceAlertThresholdsModal = ({
 
   const handleCopyFromCompany = () => {
     if (!companyThresholds) return;
-    setDeviceThresholds({ ...companyThresholds, device_id: deviceId } as AlertThresholds);
+    // Remove IDs to avoid conflicts when saving
+    const { threshold_config_id, created_at, created_by_user_id, updated_by_user_id, ...cleanCompanyData } = companyThresholds;
+    setDeviceThresholds({ ...cleanCompanyData, device_id: deviceId } as AlertThresholds);
     toast.info('Copied company defaults - click Save to apply');
   };
 

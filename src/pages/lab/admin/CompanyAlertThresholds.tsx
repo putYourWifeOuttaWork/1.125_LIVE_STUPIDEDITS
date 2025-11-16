@@ -104,20 +104,47 @@ const CompanyAlertThresholds = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('device_alert_thresholds')
-        .upsert({
-          ...thresholds,
-          company_id: userCompany.company_id,
-          device_id: null, // Company default
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'company_id,device_id'
-        });
+      // Remove threshold_config_id, created_at, and other fields that shouldn't be in upsert
+      const { threshold_config_id, created_at, created_by_user_id, updated_by_user_id, ...thresholdData } = thresholds;
 
-      if (error) throw error;
+      if (threshold_config_id) {
+        // Update existing record
+        const { error } = await supabase
+          .from('device_alert_thresholds')
+          .update({
+            ...thresholdData,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('threshold_config_id', threshold_config_id);
+
+        if (error) throw error;
+      } else {
+        // Insert new record
+        const { error } = await supabase
+          .from('device_alert_thresholds')
+          .insert({
+            ...thresholdData,
+            company_id: userCompany.company_id,
+            device_id: null, // Company default
+            updated_at: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+      }
 
       toast.success('Alert thresholds saved successfully');
+
+      // Reload to get the updated data with IDs
+      const { data } = await supabase
+        .from('device_alert_thresholds')
+        .select('*')
+        .eq('company_id', userCompany.company_id)
+        .is('device_id', null)
+        .single();
+
+      if (data) {
+        setThresholds(data as AlertThresholds);
+      }
     } catch (error) {
       console.error('Error saving thresholds:', error);
       toast.error('Failed to save alert thresholds');

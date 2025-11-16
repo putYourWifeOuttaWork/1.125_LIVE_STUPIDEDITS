@@ -6,7 +6,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'accent' | 'outline' | 'danger' | 'warning';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
+  loading?: boolean; // Alias for isLoading
   icon?: ReactNode;
+  leftIcon?: ReactNode; // Alias for icon
   fullWidth?: boolean;
   children: ReactNode;
   testId?: string;
@@ -16,7 +18,9 @@ const Button = ({
   variant = 'primary',
   size = 'md',
   isLoading = false,
+  loading,
   icon,
+  leftIcon,
   fullWidth = false,
   children,
   className = '',
@@ -24,6 +28,9 @@ const Button = ({
   testId,
   ...props
 }: ButtonProps) => {
+  // Support both isLoading/loading and icon/leftIcon
+  const showLoading = isLoading || loading;
+  const buttonIcon = icon || leftIcon;
   const baseClasses = 'inline-flex items-center justify-center font-medium rounded-md focus:outline-none transition-colors';
   
   const variantClasses = {
@@ -46,7 +53,7 @@ const Button = ({
     variantClasses[variant],
     sizeClasses[size],
     fullWidth ? 'w-full' : '',
-    isLoading ? 'opacity-90 cursor-not-allowed' : '',
+    showLoading ? 'opacity-90 cursor-not-allowed' : '',
     disabled ? 'cursor-not-allowed' : '',
     className
   );
@@ -54,18 +61,18 @@ const Button = ({
   return (
     <button
       className={buttonClasses}
-      disabled={isLoading || disabled}
+      disabled={showLoading || disabled}
       data-testid={testId}
       {...props}
     >
-      {isLoading ? (
+      {showLoading ? (
         <>
           <Loader2 className="animate-spin mr-2" size={size === 'sm' ? 14 : size === 'md' ? 16 : 18} />
           <span>Loading...</span>
         </>
       ) : (
         <>
-          {icon && <span className="mr-2">{icon}</span>}
+          {buttonIcon && <span className="mr-2">{buttonIcon}</span>}
           {children}
         </>
       )}
