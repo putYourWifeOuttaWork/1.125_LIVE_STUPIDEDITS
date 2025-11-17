@@ -63,39 +63,42 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
     }
   }, [isOpen, selectedProgram, selectedSite]);
 
-  // Function to load active sessions
+  // Function to load active sessions (UNIFIED: human + device)
   const loadActiveSessions = async () => {
     setIsRefreshing(true);
     try {
       setIsLoading(true);
-      
-      // Get active sessions using the enhanced RPC function
-      const { data, error } = await supabase.rpc('get_active_sessions_with_details');
-      
+
+      // Get unified active sessions (both human and device)
+      const { data, error } = await supabase.rpc('get_my_active_sessions_unified');
+
       if (error) {
         console.error('Error getting active sessions:', error);
         throw error;
       }
-      
-      // Check if there are any unclaimed sessions
-      const hasUnclaimed = data?.some(session => session.is_unclaimed === true) || false;
+
+      // Check if there are any unclaimed sessions (human only)
+      const hasUnclaimed = data?.some(session =>
+        session.session_type === 'human' &&
+        session.session_metadata?.is_unclaimed === true
+      ) || false;
       setHasUnclaimedSessions(hasUnclaimed);
-      
-      // Collect all unique user IDs from escalated_to_user_ids arrays
+
+      // Collect all unique user IDs from escalated_to_user_ids arrays (human sessions only)
       const uniqueUserIds = new Set<string>();
       data?.forEach(session => {
-        if (session.escalated_to_user_ids && session.escalated_to_user_ids.length > 0) {
-          session.escalated_to_user_ids.forEach(userId => uniqueUserIds.add(userId));
+        if (session.session_type === 'human' && session.session_metadata?.escalated_to_user_ids) {
+          session.session_metadata.escalated_to_user_ids.forEach((userId: string) => uniqueUserIds.add(userId));
         }
       });
-      
+
       // If we have shared users, fetch their details
       if (uniqueUserIds.size > 0) {
         const { data: userData, error: userError } = await supabase
           .from('users')
           .select('id, full_name, email')
           .in('id', Array.from(uniqueUserIds));
-          
+
         if (!userError && userData) {
           // Create a map for quick lookup
           const userDetailsMap = new Map<string, { full_name: string | null; email: string }>();
@@ -107,7 +110,7 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
           console.error('Error fetching shared user details:', userError);
         }
       }
-      
+
       setActiveSessions(data || []);
     } catch (error) {
       console.error('Error loading active sessions:', error);
@@ -170,9 +173,15 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
   };
 
   // Filter sessions based on claimed/unclaimed status
-  const filteredSessions = activeSessions.filter(session => 
-    showUnclaimedSessions ? session.is_unclaimed : !session.is_unclaimed
-  );
+  const filteredSessions = activeSessions.filter(session => {
+    // Device sessions are always shown in "My Sessions"
+    if (session.session_type === 'device') {
+      return !showUnclaimedSessions;
+    }
+    // Human sessions filter by unclaimed status
+    const isUnclaimed = session.session_metadata?.is_unclaimed === true;
+    return showUnclaimedSessions ? isUnclaimed : !isUnclaimed;
+  });
 
   return (
     <div className={`fixed inset-0 z-50 ${isOpen ? 'block' : 'hidden'}`}>
@@ -383,18 +392,28 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                 ) : (
                   <div className="space-y-4">
                     {filteredSessions.map((session) => (
-                      <div 
-                        key={session.session_id} 
+                      <div
+                        key={session.session_id}
                         className={`p-2 border rounded-md ${
-                          session.is_unclaimed 
-                            ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' 
-                            : currentSessionId === session.session_id 
-                              ? 'bg-primary-50 border-primary-200' 
+                          session.session_metadata?.is_unclaimed
+                            ? 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                            : currentSessionId === session.session_id
+                              ? 'bg-primary-50 border-primary-200'
                               : 'hover:bg-gray-50 border-gray-200'
                         } transition-colors`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <div className="font-medium text-sm truncate">{session.site_name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium text-sm truncate">{session.site_name}</div>
+                            {/* Session Type Badge */}
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                              session.session_type === 'device'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {session.session_type === 'device' ? '🤖 Device' : '👤 Human'}
+                            </span>
+                          </div>
                           <div className="flex items-center space-x-1">
                             {session.global_submission_id && (
                               <span className="inline-flex items-center text-xs text-primary-600 mr-1">
@@ -403,17 +422,17 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                               </span>
                             )}
                             <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                              session.session_status === 'Working' 
+                              session.status === 'Active' || session.status === 'Working'
                                 ? 'bg-secondary-100 text-secondary-800'
-                                : session.session_status === 'Opened' 
+                                : session.status === 'Opened' || session.status === 'in_progress'
                                 ? 'bg-primary-100 text-primary-800'
-                                : session.session_status === 'Escalated' 
+                                : session.status === 'Escalated'
                                 ? 'bg-warning-100 text-warning-800'
-                                : session.session_status === 'Shared'
+                                : session.status === 'Shared'
                                 ? 'bg-accent-100 text-accent-800'
                                 : 'bg-gray-100 text-gray-600'
                             }`}>
-                              {session.session_status}
+                              {session.status}
                             </span>
                           </div>
                         </div>
@@ -421,58 +440,70 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                         {/* Progress bar */}
                         <div className="flex items-center gap-2">
                           <div className="w-full bg-gray-200 rounded-full h-1.5">
-                            <div 
-                              className="bg-primary-600 h-1.5 rounded-full" 
-                              style={{ width: `${session.percentage_complete}%` }}
+                            <div
+                              className="bg-primary-600 h-1.5 rounded-full"
+                              style={{ width: `${session.progress_percent || 0}%` }}
                             ></div>
                           </div>
                           <span className="text-xs whitespace-nowrap">
-                            {session.percentage_complete}%
+                            {Math.round(session.progress_percent || 0)}%
                           </span>
+                        </div>
+
+                        {/* Session info */}
+                        <div className="flex items-center mt-1 text-xs text-gray-500">
+                          <span>{session.completed_items || 0} / {session.expected_items || 0} items</span>
                         </div>
                         
                         {/* Team Section - Always show the Users icon, but only show names if there are shared users */}
-                        {!session.is_unclaimed && (
+                        {session.session_type === 'human' && session.session_metadata?.escalated_to_user_ids && session.session_metadata.escalated_to_user_ids.length > 0 && (
                           <div className="flex items-center mt-1 text-xs text-gray-500">
                             <Users size={12} className="flex-shrink-0 mr-1" />
-                            {session.escalated_to_user_ids && session.escalated_to_user_ids.length > 0 ? (
-                              <span className="truncate">
-                                {session.escalated_to_user_ids.map(userId => {
+                            <span className="truncate">
+                              {session.session_metadata.escalated_to_user_ids.map((userId: string) => {
                                   const userDetails = sharedUsersDetails.get(userId);
                                   return userDetails?.full_name?.split(' ')[0] || userDetails?.email?.split('@')[0] || 'User';
                                 }).join(', ')}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400">No team members</span>
-                            )}
+                            </span>
                           </div>
                         )}
                         
                         <div className="flex items-center justify-between mt-1">
                           <span className="text-xs text-gray-500">
-                            {session.is_unclaimed 
-                              ? `Created ${formatDistanceToNow(new Date(session.session_start_time), { addSuffix: true })}` 
-                              : `Updated ${formatDistanceToNow(new Date(session.last_activity_time), { addSuffix: true })}`}
+                            {session.session_metadata?.is_unclaimed
+                              ? `Created ${formatDistanceToNow(new Date(session.started_at), { addSuffix: true })}`
+                              : `Started ${formatDistanceToNow(new Date(session.started_at), { addSuffix: true })}`}
                           </span>
-                          {session.is_unclaimed ? (
+                          {session.session_type === 'human' && session.session_metadata?.is_unclaimed ? (
                             <Button
                               variant="accent"
                               size="sm"
                               onClick={() => {
                                 handleClaimSession(session.session_id);
-                                // The drawer close is handled in handleClaimSession when successful
                               }}
                               className="!py-1 !px-2 text-xs"
                               icon={<Hand size={12} className="mr-1" />}
                             >
                               Claim
                             </Button>
+                          ) : session.session_type === 'device' ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => {
+                                navigate(`/lab/site-sessions/${session.site_id}?date=${session.session_date}`);
+                                onClose();
+                              }}
+                              className="!py-1 !px-2 text-xs"
+                            >
+                              View
+                            </Button>
                           ) : (
                             <Button
                               variant="primary"
                               size="sm"
                               onClick={() => {
-                                navigate(`/programs/${session.program_id}/sites/${session.site_id}/submissions/${session.submission_id}/edit`);
+                                navigate(`/programs/${session.program_id}/sites/${session.site_id}/submissions/${session.session_metadata?.device_submission_id || 'unknown'}/edit`);
                                 onClose();
                               }}
                               className="!py-1 !px-2 text-xs"
