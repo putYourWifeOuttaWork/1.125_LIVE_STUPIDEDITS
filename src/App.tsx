@@ -177,6 +177,8 @@ function App() {
     }
   };
 
+  // Auth setup - runs once on app mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
 
@@ -277,14 +279,14 @@ function App() {
 
     setupAuth();
 
-    // Return cleanup function
+    // Return cleanup function - only runs on app unmount
     return () => {
       if (unsubscribe) {
-        console.log('Cleaning up auth listener');
+        console.log('Cleaning up auth listener on unmount');
         unsubscribe();
       }
     };
-  }, [setUser, navigate, resetAll, setCurrentSessionId]);
+  }, []); // Empty deps - only run once on mount
 
   if (loading) {
     return <LoadingScreen />;
