@@ -744,4 +744,37 @@ export class DeviceService {
       return { siteAssignments: [], programAssignments: [], error: errorMessage };
     }
   }
+
+  /**
+   * Delete a device (FOR TESTING ONLY - will be removed in production)
+   * This will cascade delete all related records
+   */
+  static async deleteDevice(deviceId: string): Promise<{ success: boolean; error?: string }> {
+    logger.warn('DELETING DEVICE - TESTING ONLY', { deviceId });
+
+    try {
+      const { error } = await supabase
+        .from('devices')
+        .delete()
+        .eq('device_id', deviceId);
+
+      if (error) {
+        logger.error('Failed to delete device', error);
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+
+      logger.info('Device deleted successfully', { deviceId });
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error deleting device', { error: errorMessage });
+      return {
+        success: false,
+        error: errorMessage
+      };
+    }
+  }
 }

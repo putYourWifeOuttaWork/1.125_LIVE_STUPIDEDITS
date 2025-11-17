@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit, Thermometer, Bell } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit, Thermometer, Bell, Trash2 } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -19,6 +19,9 @@ import DeviceAlertThresholdsModal from '../components/devices/DeviceAlertThresho
 import { useDevice, useDeviceImages } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
+import { DeviceService } from '../services/deviceService';
+import { toast } from 'react-toastify';
+import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 
 type TabType = 'overview' | 'programs' | 'environmental' | 'history' | 'images';
 
@@ -38,6 +41,7 @@ const DeviceDetailPage = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showAlertThresholdsModal, setShowAlertThresholdsModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   if (isLoading) {
@@ -77,6 +81,21 @@ const DeviceDetailPage = () => {
   const handleUpdate = async (updates: any) => {
     await updateDevice(updates);
     setShowEditModal(false);
+  };
+
+  const handleDelete = async () => {
+    if (!deviceId) return;
+
+    const result = await DeviceService.deleteDevice(deviceId);
+
+    if (result.success) {
+      toast.success('Device deleted successfully');
+      navigate('/devices');
+    } else {
+      toast.error(result.error || 'Failed to delete device');
+    }
+
+    setShowDeleteModal(false);
   };
 
   // Calculate next wake estimate if not set but schedule exists
@@ -188,6 +207,15 @@ const DeviceDetailPage = () => {
                   Activate
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Trash2 size={14} />}
+                onClick={() => setShowDeleteModal(true)}
+                className="!border-red-300 !text-red-600 hover:!bg-red-50"
+              >
+                Delete
+              </Button>
             </>
           )}
         </div>
@@ -723,6 +751,34 @@ const DeviceDetailPage = () => {
           deviceId={device.device_id}
           deviceCode={device.device_code}
           companyId={device.company_id}
+        />
+      )}
+
+      {showDeleteModal && (
+        <DeleteConfirmModal
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirm={handleDelete}
+          title="Delete Device"
+          message={
+            <>
+              <p className="mb-2">Are you sure you want to delete this device?</p>
+              <p className="mb-2">
+                <strong>{device.device_name || device.device_mac}</strong>
+              </p>
+              <p className="text-sm text-red-600 font-semibold">
+                ⚠️ FOR TESTING ONLY - This will permanently delete the device and all related records:
+              </p>
+              <ul className="text-sm text-gray-600 mt-2 ml-4 list-disc">
+                <li>Device history and events</li>
+                <li>Device images and telemetry</li>
+                <li>Device commands and alerts</li>
+                <li>Assignment history</li>
+              </ul>
+              <p className="text-sm text-gray-600 mt-2">This action cannot be undone.</p>
+            </>
+          }
+          confirmLabel="Delete Device"
         />
       )}
     </div>
