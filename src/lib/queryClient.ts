@@ -68,8 +68,8 @@ export const queryClient = new QueryClient({
       gcTime: 10 * 60 * 1000,
       // Retry failed queries 3 times with exponential backoff
       retry: 3,
-      // Refetch stale queries when window regains focus (not all queries)
-      refetchOnWindowFocus: 'always',
+      // Disable refetch on window focus - we force reload instead
+      refetchOnWindowFocus: false,
       // Use our own error handling
       useErrorBoundary: false,
       // Global error handler for auth errors

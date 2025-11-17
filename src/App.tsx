@@ -125,24 +125,8 @@ function App() {
     
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && user) {
-        console.log('App regained focus - checking offline sync only');
-
-        try {
-          // Only handle offline sync - React Query handles data refetching
-          if (isOnline) {
-            const count = await syncManager.getPendingSubmissionsCount();
-            setPendingCount(count);
-
-            if (count > 0) {
-              console.log(`Syncing ${count} pending submissions...`);
-              const { pendingCount: remainingCount } = await syncManager.syncPendingSubmissions();
-              setPendingCount(remainingCount);
-            }
-          }
-        } catch (error) {
-          console.error('Error during offline sync:', error);
-          // Don't show error toast - this is not critical
-        }
+        console.log('App regained focus - forcing full page reload');
+        window.location.reload();
       }
     };
     

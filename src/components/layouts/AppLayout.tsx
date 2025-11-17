@@ -28,6 +28,7 @@ import ActiveSessionsDrawer from '../submissions/ActiveSessionsDrawer';
 import { useSessionStore } from '../../stores/sessionStore';
 import sessionManager from '../../lib/sessionManager';
 import Button from '../common/Button';
+import ReloadLink from '../common/ReloadLink';
 
 const AppLayout = () => {
   const { user } = useAuthStore();
@@ -285,16 +286,16 @@ const AppLayout = () => {
               )}
               {isCompanyAdmin && (
                 <>
-                  <Link
+                  <ReloadLink
                     to="/devices"
                     className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
                     data-testid="devices-link"
                   >
                     <Cpu size={18} />
                     <span className="hidden lg:inline">Devices</span>
-                  </Link>
+                  </ReloadLink>
                   {isSuperAdmin && (
-                    <Link
+                    <ReloadLink
                       to="/device-pool"
                       className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
                       data-testid="device-pool-link"
@@ -302,10 +303,10 @@ const AppLayout = () => {
                     >
                       <Package size={18} />
                       <span className="hidden lg:inline">Device Pool</span>
-                    </Link>
+                    </ReloadLink>
                   )}
                   {/* Lab Link - Admin Only */}
-                  <Link
+                  <ReloadLink
                     to="/lab/site-sessions"
                     className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
                     data-testid="lab-link"
@@ -313,7 +314,7 @@ const AppLayout = () => {
                   >
                     <FlaskConical size={18} />
                     <span className="hidden lg:inline">Lab</span>
-                  </Link>
+                  </ReloadLink>
                 </>
               )}
               <Link
