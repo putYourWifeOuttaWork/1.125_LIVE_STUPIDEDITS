@@ -178,24 +178,26 @@ function App() {
   };
 
   useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
     const setupAuth = async () => {
       try {
         console.log('Setting up auth...');
-        
+
         // Check initial session
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        
+
         if (sessionError) {
           console.error('Session error:', sessionError);
           throw sessionError;
         }
-        
+
         if (sessionData.session) {
           console.log('User is authenticated:', sessionData.session.user.email);
-          
+
           // Check if user is active
           const isActive = await checkUserActive(sessionData.session.user.id);
-          
+
           if (!isActive) {
             console.log('User is deactivated');
             // Still set the user in auth store for DeactivatedUserPage to use
@@ -207,7 +209,7 @@ function App() {
         } else {
           console.log('No active session found');
         }
-        
+
         // Set up auth state listener
         const { data: authListener } = supabase.auth.onAuthStateChange(
           async (event, session) => {
@@ -227,7 +229,7 @@ function App() {
             if (session) {
               // Check if user is active on auth state change
               const isActive = await checkUserActive(session.user.id);
-              
+
               if (!isActive) {
                 console.log('User is deactivated on auth state change');
                 // Still set the user in auth store for DeactivatedUserPage to use
@@ -244,8 +246,8 @@ function App() {
             }
           }
         );
-        
-        return () => {
+
+        unsubscribe = () => {
           authListener.subscription.unsubscribe();
         };
       } catch (error) {
@@ -272,8 +274,16 @@ function App() {
         setLoading(false);
       }
     };
-    
+
     setupAuth();
+
+    // Return cleanup function
+    return () => {
+      if (unsubscribe) {
+        console.log('Cleaning up auth listener');
+        unsubscribe();
+      }
+    };
   }, [setUser, navigate, resetAll, setCurrentSessionId]);
 
   if (loading) {

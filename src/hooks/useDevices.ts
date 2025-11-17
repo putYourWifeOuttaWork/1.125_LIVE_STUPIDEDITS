@@ -34,7 +34,7 @@ export const useDevices = (options: UseDevicesOptions = {}) => {
   } = useQuery({
     queryKey: ['devices', companyId, programId, siteId, provisioningStatus],
     queryFn: async () => {
-      logger.debug('Fetching devices', { companyId, programId, siteId, provisioningStatus });
+      logger.info('Fetching devices with filters', { companyId, programId, siteId, provisioningStatus });
 
       let query = supabase
         .from('devices')
@@ -68,9 +68,11 @@ export const useDevices = (options: UseDevicesOptions = {}) => {
       const { data, error } = await query;
 
       if (error) {
-        logger.error('Error fetching devices:', error);
+        logger.error('Error fetching devices from database:', error);
         throw error;
       }
+
+      logger.info(`Fetched ${data?.length || 0} devices, enriching with image counts...`);
 
       // Enrich devices with image counts
       const devicesWithStats: DeviceWithStats[] = await Promise.all(
@@ -94,11 +96,12 @@ export const useDevices = (options: UseDevicesOptions = {}) => {
         })
       );
 
-      logger.debug('Devices fetched successfully', { count: devicesWithStats.length });
+      logger.info('Devices enriched successfully', { count: devicesWithStats.length });
       return devicesWithStats;
     },
     refetchInterval,
     staleTime: 15000,
+    enabled: true, // Explicitly enable the query
   });
 
   const updateDeviceMutation = useMutation({
