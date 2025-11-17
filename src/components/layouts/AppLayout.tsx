@@ -18,7 +18,6 @@ import {
   Cpu,
   ChevronDown,
   Shield,
-  Package,
   FlaskConical
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -294,17 +293,6 @@ const AppLayout = () => {
                     <Cpu size={18} />
                     <span className="hidden lg:inline">Devices</span>
                   </ReloadLink>
-                  {isSuperAdmin && (
-                    <ReloadLink
-                      to="/device-pool"
-                      className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                      data-testid="device-pool-link"
-                      title="Unassigned Device Pool"
-                    >
-                      <Package size={18} />
-                      <span className="hidden lg:inline">Device Pool</span>
-                    </ReloadLink>
-                  )}
                   {/* Lab Link - Admin Only */}
                   <ReloadLink
                     to="/lab/site-sessions"

@@ -37,7 +37,6 @@ const CompanyManagementPage = lazy(() => import('./pages/CompanyManagementPage')
 const UserAuditPage = lazy(() => import('./pages/UserAuditPage'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
-const DevicePoolPage = lazy(() => import('./pages/DevicePoolPage'));
 const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
 const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
@@ -369,13 +368,6 @@ function App() {
                 <Suspense fallback={<LoadingScreen />}>
                   <DeviceDetailPage />
                 </Suspense>
-              } />
-              <Route path="/device-pool" element={
-                <RequireSuperAdmin>
-                  <Suspense fallback={<LoadingScreen />}>
-                    <DevicePoolPage />
-                  </Suspense>
-                </RequireSuperAdmin>
               } />
 
               {/* Lab Routes - Admin Only */}
