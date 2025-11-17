@@ -125,60 +125,23 @@ function App() {
     
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && user) {
-        console.log('App has come back into focus, checking connection state');
+        console.log('App regained focus - checking offline sync only');
 
-        // NOTE: Removed force reload as it causes infinite loop
-        // The rest of this function handles reconnection gracefully
         try {
-          // Verify the session is still valid
-          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-          
-          if (sessionError) {
-            console.error('Session error during reconnection:', sessionError);
-            return;
-          }
-          
-          if (!sessionData.session) {
-            console.log('No session found during reconnection check');
-            setUser(null);
-            setCurrentSessionId(null);
-            resetAll();
-            window.location.reload(true);
-            return;
-          }
-          
-          // If we're online, check for pending submissions and try to sync
+          // Only handle offline sync - React Query handles data refetching
           if (isOnline) {
-            console.log('Online after visibility change, checking for pending submissions');
             const count = await syncManager.getPendingSubmissionsCount();
             setPendingCount(count);
-            
+
             if (count > 0) {
-              // Attempt to sync pending submissions
+              console.log(`Syncing ${count} pending submissions...`);
               const { pendingCount: remainingCount } = await syncManager.syncPendingSubmissions();
               setPendingCount(remainingCount);
             }
           }
-          
-          // Refresh active sessions
-          try {
-            setIsLoading(true);
-            const sessions = await sessionManager.getActiveSessions();
-            // Filter out cancelled and expired sessions
-            const filteredSessions = sessions.filter(
-              session => !['Cancelled', 'Expired', 'Expired-Complete', 'Expired-Incomplete'].includes(session.session_status)
-            );
-            setActiveSessions(filteredSessions);
-          } catch (error) {
-            console.error('Error refreshing active sessions after visibility change:', error);
-          } finally {
-            setIsLoading(false);
-          }
-          
         } catch (error) {
-          console.error('Error during reconnection process:', error);
-          toast.error('Error reconnecting to the server. Please reload the page.');
-          return;
+          console.error('Error during offline sync:', error);
+          // Don't show error toast - this is not critical
         }
       }
     };

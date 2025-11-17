@@ -62,14 +62,14 @@ export const handleAuthError = async () => {
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Data will be considered stale immediately on window focus
-      staleTime: 0,
+      // Keep data fresh for 30 seconds to avoid excessive refetching
+      staleTime: 30 * 1000,
       // Keep unused data in cache for 10 minutes
       gcTime: 10 * 60 * 1000,
       // Retry failed queries 3 times with exponential backoff
       retry: 3,
-      // Always refetch when window regains focus (critical for our issue)
-      refetchOnWindowFocus: true,
+      // Refetch stale queries when window regains focus (not all queries)
+      refetchOnWindowFocus: 'always',
       // Use our own error handling
       useErrorBoundary: false,
       // Global error handler for auth errors
@@ -101,19 +101,16 @@ export const queryClient = new QueryClient({
   },
 });
 
-// Set up listener for focus events to invalidate queries
+// Set up offline/online event listeners
+// NOTE: Removed aggressive visibilitychange listener that was causing UI breaks
+// React Query's refetchOnWindowFocus handles this more gracefully
 if (typeof window !== 'undefined') {
-  window.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      console.log('Document became visible, invalidating queries...');
-      // Force refetch active queries when tab becomes visible
-      queryClient.invalidateQueries();
-    }
-  });
-
-  // Set up offline/online event listeners
   window.addEventListener('online', () => {
-    console.log('Connection restored. Invalidating queries...');
-    queryClient.invalidateQueries();
+    console.log('Connection restored. Invalidating stale queries...');
+    // Only invalidate stale queries, not all queries
+    queryClient.invalidateQueries({
+      refetchType: 'active',
+      stale: true
+    });
   });
 }
