@@ -514,11 +514,12 @@ const HomePage = () => {
         </Card>
       </div>
 
-      {/* Second Row - Device Sessions (left) and Weather (right) */}
+      {/* Combined Row - Device Sessions, Recent Submissions (left 2/3) and Weather (right 1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        {/* Device Sessions Card - Left 2/3 column */}
-        {(deviceSessions.length > 0 || selectedSite) && (
-          <div className="lg:col-span-2">
+        {/* Left Column - Device Sessions and Recent Submissions stacked */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Device Sessions Card */}
+          {(deviceSessions.length > 0 || selectedSite) && (
             <Card>
               <CardHeader className="flex justify-between items-center">
                 <div className="flex items-center">
@@ -561,122 +562,10 @@ const HomePage = () => {
                 )}
               </CardContent>
             </Card>
-          </div>
-        )}
+          )}
 
-        {/* Weather Card - Right 1/3 column */}
-        <div className={deviceSessions.length > 0 || selectedSite ? '' : 'lg:col-start-3'}>
-          <Card>
-          <CardHeader>
-            <h2 className="text-lg font-semibold">Today's Weather</h2>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-500 mb-4">
-              Select the weather for your current submission. 
-              {isCompanyAdmin && userCompany ? " As a company admin, your selection will also update the company-wide default." : ""}
-            </p>
-            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="weather-selector-label">
-              <button
-                onClick={() => handleWeatherChange('Clear')}
-                className={`flex flex-col items-center p-3 rounded-md transition-colors ${
-                  weatherType === 'Clear'
-                    ? 'bg-yellow-100 border-yellow-200 border text-yellow-800'
-                    : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
-                }`}
-                role="radio"
-                aria-checked={weatherType === 'Clear'}
-                id="weather-clear"
-              >
-                <Sun className={`h-8 w-8 ${weatherType === 'Clear' ? 'text-yellow-600' : 'text-gray-400'}`} />
-                <span className="mt-1 text-sm font-medium">Clear</span>
-              </button>
-              
-              <button
-                onClick={() => handleWeatherChange('Cloudy')}
-                className={`flex flex-col items-center p-3 rounded-md transition-colors ${
-                  weatherType === 'Cloudy'
-                    ? 'bg-gray-800 border-gray-900 border text-white'
-                    : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
-                }`}
-                role="radio"
-                aria-checked={weatherType === 'Cloudy'}
-                id="weather-cloudy"
-              >
-                <Cloud className={`h-8 w-8 ${weatherType === 'Cloudy' ? 'text-white' : 'text-gray-400'}`} />
-                <span className="mt-1 text-sm font-medium">Cloudy</span>
-              </button>
-              
-              <button
-                onClick={() => handleWeatherChange('Rain')}
-                className={`flex flex-col items-center p-3 rounded-md transition-colors ${
-                  weatherType === 'Rain'
-                    ? 'bg-blue-100 border-blue-200 border text-blue-800'
-                    : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
-                }`}
-                role="radio"
-                aria-checked={weatherType === 'Rain'}
-                id="weather-rain"
-              >
-                <CloudRain className={`h-8 w-8 ${weatherType === 'Rain' ? 'text-blue-600' : 'text-gray-400'}`} />
-                <span className="mt-1 text-sm font-medium">Rain</span>
-              </button>
-            </div>
-            
-            {/* Show weather data if available */}
-            {locationPermission === 'denied' ? (
-              <div className="mt-4 border-t pt-4 text-center">
-                <p className="text-sm text-gray-600">
-                  Location access denied. Enable location services to see current weather.
-                </p>
-              </div>
-            ) : weatherLoading ? (
-              <div className="mt-4 flex justify-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
-              </div>
-            ) : weatherError ? (
-              <p className="text-xs text-gray-500 mt-4">
-                Unable to load local weather data: {weatherError}
-              </p>
-            ) : currentConditions && locationData ? (
-              <div className="mt-4 border-t pt-4">
-                <p className="text-sm font-medium">Current conditions in your location:</p>
-                <div className="flex items-center mt-2">
-                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
-                    {suggestedWeatherType === 'Clear' ? (
-                      <Sun className="h-8 w-8 text-yellow-500" />
-                    ) : suggestedWeatherType === 'Cloudy' ? (
-                      <Cloud className="h-8 w-8 text-gray-500" />
-                    ) : suggestedWeatherType === 'Rain' ? (
-                      <CloudRain className="h-8 w-8 text-blue-500" />
-                    ) : (
-                      <Sun className="h-8 w-8 text-yellow-500" />
-                    )}
-                  </div>
-                  <div className="ml-2">
-                    <p className="font-medium">
-                      {currentConditions.conditions || suggestedWeatherType || "Unknown"}
-                    </p>
-                    <p className="text-sm">{currentConditions.temp}°F, {currentConditions.RelativeHumidity || currentConditions.humidity}% humidity</p>
-                  </div>
-                </div>
-                
-                {hourlyForecast && hourlyForecast.length > 0 && (
-                  <div className="mt-2 text-xs text-gray-600">
-                    <p>Next hour: {hourlyForecast[0].conditions}, {hourlyForecast[0].temp}°F</p>
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-        </div>
-      </div>
-
-      {/* Third Row - Recent Submissions (left 2/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        {/* Recent Submissions Card - Left 2/3 column */}
-        {(recentSubmissions.length > 0 || selectedSite) && (
-          <div className="lg:col-span-2">
+          {/* Recent Submissions Card */}
+          {(recentSubmissions.length > 0 || selectedSite) && (
             <Card>
           <CardHeader className="flex justify-between items-center">
             <div className="flex items-center">
@@ -803,8 +692,115 @@ const HomePage = () => {
             )}
           </CardContent>
         </Card>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Right Column - Weather Card */}
+        <div>
+          <Card>
+            <CardHeader>
+              <h2 className="text-lg font-semibold">Today's Weather</h2>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-500 mb-4">
+                Select the weather for your current submission.
+                {isCompanyAdmin && userCompany ? " As a company admin, your selection will also update the company-wide default." : ""}
+              </p>
+              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="weather-selector-label">
+                <button
+                  onClick={() => handleWeatherChange('Clear')}
+                  className={`flex flex-col items-center p-3 rounded-md transition-colors ${
+                    weatherType === 'Clear'
+                      ? 'bg-yellow-100 border-yellow-200 border text-yellow-800'
+                      : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                  role="radio"
+                  aria-checked={weatherType === 'Clear'}
+                  id="weather-clear"
+                >
+                  <Sun className={`h-8 w-8 ${weatherType === 'Clear' ? 'text-yellow-600' : 'text-gray-400'}`} />
+                  <span className="mt-1 text-sm font-medium">Clear</span>
+                </button>
+
+                <button
+                  onClick={() => handleWeatherChange('Cloudy')}
+                  className={`flex flex-col items-center p-3 rounded-md transition-colors ${
+                    weatherType === 'Cloudy'
+                      ? 'bg-gray-800 border-gray-900 border text-white'
+                      : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                  role="radio"
+                  aria-checked={weatherType === 'Cloudy'}
+                  id="weather-cloudy"
+                >
+                  <Cloud className={`h-8 w-8 ${weatherType === 'Cloudy' ? 'text-white' : 'text-gray-400'}`} />
+                  <span className="mt-1 text-sm font-medium">Cloudy</span>
+                </button>
+
+                <button
+                  onClick={() => handleWeatherChange('Rain')}
+                  className={`flex flex-col items-center p-3 rounded-md transition-colors ${
+                    weatherType === 'Rain'
+                      ? 'bg-blue-100 border-blue-200 border text-blue-800'
+                      : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                  role="radio"
+                  aria-checked={weatherType === 'Rain'}
+                  id="weather-rain"
+                >
+                  <CloudRain className={`h-8 w-8 ${weatherType === 'Rain' ? 'text-blue-600' : 'text-gray-400'}`} />
+                  <span className="mt-1 text-sm font-medium">Rain</span>
+                </button>
+              </div>
+
+              {/* Show weather data if available */}
+              {locationPermission === 'denied' ? (
+                <div className="mt-4 border-t pt-4 text-center">
+                  <p className="text-sm text-gray-600">
+                    Location access denied. Enable location services to see current weather.
+                  </p>
+                </div>
+              ) : weatherLoading ? (
+                <div className="mt-4 flex justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+                </div>
+              ) : weatherError ? (
+                <p className="text-xs text-gray-500 mt-4">
+                  Unable to load local weather data: {weatherError}
+                </p>
+              ) : currentConditions && locationData ? (
+                <div className="mt-4 border-t pt-4">
+                  <p className="text-sm font-medium">Current conditions in your location:</p>
+                  <div className="flex items-center mt-2">
+                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
+                      {suggestedWeatherType === 'Clear' ? (
+                        <Sun className="h-8 w-8 text-yellow-500" />
+                      ) : suggestedWeatherType === 'Cloudy' ? (
+                        <Cloud className="h-8 w-8 text-gray-500" />
+                      ) : suggestedWeatherType === 'Rain' ? (
+                        <CloudRain className="h-8 w-8 text-blue-500" />
+                      ) : (
+                        <Sun className="h-8 w-8 text-yellow-500" />
+                      )}
+                    </div>
+                    <div className="ml-2">
+                      <p className="font-medium">
+                        {currentConditions.conditions || suggestedWeatherType || "Unknown"}
+                      </p>
+                      <p className="text-sm">{currentConditions.temp}°F, {currentConditions.RelativeHumidity || currentConditions.humidity}% humidity</p>
+                    </div>
+                  </div>
+
+                  {hourlyForecast && hourlyForecast.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-600">
+                      <p>Next hour: {hourlyForecast[0].conditions}, {hourlyForecast[0].temp}°F</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
