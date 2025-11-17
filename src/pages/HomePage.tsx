@@ -386,7 +386,7 @@ const HomePage = () => {
       {/* Unclaimed Sessions Card - NEW COMPONENT */}
       <UnclaimedSessionsCard />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* Active Alerts Panel - MOST PROMINENT (Top Left) */}
         <div className="lg:col-span-2">
           <ActiveAlertsPanel />
@@ -514,10 +514,56 @@ const HomePage = () => {
         </Card>
       </div>
 
-      {/* Second Row - Weather Card (Moved Down) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        {/* Today's Weather Card */}
-        <Card>
+      {/* Device Sessions Card - Moved directly under alerts */}
+      {(deviceSessions.length > 0 || selectedSite) && (
+        <Card className="mb-4">
+          <CardHeader className="flex justify-between items-center">
+            <div className="flex items-center">
+              <Clock className="mr-2 h-5 w-5 text-blue-500" />
+              <h2 className="text-lg font-semibold">Device Sessions</h2>
+            </div>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refetchDeviceSessions}
+              >
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {deviceSessionsLoading ? (
+              <div className="flex justify-center p-6">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : deviceSessions.length === 0 ? (
+              <div className="text-center py-8">
+                <Clock className="mx-auto h-12 w-12 text-gray-300" />
+                <p className="text-gray-600 mt-2">No device sessions found</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Device sessions are automatically created when devices wake up and send data
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {deviceSessions.map((session) => (
+                  <SiteDeviceSessionCard
+                    key={session.session_id}
+                    session={session}
+                    testId={`device-session-${session.session_id}`}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Weather Card - Moved below program/site selector */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <div className="lg:col-start-3">
+          <Card>
           <CardHeader>
             <h2 className="text-lg font-semibold">Today's Weather</h2>
           </CardHeader>
@@ -620,11 +666,12 @@ const HomePage = () => {
             ) : null}
           </CardContent>
         </Card>
+        </div>
       </div>
-      
+
       {/* Recent Submissions Card - Only shown if there are submissions or a site is selected */}
       {(recentSubmissions.length > 0 || selectedSite) && (
-        <Card className="mb-6">
+        <Card className="mb-4">
           <CardHeader className="flex justify-between items-center">
             <div className="flex items-center">
               <Clock className="mr-2 h-5 w-5 text-primary-500" />
@@ -746,52 +793,6 @@ const HomePage = () => {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Device Sessions Card - Only shown if there are device sessions or a site is selected */}
-      {(deviceSessions.length > 0 || selectedSite) && (
-        <Card className="mb-6">
-          <CardHeader className="flex justify-between items-center">
-            <div className="flex items-center">
-              <Clock className="mr-2 h-5 w-5 text-blue-500" />
-              <h2 className="text-lg font-semibold">Device Sessions</h2>
-            </div>
-            <div className="flex space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refetchDeviceSessions}
-              >
-                Refresh
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {deviceSessionsLoading ? (
-              <div className="flex justify-center p-6">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : deviceSessions.length === 0 ? (
-              <div className="text-center py-8">
-                <Clock className="mx-auto h-12 w-12 text-gray-300" />
-                <p className="text-gray-600 mt-2">No device sessions found</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  Device sessions are automatically created when devices wake up and send data
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {deviceSessions.map((session) => (
-                  <SiteDeviceSessionCard
-                    key={session.session_id}
-                    session={session}
-                    testId={`device-session-${session.session_id}`}
-                  />
-                ))}
               </div>
             )}
           </CardContent>
