@@ -16,7 +16,7 @@ interface UseDeviceHistoryProps {
 
 export interface ProgramOption {
   program_id: string;
-  program_name: string;
+  name: string;
 }
 
 export interface SiteOption {
@@ -372,7 +372,7 @@ export function useDeviceHistory({
       // Fetch program details
       const { data: programs, error: progError } = await supabase
         .from('pilot_programs')
-        .select('program_id, program_name')
+        .select('program_id, name')
         .in('program_id', uniqueProgramIds);
 
       if (progError) throw progError;

@@ -576,7 +576,9 @@ export type DeviceEventCategory =
   | 'FirmwareUpdate'
   | 'ConfigurationChange'
   | 'MaintenanceActivity'
-  | 'ErrorEvent';
+  | 'ErrorEvent'
+  | 'Alert'
+  | 'Command';
 
 export type EventSeverity = 'info' | 'warning' | 'error' | 'critical';
 

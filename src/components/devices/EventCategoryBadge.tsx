@@ -23,11 +23,23 @@ const categoryConfig: Record<DeviceEventCategory, { label: string; color: string
   FirmwareUpdate: { label: 'Firmware', color: 'bg-pink-100 text-pink-800', icon: Settings },
   ConfigurationChange: { label: 'Configuration', color: 'bg-slate-100 text-slate-800', icon: Settings },
   MaintenanceActivity: { label: 'Maintenance', color: 'bg-amber-100 text-amber-800', icon: Settings },
-  ErrorEvent: { label: 'Error', color: 'bg-error-100 text-error-800', icon: AlertCircle }
+  ErrorEvent: { label: 'Error', color: 'bg-error-100 text-error-800', icon: AlertCircle },
+  Alert: { label: 'Alert', color: 'bg-red-100 text-red-800', icon: AlertCircle },
+  Command: { label: 'Command', color: 'bg-blue-100 text-blue-800', icon: Settings }
 };
 
 const EventCategoryBadge = ({ category, size = 'md' }: EventCategoryBadgeProps) => {
   const config = categoryConfig[category];
+
+  if (!config) {
+    console.warn('Unknown event category:', category);
+    return (
+      <span className="inline-flex items-center rounded-full font-medium bg-gray-100 text-gray-800 text-sm px-2.5 py-1">
+        {category || 'Unknown'}
+      </span>
+    );
+  }
+
   const Icon = config.icon;
 
   const sizeClasses = size === 'sm'

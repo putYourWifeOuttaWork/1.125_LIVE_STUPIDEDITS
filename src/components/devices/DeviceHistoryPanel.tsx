@@ -243,7 +243,7 @@ const DeviceHistoryPanel = ({ deviceId }: DeviceHistoryPanelProps) => {
                 <option value="">All Programs</option>
                 {availablePrograms.map(prog => (
                   <option key={prog.program_id} value={prog.program_id}>
-                    {prog.program_name}
+                    {prog.name}
                   </option>
                 ))}
               </select>
