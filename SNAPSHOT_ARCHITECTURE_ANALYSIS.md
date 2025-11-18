@@ -41,6 +41,8 @@
    - New observations/images captured
    - Alert states
    - Environmental changes
+   - Mold Growth Index changes and derived calculations changed with each image which should be automatically observed.
+   -   as MGI increases, we must see this on the interface as well, in the 2d but also in the device data for the session (e.g. MGI Progression, Velocity, Speed this Program e.g...)
 
 4. **Snapshots form a time-series** that can be animated to show:
    - How temperature zones shift throughout the day
