@@ -31,24 +31,71 @@
 ### Key Insight from Your Diagram:
 > "Created as a cohesive Site snapshot using JSONB to describe the state of the site **after each wake**, within a given session, as to create session-based animatable 2d visualization"
 
-### What This Means:
-1. **Session** = One day at one site
-2. **Multiple Wakes** occur during that session (e.g., 12 wakes/day, hourly)
-3. **Each wake** should produce a **site snapshot** showing:
-   - Device positions (x, y)
-   - Device states (battery, status, last reading)
-   - Zone states (temperature, humidity gradients around each device)
-   - New observations/images captured
-   - Alert states
-   - Environmental changes
-   - Mold Growth Index changes and derived calculations changed with each image which should be automatically observed.
-   -   as MGI increases, we must see this on the interface as well, in the 2d but also in the device data for the session (e.g. MGI Progression, Velocity, Speed this Program e.g...)
+### Critical Conceptual Model: **Device as Observational Dataset**
 
-4. **Snapshots form a time-series** that can be animated to show:
-   - How temperature zones shift throughout the day
-   - How mold growth progresses (MGI changes)
-   - How device health degrades (battery levels)
-   - When alerts were triggered
+**A device is not just hardware - it's a complete observational time-series about mold growth at a specific location.**
+
+The device represents:
+- **Physical Location**: (x, y) coordinates in the site
+- **Petri Dish**: The actual observation subject (mold growing on medium)
+- **Environmental Monitor**: Temperature, humidity, pressure at that location
+- **Image Capture**: Photos of petri dish over time
+- **MGI Time-Series**: Mold Growth Index calculated from each image
+- **Lifecycle**: Bound to the program duration (90-120 days)
+
+**When a new program starts:**
+- Device may be moved (new x, y position)
+- Petri dish is replaced (MGI resets to 0)
+- Observational dataset starts fresh
+- Like site clones with same site_code - physical space exists, but experiment conditions may change
+
+### Temporal Hierarchy:
+1. **Program** = Complete experiment (90-120 days)
+   - Device observes one petri dish for entire program
+   - MGI progression from 0 → final score
+
+2. **Session** = One day within that program
+   - Collection of wakes during a 24-hour period
+   - Shows daily environmental patterns
+
+3. **Wake** = One device check-in (hourly/scheduled)
+   - Captures image(s) of petri dish
+   - Records environmental telemetry
+   - **Automatically calculates MGI** from images
+
+4. **Observation** = Image + derived MGI score
+   - The fundamental data point
+   - MGI increases monotonically (mold only grows, never shrinks)
+
+### What Each Wake Snapshot Must Show:
+
+**Device Observational Data** (per device):
+- ✅ Device position (x, y)
+- ✅ Device hardware state (battery, status, connectivity)
+- ✅ **New observations/images captured THIS wake**
+- ✅ **Current MGI score** (from latest image)
+- ✅ **MGI Progression** (change since last wake, last session, program start)
+- ✅ **MGI Velocity** (rate of change: ΔMGl/Δtime)
+- ✅ **MGI Speed** (growth acceleration over program)
+- ✅ Environmental telemetry at device location
+- ✅ Alert states triggered by MGI thresholds
+
+**Site-Wide Environmental Data**:
+- ✅ Zone states (temperature, humidity gradients around each device)
+- ✅ How environmental conditions affect MGI at each location
+- ✅ Environmental changes over time
+
+**Visualization Requirements**:
+- 2D map shows devices color-coded by current MGI
+- Animating through wakes shows MGI "heating up" over time
+- Zone gradients visualize environmental patterns
+- Non-admin users must see ALL metrics (no data hidden)
+
+### Snapshots Form an Animatable Time-Series:
+- How **mold growth progresses** (MGI changes at each location)
+- How **temperature zones shift** throughout the day
+- How **device health degrades** (battery levels)
+- When **alerts were triggered** (MGI thresholds, environmental anomalies)
 
 ---
 
@@ -94,35 +141,138 @@ CREATE INDEX idx_wake_snapshots_session ON session_wake_snapshots(session_id, wa
 
 ```jsonb
 {
+  "snapshot_metadata": {
+    "snapshot_id": "uuid",
+    "wake_number": 5,
+    "wake_timestamp": "2025-11-18T08:00:00Z",
+    "session_date": "2025-11-18",
+    "program_day": 45  // Day 45 of 90-day program
+  },
+
   "site_metadata": {
     "site_id": "uuid",
     "site_name": "Greenhouse A",
     "site_code": 1000021,
     "dimensions": { "length": 134, "width": 112, "height": 11 },
-    "wall_details": [...],  // Copy from sites table
-    "zones": [...]  // Copy from sites table
+    "wall_details": [...],  // Copy from sites table for 2D rendering
+    "zones": [...],  // Defined zones from sites table
+    "door_details": [...],
+    "platform_details": [...]
+  },
+
+  "program_context": {
+    "program_id": "uuid",
+    "program_name": "Sandhill Pilot #2",
+    "program_start_date": "2025-10-04",
+    "program_end_date": "2026-01-02",
+    "program_day": 45,
+    "total_days": 90,
+    "program_progress_percent": 50.0
   },
 
   "devices": [
     {
       "device_id": "uuid",
       "device_code": "DEVICE-001",
+      "device_name": "Northwest Observer",
+
+      // Physical placement in site
       "position": { "x": 45, "y": 60 },
       "zone_id": "zone_001",
       "zone_label": "Northwest Corner",
+
+      // Device hardware state
       "status": "active",
       "battery_voltage": 3.8,
       "battery_health_percent": 85,
+      "last_seen_at": "2025-11-18T08:00:00Z",
+
+      // Environmental telemetry at device location
       "telemetry": {
         "temperature": 72.5,
         "humidity": 55.3,
         "pressure": 1013.2,
-        "wifi_rssi": -65
+        "gas_resistance": 145000,
+        "wifi_rssi": -65,
+        "captured_at": "2025-11-18T08:00:00Z"
       },
-      "images_captured_this_wake": 2,
+
+      // CRITICAL: MGI Observational Data (THE PRIMARY METRIC)
+      "mgi_state": {
+        "current_mgi": 3.2,  // Latest MGI score from this wake
+        "previous_mgi": 2.8,  // MGI from last wake
+        "program_start_mgi": 0.0,  // Always 0 at program start
+        "session_start_mgi": 2.5,  // MGI at start of today
+
+        // Derived calculations
+        "mgi_progression": {
+          "since_last_wake": 0.4,  // Change since wake #4
+          "since_session_start": 0.7,  // Change today
+          "since_program_start": 3.2,  // Total growth this program
+          "percent_of_max": 32.0  // Assuming max MGI ~10
+        },
+
+        "mgi_velocity": {
+          "per_hour": 0.033,  // MGI increase per hour (0.4 / 12 hours)
+          "per_day": 0.8,  // Average daily increase
+          "per_week": 5.6  // 7-day moving average
+        },
+
+        "mgi_speed": {
+          "acceleration": "increasing",  // "increasing", "steady", "decreasing"
+          "growth_rate_trend": "exponential",  // Pattern analysis
+          "days_to_critical": 14  // Estimated days until MGI > 8 (critical threshold)
+        }
+      },
+
+      // Images captured during THIS wake
+      "images_this_wake": [
+        {
+          "image_id": "uuid",
+          "image_url": "https://...",
+          "mgi_score": 3.2,
+          "captured_at": "2025-11-18T08:00:00Z",
+          "observation_type": "petri"
+        }
+      ],
+
+      // Total counts for this session
+      "session_totals": {
+        "images_captured": 10,  // Total images today
+        "wakes_completed": 5,  // This is wake #5
+        "alerts_triggered": 1
+      },
+
+      // Program-wide totals
+      "program_totals": {
+        "images_captured": 450,  // Total images over 45 days
+        "total_wakes": 540,  // 45 days × 12 wakes/day
+        "alerts_triggered": 3
+      },
+
+      // Active alerts
       "alerts": [
-        { "alert_type": "battery_low", "severity": "warning" }
-      ]
+        {
+          "alert_type": "mgi_warning",
+          "severity": "warning",
+          "threshold": 3.0,
+          "current_value": 3.2,
+          "triggered_at": "2025-11-18T08:00:00Z"
+        },
+        {
+          "alert_type": "battery_low",
+          "severity": "warning",
+          "threshold": 3.6,
+          "current_value": 3.8
+        }
+      ],
+
+      // Color coding for visualization
+      "display": {
+        "color": "#FF6B35",  // Orange for warning MGI
+        "size": "medium",
+        "pulse": true  // Indicate active alert
+      }
     }
   ],
 
@@ -131,23 +281,30 @@ CREATE INDEX idx_wake_snapshots_session ON session_wake_snapshots(session_id, wa
       "zone_id": "zone_001",
       "zone_label": "Northwest Corner",
       "bounds": { "x1": 0, "y1": 0, "x2": 50, "y2": 50 },
+
+      // Aggregated environmental data for zone
       "avg_temperature": 71.2,
       "avg_humidity": 58.1,
-      "device_count": 3,
-      "gradient_data": {
-        // Color-coded temperature/humidity for visualization
-      }
-    }
-  ],
+      "avg_pressure": 1013.5,
 
-  "observations": [
-    {
-      "observation_id": "uuid",
-      "observation_type": "petri",
-      "device_id": "uuid",
-      "image_id": "uuid",
-      "mgi_score": 2.5,
-      "captured_at": "2025-11-18T08:00:00Z"
+      // Device metrics in this zone
+      "device_count": 3,
+      "avg_mgi": 3.0,  // Average MGI of devices in zone
+      "max_mgi": 3.5,  // Highest MGI in zone
+
+      // Gradient visualization data (for heat map overlay)
+      "gradient_data": {
+        "temperature_gradient": "warm",  // warm, cool, neutral
+        "humidity_gradient": "dry",  // humid, dry, balanced
+        "mgi_risk": "medium"  // low, medium, high, critical
+      },
+
+      // Zone color coding for 2D map
+      "display": {
+        "fill_color": "#FFE5CC",  // Light orange for medium risk
+        "border_color": "#FF6B35",
+        "opacity": 0.3
+      }
     }
   ],
 
@@ -155,32 +312,157 @@ CREATE INDEX idx_wake_snapshots_session ON session_wake_snapshots(session_id, wa
     "total_wakes_completed": 5,
     "expected_wakes": 12,
     "progress_percent": 41.67,
+
+    // Aggregate counts
     "total_images_session": 25,
-    "total_alerts_session": 3
+    "total_alerts_session": 3,
+    "total_devices_active": 5,
+
+    // MGI aggregates across all devices
+    "site_mgi_summary": {
+      "avg_mgi": 2.8,
+      "max_mgi": 3.5,
+      "min_mgi": 2.1,
+      "devices_above_warning": 2,  // MGI > 3.0
+      "devices_critical": 0  // MGI > 8.0
+    },
+
+    // Environmental aggregates
+    "site_environmental_summary": {
+      "avg_temperature": 72.3,
+      "avg_humidity": 54.7,
+      "temp_variance": 2.1,  // Temperature spread across devices
+      "humidity_variance": 5.3
+    }
   }
 }
 ```
 
+### Key Features of This Structure:
+
+1. **MGI is Central**: Every device has detailed `mgi_state` showing current value, progression, velocity, and speed
+2. **Self-Contained**: Each snapshot includes everything needed to render the site at that moment
+3. **Multi-Level Context**: Snapshot → Session → Program hierarchy is clear
+4. **Visualization-Ready**: Color codes, display properties for immediate rendering
+5. **Non-Admin Friendly**: All observational data visible (no hidden admin-only fields)
+6. **Temporal Awareness**: Can compare to previous wakes, sessions, and program start
+7. **Predictive**: Includes trend analysis and estimates (days_to_critical)
+
 ---
 
-## Data Flow
+## Data Flow: Observational Pipeline
 
-### When a Device Wakes:
+### When a Device Wakes (Complete Flow):
 
 ```
-1. Device connects via MQTT → mqtt_device_handler
-2. Telemetry ingested → device_telemetry table
-3. Images ingested → device_images table
-4. Session updated → site_device_sessions (increment completed_wake_count)
+1. Device connects via MQTT → mqtt_device_handler edge function
+   - Device sends: telemetry + image chunks
+   - Handler acknowledges receipt
 
-5. **TRIGGER: Generate Wake Snapshot**
-   - Query current state of ALL devices at this site
-   - Query latest telemetry for each device
-   - Query images captured during this wake
-   - Query site zones from sites table
-   - Calculate environmental aggregates per zone
-   - Assemble JSONB site_state
-   - INSERT into session_wake_snapshots
+2. Telemetry ingested → device_telemetry table
+   - Temperature, humidity, pressure, battery, WiFi RSSI
+   - Timestamped with captured_at
+   - Linked to device_id, site_id, program_id, company_id
+
+3. Images assembled → device_images table
+   - Chunks buffered → complete image reconstructed
+   - Stored in Supabase Storage
+   - Status: 'complete'
+
+4. **AUTOMATIC MGI Calculation** (CRITICAL STEP)
+   - Trigger: score_mgi_image edge function called
+   - Roboflow API: Analyzes petri dish image
+   - Returns: MGI score (0-10 scale)
+   - Updates: device_images.mgi_score
+   - Also calculates: mold_growth_velocity, mold_growth_speed
+
+5. Session tracking → site_device_sessions table
+   - Increment: completed_wake_count
+   - Update: status (if session complete)
+
+6. **TRIGGER: Generate Wake Snapshot** (NEW)
+   - Query: Current state of ALL devices at this site
+   - For each device:
+     a. Latest telemetry (temperature, humidity at device location)
+     b. Latest MGI score from device_images
+     c. Previous MGI scores for progression/velocity calculations
+     d. Images captured THIS wake
+     e. Alert states
+     f. Program-level totals
+   - Calculate: Environmental zone aggregates
+   - Calculate: MGI velocity, speed, acceleration
+   - Assemble: Complete JSONB site_state
+   - INSERT: session_wake_snapshots table
+
+7. Result: Complete observational snapshot ready for visualization
+```
+
+### MGI Calculation Details:
+
+**Image → MGI Pipeline**:
+```sql
+-- When image is complete, automatically score it
+CREATE OR REPLACE FUNCTION auto_score_mgi()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Only score petri dish images that are complete
+  IF NEW.status = 'complete' AND NEW.observation_type = 'petri' THEN
+    -- Call edge function to score via Roboflow
+    PERFORM net.http_post(
+      url := current_setting('app.supabase_url') || '/functions/v1/score_mgi_image',
+      body := jsonb_build_object('image_id', NEW.image_id)
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_auto_score_mgi
+  AFTER INSERT OR UPDATE ON device_images
+  FOR EACH ROW
+  EXECUTE FUNCTION auto_score_mgi();
+```
+
+**MGI Progression Calculation**:
+```sql
+-- Calculate MGI velocity and progression
+CREATE OR REPLACE FUNCTION calculate_mgi_metrics(p_device_id uuid, p_current_mgi numeric)
+RETURNS jsonb AS $$
+DECLARE
+  v_previous_mgi numeric;
+  v_session_start_mgi numeric;
+  v_program_start_mgi numeric := 0.0;  -- Always 0
+  v_time_since_last hours;
+BEGIN
+  -- Get previous MGI (last wake)
+  SELECT mgi_score, EXTRACT(EPOCH FROM (NOW() - captured_at))/3600
+  INTO v_previous_mgi, v_time_since_last
+  FROM device_images
+  WHERE device_id = p_device_id AND mgi_score IS NOT NULL
+  ORDER BY captured_at DESC OFFSET 1 LIMIT 1;
+
+  -- Get session start MGI (first image today)
+  SELECT mgi_score INTO v_session_start_mgi
+  FROM device_images
+  WHERE device_id = p_device_id
+    AND DATE(captured_at) = CURRENT_DATE
+    AND mgi_score IS NOT NULL
+  ORDER BY captured_at ASC LIMIT 1;
+
+  RETURN jsonb_build_object(
+    'current_mgi', p_current_mgi,
+    'previous_mgi', COALESCE(v_previous_mgi, 0),
+    'mgi_progression', jsonb_build_object(
+      'since_last_wake', p_current_mgi - COALESCE(v_previous_mgi, 0),
+      'since_session_start', p_current_mgi - COALESCE(v_session_start_mgi, 0),
+      'since_program_start', p_current_mgi - v_program_start_mgi
+    ),
+    'mgi_velocity', jsonb_build_object(
+      'per_hour', (p_current_mgi - COALESCE(v_previous_mgi, 0)) / NULLIF(v_time_since_last, 0)
+    )
+  );
+END;
+$$ LANGUAGE plpgsql;
 ```
 
 ### Snapshot Generation Function:
@@ -303,15 +585,82 @@ Should we:
 
 ---
 
-## My Recommendation
+## Summary: Device as Observational Dataset
 
-**YES, this architecture makes perfect sense!**
+### Core Conceptual Understanding:
 
-The wake-level snapshot approach:
-- Aligns perfectly with your visualization goals
-- Provides the granularity needed for animation
-- Maintains complete audit trail
-- Enables deep analytics
-- Is flexible for future features
+**A device is not hardware—it's a time-series of mold growth observations.**
 
-**Next Step**: Should I create the migration to implement this `session_wake_snapshots` table and the snapshot generation system?
+The device lifecycle:
+1. **Program starts**: Petri dish placed on device, MGI = 0
+2. **Wakes occur**: Device captures images hourly (or per schedule)
+3. **MGI automatically calculated**: Each image → Roboflow → MGI score
+4. **Observations accumulate**: Building complete growth profile
+5. **Program ends**: 90-120 days later, final MGI represents total growth
+6. **New program**: Device may move (new x,y), new petri dish, MGI resets
+
+### What We're Building:
+
+**`session_wake_snapshots`** - A complete record of site state after each wake:
+- ✅ Device positions (x, y) in site 2D map
+- ✅ Current MGI + progression + velocity + speed for each device
+- ✅ Environmental telemetry at each device location
+- ✅ Zone-level environmental gradients (heat maps)
+- ✅ Images captured this wake
+- ✅ Alert states (MGI thresholds, battery, environmental)
+- ✅ Program context (day 45 of 90, progress %)
+
+**Visualization Output**:
+- 2D site map with devices color-coded by MGI
+- Animate through wakes to show MGI "heating up" over time
+- Environmental zones overlay (temperature/humidity gradients)
+- Non-admin users see ALL data (observational transparency)
+
+### Benefits of MGI-Centric Snapshot Architecture:
+
+1. **Observational Integrity**: Complete record of mold growth over time
+2. **Predictive Analytics**: Velocity/speed metrics → estimate days to critical MGI
+3. **Environmental Correlation**: See how temperature/humidity affect MGI at each location
+4. **Temporal Replay**: Animate entire session/program to understand what happened
+5. **Non-Admin Access**: Field users see same rich observational data as admins
+6. **Program Lifecycle**: Clean separation between experiments (device resets)
+7. **Data-Driven Decisions**: "Device at (45,60) grew faster when humidity > 60%"
+
+---
+
+## Next Steps
+
+**This architecture is APPROVED** based on your clarifications.
+
+The refined design now correctly models:
+- ✅ Device as observational dataset (not just hardware)
+- ✅ MGI as the central metric (with progression, velocity, speed)
+- ✅ Program lifecycle and device reset concept
+- ✅ Non-admin visibility requirements
+- ✅ Wake-level granularity for animation
+- ✅ Automatic MGI calculation pipeline
+
+### Questions Before Implementation:
+
+1. **Device Positioning**:
+   - Should I create a drag-drop UI for placing devices on site 2D map?
+   - Or manual x,y entry in device edit modal?
+   - Should position be required or optional?
+
+2. **Zone Definition**:
+   - Manual: Admin draws zones on site map
+   - Automatic: Algorithm creates heat map zones from device clusters
+   - Hybrid: Combine both approaches
+   - Your preference?
+
+3. **Snapshot Trigger**:
+   - Generate snapshot after EACH device wake (could be 5 devices × 12 wakes = 60 snapshots/day)
+   - OR generate once per wake "round" (12 snapshots/day, one per hour)
+   - Which approach?
+
+4. **Backward Compatibility**:
+   - Keep old `site_snapshots` table (daily summaries) in parallel
+   - Or deprecate and replace entirely with wake snapshots
+   - Your preference?
+
+**Ready to proceed with migration creation?** Please answer the questions above and I'll implement the complete snapshot system.
