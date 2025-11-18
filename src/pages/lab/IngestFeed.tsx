@@ -40,7 +40,7 @@ export default function IngestFeed() {
               device_name,
               device_mac,
               site_id,
-              sites!inner (
+              sites!devices_site_id_fkey (
                 name
               )
             )
