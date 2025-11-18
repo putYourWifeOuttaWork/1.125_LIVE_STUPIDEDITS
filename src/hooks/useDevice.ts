@@ -666,6 +666,8 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
       wake_schedule_cron?: string;
       notes?: string;
       zone_label?: string;
+      x_position?: number;  // REQUIRED coordinate
+      y_position?: number;  // REQUIRED coordinate
       placement_json?: any;
     }) => {
       if (!deviceId) throw new Error('Device ID is required');

@@ -322,9 +322,9 @@ export type Device = {
   battery_voltage: number | null;
   zone_id: string | null;
   zone_label: string | null;
+  x_position: number;  // REQUIRED for snapshot visualization
+  y_position: number;  // REQUIRED for snapshot visualization
   placement_json: {
-    x?: number;
-    y?: number;
     height?: string;
     notes?: string;
   } | null;

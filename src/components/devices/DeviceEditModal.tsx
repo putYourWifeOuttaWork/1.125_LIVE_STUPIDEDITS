@@ -18,9 +18,9 @@ export interface DeviceUpdateData {
   wake_schedule_cron?: string;
   notes?: string;
   zone_label?: string;
+  x_position: number;  // REQUIRED
+  y_position: number;  // REQUIRED
   placement_json?: {
-    x?: number;
-    y?: number;
     height?: string;
     notes?: string;
   };
@@ -32,7 +32,9 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
     wake_schedule_cron: device.wake_schedule_cron || '',
     notes: device.notes || '',
     zone_label: device.zone_label || '',
-    placement_json: device.placement_json || { x: undefined, y: undefined, height: '', notes: '' },
+    x_position: device.x_position || 0,
+    y_position: device.y_position || 0,
+    placement_json: device.placement_json || { height: '', notes: '' },
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -52,6 +54,14 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
     // Validate cron expression if provided
     if (formData.wake_schedule_cron && !validateCronExpression(formData.wake_schedule_cron)) {
       newErrors.wake_schedule_cron = 'Invalid cron expression. Expected format: * * * * * (minute hour day month weekday)';
+    }
+
+    // Validate REQUIRED x,y coordinates
+    if (formData.x_position === null || formData.x_position === undefined || formData.x_position < 0) {
+      newErrors.x_position = 'X coordinate is required and must be >= 0';
+    }
+    if (formData.y_position === null || formData.y_position === undefined || formData.y_position < 0) {
+      newErrors.y_position = 'Y coordinate is required and must be >= 0';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -245,43 +255,71 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
               </p>
             </div>
 
-            {/* X,Y Coordinates */}
+            {/* X,Y Coordinates - REQUIRED */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  X Coordinate
+                  X Coordinate <span className="text-error-600">*</span>
                 </label>
                 <Input
                   type="number"
                   step="0.1"
-                  value={formData.placement_json?.x ?? ''}
+                  min="0"
+                  value={formData.x_position}
                   onChange={(e) => {
-                    const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                    setFormData(prev => ({
-                      ...prev,
-                      placement_json: { ...prev.placement_json, x: val }
-                    }));
+                    const val = parseFloat(e.target.value) || 0;
+                    setFormData(prev => ({ ...prev, x_position: val }));
+                    // Clear error
+                    if (errors.x_position) {
+                      setErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors.x_position;
+                        return newErrors;
+                      });
+                    }
                   }}
                   placeholder="10.5"
+                  required
+                  className={errors.x_position ? 'border-error-500' : ''}
                 />
+                {errors.x_position && (
+                  <p className="text-sm text-error-600 mt-1">{errors.x_position}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Device position on site map (feet)
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Y Coordinate
+                  Y Coordinate <span className="text-error-600">*</span>
                 </label>
                 <Input
                   type="number"
                   step="0.1"
-                  value={formData.placement_json?.y ?? ''}
+                  min="0"
+                  value={formData.y_position}
                   onChange={(e) => {
-                    const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                    setFormData(prev => ({
-                      ...prev,
-                      placement_json: { ...prev.placement_json, y: val }
-                    }));
+                    const val = parseFloat(e.target.value) || 0;
+                    setFormData(prev => ({ ...prev, y_position: val }));
+                    // Clear error
+                    if (errors.y_position) {
+                      setErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors.y_position;
+                        return newErrors;
+                      });
+                    }
                   }}
                   placeholder="25.3"
+                  required
+                  className={errors.y_position ? 'border-error-500' : ''}
                 />
+                {errors.y_position && (
+                  <p className="text-sm text-error-600 mt-1">{errors.y_position}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Device position on site map (feet)
+                </p>
               </div>
             </div>
 
