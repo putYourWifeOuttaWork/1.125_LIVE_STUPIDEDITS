@@ -30,6 +30,16 @@ CREATE TABLE public.companies (
   default_weather USER-DEFINED DEFAULT 'Clear'::weather_enum,
   CONSTRAINT companies_pkey PRIMARY KEY (company_id)
 );
+CREATE TABLE public.company_alert_prefs (
+  company_id uuid NOT NULL,
+  thresholds jsonb NOT NULL DEFAULT '{"mgi": {"absolute_high": 0.60, "velocity_high": 0.25, "absolute_critical": 0.80, "velocity_critical": 0.40, "speed_high_per_day": 0.12, "speed_critical_per_day": 0.20}, "telemetry": {"rh_max": 85, "rh_min": 20, "temp_max": 40, "temp_min": 5, "pressure_max": 1050, "pressure_min": 950}, "window_days": 5, "alert_levels": {"danger": {"rh": 83, "mgi": 0.65, "temp": 38}, "warning": {"rh": 80, "mgi": 0.50, "temp": 35}, "critical": {"rh": 85, "mgi": 0.80, "temp": 40}}}'::jsonb,
+  channels jsonb NOT NULL DEFAULT '{"sms": {"enabled": false, "numbers": [], "alert_levels": ["danger", "critical"]}, "email": {"enabled": true, "addresses": [], "alert_levels": ["warning", "danger", "critical"]}, "in_app": {"enabled": true, "alert_levels": ["warning", "danger", "critical"]}, "webhook": {"url": null, "enabled": false, "alert_levels": ["critical"]}}'::jsonb,
+  quiet_hours jsonb,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT company_alert_prefs_pkey PRIMARY KEY (company_id),
+  CONSTRAINT company_alert_prefs_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id)
+);
 CREATE TABLE public.custom_reports (
   report_id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -45,6 +55,67 @@ CREATE TABLE public.custom_reports (
   CONSTRAINT custom_reports_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT custom_reports_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id)
 );
+CREATE TABLE public.device_ack_log (
+  ack_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  device_id uuid NOT NULL,
+  device_mac text NOT NULL,
+  image_name text NOT NULL,
+  image_id uuid,
+  ack_type text NOT NULL CHECK (ack_type = ANY (ARRAY['ACK_OK'::text, 'MISSING_CHUNKS'::text, 'RETRY_COMMAND'::text])),
+  next_wake_time timestamp with time zone,
+  missing_chunks ARRAY,
+  missing_count integer,
+  mqtt_topic text NOT NULL,
+  mqtt_payload jsonb NOT NULL,
+  mqtt_success boolean DEFAULT true,
+  mqtt_error text,
+  published_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  program_id uuid,
+  site_id uuid,
+  CONSTRAINT device_ack_log_pkey PRIMARY KEY (ack_id),
+  CONSTRAINT device_ack_log_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
+  CONSTRAINT device_ack_log_image_id_fkey FOREIGN KEY (image_id) REFERENCES public.device_images(image_id),
+  CONSTRAINT device_ack_log_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
+  CONSTRAINT device_ack_log_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id)
+);
+CREATE TABLE public.device_alert_thresholds (
+  threshold_config_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  device_id uuid CHECK (device_id IS NULL OR device_id IS NOT NULL),
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_by_user_id uuid,
+  updated_by_user_id uuid,
+  temp_min_warning numeric DEFAULT 32.0,
+  temp_min_critical numeric DEFAULT 25.0,
+  temp_max_warning numeric DEFAULT 90.0,
+  temp_max_critical numeric DEFAULT 100.0,
+  rh_min_warning numeric DEFAULT 20.0,
+  rh_min_critical numeric DEFAULT 10.0,
+  rh_max_warning numeric DEFAULT 80.0,
+  rh_max_critical numeric DEFAULT 90.0,
+  mgi_max_warning numeric DEFAULT 70.0,
+  mgi_max_critical numeric DEFAULT 85.0,
+  temp_shift_min_per_session numeric DEFAULT '-25.0'::numeric,
+  temp_shift_max_per_session numeric DEFAULT 25.0,
+  rh_shift_min_per_session numeric DEFAULT '-50.0'::numeric,
+  rh_shift_max_per_session numeric DEFAULT 50.0,
+  mgi_velocity_warning numeric DEFAULT 30.0,
+  mgi_velocity_critical numeric DEFAULT 40.0,
+  mgi_speed_per_day_warning numeric DEFAULT 5.0,
+  mgi_speed_per_day_critical numeric DEFAULT 7.0,
+  mgi_speed_per_week_warning numeric DEFAULT 10.0,
+  mgi_speed_per_week_critical numeric DEFAULT 15.0,
+  combo_zone_warning jsonb DEFAULT '{"rh_threshold": 75, "temp_threshold": 60}'::jsonb,
+  combo_zone_critical jsonb DEFAULT '{"rh_threshold": 75, "temp_threshold": 70}'::jsonb,
+  CONSTRAINT device_alert_thresholds_pkey PRIMARY KEY (threshold_config_id),
+  CONSTRAINT device_alert_thresholds_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
+  CONSTRAINT device_alert_thresholds_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
+  CONSTRAINT device_alert_thresholds_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id),
+  CONSTRAINT device_alert_thresholds_updated_by_user_id_fkey FOREIGN KEY (updated_by_user_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.device_alerts (
   alert_id uuid NOT NULL DEFAULT gen_random_uuid(),
   device_id uuid NOT NULL,
@@ -58,10 +129,24 @@ CREATE TABLE public.device_alerts (
   resolution_notes text,
   notification_sent boolean DEFAULT false,
   company_id uuid,
+  program_id uuid,
+  site_id uuid,
+  alert_category text CHECK (alert_category = ANY (ARRAY['absolute'::text, 'shift'::text, 'velocity'::text, 'speed'::text, 'combination'::text, 'system'::text])),
+  device_coords text,
+  zone_label text,
+  site_name text,
+  program_name text,
+  company_name text,
+  threshold_context jsonb DEFAULT '{}'::jsonb,
+  actual_value numeric,
+  threshold_value numeric,
+  measurement_timestamp timestamp with time zone,
   CONSTRAINT device_alerts_pkey PRIMARY KEY (alert_id),
   CONSTRAINT device_alerts_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT device_alerts_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
-  CONSTRAINT device_alerts_resolved_by_user_id_fkey FOREIGN KEY (resolved_by_user_id) REFERENCES public.users(id)
+  CONSTRAINT device_alerts_resolved_by_user_id_fkey FOREIGN KEY (resolved_by_user_id) REFERENCES public.users(id),
+  CONSTRAINT device_alerts_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
+  CONSTRAINT device_alerts_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id)
 );
 CREATE TABLE public.device_commands (
   command_id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -83,10 +168,14 @@ CREATE TABLE public.device_commands (
   max_retries integer DEFAULT 3,
   error_message text,
   company_id uuid,
+  program_id uuid,
+  site_id uuid,
   CONSTRAINT device_commands_pkey PRIMARY KEY (command_id),
   CONSTRAINT device_commands_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT device_commands_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
-  CONSTRAINT device_commands_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id)
+  CONSTRAINT device_commands_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id),
+  CONSTRAINT device_commands_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
+  CONSTRAINT device_commands_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id)
 );
 CREATE TABLE public.device_error_codes (
   error_code integer NOT NULL,
@@ -113,6 +202,9 @@ CREATE TABLE public.device_history (
   description text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   company_id uuid,
+  source_table text,
+  source_id uuid,
+  triggered_by text DEFAULT 'system'::text,
   CONSTRAINT device_history_pkey PRIMARY KEY (history_id),
   CONSTRAINT device_history_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
   CONSTRAINT device_history_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
@@ -146,10 +238,19 @@ CREATE TABLE public.device_images (
   company_id uuid,
   resent_received_at timestamp with time zone,
   original_capture_date date,
+  program_id uuid,
+  site_id uuid,
+  site_device_session_id uuid,
+  mgi_score numeric CHECK (mgi_score >= 0::numeric AND mgi_score <= 1::numeric),
+  mold_growth_velocity numeric,
+  mold_growth_speed numeric,
   CONSTRAINT device_images_pkey PRIMARY KEY (image_id),
   CONSTRAINT device_images_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT device_images_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
-  CONSTRAINT device_images_submission_id_fkey FOREIGN KEY (submission_id) REFERENCES public.submissions(submission_id)
+  CONSTRAINT device_images_submission_id_fkey FOREIGN KEY (submission_id) REFERENCES public.submissions(submission_id),
+  CONSTRAINT device_images_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
+  CONSTRAINT device_images_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
+  CONSTRAINT device_images_site_device_session_id_fkey FOREIGN KEY (site_device_session_id) REFERENCES public.site_device_sessions(session_id)
 );
 CREATE TABLE public.device_program_assignments (
   assignment_id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -224,9 +325,15 @@ CREATE TABLE public.device_telemetry (
   wifi_rssi integer,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   company_id uuid,
+  program_id uuid,
+  site_id uuid,
+  site_device_session_id uuid,
   CONSTRAINT device_telemetry_pkey PRIMARY KEY (telemetry_id),
   CONSTRAINT device_telemetry_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
-  CONSTRAINT device_telemetry_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id)
+  CONSTRAINT device_telemetry_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
+  CONSTRAINT device_telemetry_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
+  CONSTRAINT device_telemetry_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
+  CONSTRAINT device_telemetry_site_device_session_id_fkey FOREIGN KEY (site_device_session_id) REFERENCES public.site_device_sessions(session_id)
 );
 CREATE TABLE public.device_wake_payloads (
   payload_id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -285,6 +392,7 @@ CREATE TABLE public.device_wake_sessions (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   company_id uuid,
+  wake_variance_minutes integer,
   CONSTRAINT device_wake_sessions_pkey PRIMARY KEY (session_id),
   CONSTRAINT device_wake_sessions_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
   CONSTRAINT device_wake_sessions_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
@@ -316,19 +424,39 @@ CREATE TABLE public.devices (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   mapped_at timestamp with time zone,
   mapped_by_user_id uuid,
-  provisioning_status text DEFAULT 'pending_mapping'::text CHECK (provisioning_status = ANY (ARRAY['pending_mapping'::text, 'mapped'::text, 'active'::text, 'inactive'::text])),
+  provisioning_status text DEFAULT 'pending_mapping'::text CHECK (provisioning_status = ANY (ARRAY['pending_approval'::text, 'pending_mapping'::text, 'mapped'::text, 'active'::text, 'inactive'::text, 'decommissioned'::text, 'system'::text])),
   device_reported_site_id text,
   device_reported_location text,
   device_code text UNIQUE,
   company_id uuid,
   x_position numeric,
   y_position numeric,
+  zone_id uuid,
+  zone_label text,
+  placement_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  device_type text DEFAULT 'physical'::text CHECK (device_type = ANY (ARRAY['physical'::text, 'virtual'::text])),
+  wifi_rssi integer,
+  last_updated_by_user_id uuid,
+  battery_critical_threshold numeric DEFAULT 3.4,
+  battery_warning_threshold numeric DEFAULT 3.6,
+  last_wake_variance_minutes integer,
+  total_wakes integer DEFAULT 0,
+  total_alerts integer DEFAULT 0,
+  total_battery_health_alerts integer DEFAULT 0,
+  total_images_taken integer DEFAULT 0,
+  total_images_expected_to_date integer DEFAULT 0,
+  next_program_id uuid,
+  next_site_id uuid,
+  program_expiry_alert_sent boolean DEFAULT false,
+  is_overtime_mode boolean DEFAULT false,
   CONSTRAINT devices_pkey PRIMARY KEY (device_id),
   CONSTRAINT devices_mapped_by_user_id_fkey FOREIGN KEY (mapped_by_user_id) REFERENCES public.users(id),
   CONSTRAINT devices_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT devices_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
   CONSTRAINT devices_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
-  CONSTRAINT devices_provisioned_by_user_id_fkey FOREIGN KEY (provisioned_by_user_id) REFERENCES public.users(id)
+  CONSTRAINT devices_provisioned_by_user_id_fkey FOREIGN KEY (provisioned_by_user_id) REFERENCES public.users(id),
+  CONSTRAINT devices_next_program_id_fkey FOREIGN KEY (next_program_id) REFERENCES public.pilot_programs(program_id),
+  CONSTRAINT devices_next_site_id_fkey FOREIGN KEY (next_site_id) REFERENCES public.sites(site_id)
 );
 CREATE TABLE public.edge_chunk_buffer (
   chunk_key text NOT NULL,
@@ -385,6 +513,14 @@ CREATE TABLE public.gasifier_observations (
   CONSTRAINT gasifier_observations_last_updated_by_user_id_fkey FOREIGN KEY (last_updated_by_user_id) REFERENCES auth.users(id),
   CONSTRAINT gasifier_observations_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id)
 );
+CREATE TABLE public.mcp_context_tracking (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  contextual_update text,
+  planning_doc text,
+  context_and_plan_progress_with_timestamps text,
+  CONSTRAINT mcp_context_tracking_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.petri_observations (
   observation_id uuid NOT NULL DEFAULT gen_random_uuid(),
   submission_id uuid NOT NULL,
@@ -429,6 +565,9 @@ CREATE TABLE public.petri_observations (
   is_device_generated boolean DEFAULT false,
   device_capture_metadata jsonb,
   company_id uuid,
+  mgi_score numeric CHECK (mgi_score >= 0::numeric AND mgi_score <= 1::numeric),
+  mgi_confidence numeric CHECK (mgi_confidence >= 0::numeric AND mgi_confidence <= 1::numeric),
+  mgi_scored_at timestamp with time zone,
   CONSTRAINT petri_observations_pkey PRIMARY KEY (observation_id),
   CONSTRAINT petri_observations_submission_id_fkey FOREIGN KEY (submission_id) REFERENCES public.submissions(submission_id),
   CONSTRAINT petri_observations_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
@@ -474,6 +613,17 @@ CREATE TABLE public.pilot_program_history_staging (
   user_agent text,
   company_id uuid
 );
+CREATE TABLE public.pilot_program_users (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  program_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role text NOT NULL DEFAULT 'Edit'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_email character varying,
+  CONSTRAINT pilot_program_users_pkey PRIMARY KEY (id),
+  CONSTRAINT pilot_program_users_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
+  CONSTRAINT pilot_program_users_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.pilot_program_users_archive (
   id uuid,
   program_id uuid,
@@ -503,6 +653,33 @@ CREATE TABLE public.pilot_programs (
   CONSTRAINT pilot_programs_lastupdated_by_fkey FOREIGN KEY (lastupdated_by) REFERENCES auth.users(id),
   CONSTRAINT pilot_programs_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT pilot_programs_cloned_from_program_id_fkey FOREIGN KEY (cloned_from_program_id) REFERENCES public.pilot_programs(program_id)
+);
+CREATE TABLE public.report_subscriptions (
+  subscription_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  kind text NOT NULL CHECK (kind = ANY (ARRAY['weekly_digest'::text, 'daily_rollup'::text, 'threshold_alerts'::text, 'mgi_trends'::text, 'zone_comparison'::text])),
+  filters jsonb NOT NULL DEFAULT '{}'::jsonb,
+  schedule text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  last_sent_at timestamp with time zone,
+  next_scheduled_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT report_subscriptions_pkey PRIMARY KEY (subscription_id),
+  CONSTRAINT report_subscriptions_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
+  CONSTRAINT report_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.session_creation_log (
+  log_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  execution_time timestamp with time zone NOT NULL DEFAULT now(),
+  total_sites integer DEFAULT 0,
+  success_count integer DEFAULT 0,
+  error_count integer DEFAULT 0,
+  details jsonb,
+  execution_duration_ms integer,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT session_creation_log_pkey PRIMARY KEY (log_id)
 );
 CREATE TABLE public.site_device_sessions (
   session_id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -561,6 +738,7 @@ CREATE TABLE public.site_snapshots (
   created_at timestamp with time zone DEFAULT now(),
   day_number integer NOT NULL DEFAULT 1,
   snapshot_sequence integer DEFAULT 1,
+  risk_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
   CONSTRAINT site_snapshots_pkey PRIMARY KEY (snapshot_id),
   CONSTRAINT site_snapshots_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT site_snapshots_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
@@ -619,6 +797,7 @@ CREATE TABLE public.sites (
   company_id uuid,
   fan_details jsonb,
   wall_details jsonb DEFAULT '[{"wall_id": "north_wall", "material": "Polycarbonate", "end_point": {"x": 110, "y": 0}, "length_ft": 110, "orientation": "North", "start_point": {"x": 0, "y": 0}, "justification": "outside"}, {"wall_id": "east_wall", "material": "Polycarbonate", "end_point": {"x": 110, "y": 100}, "length_ft": 100, "orientation": "East", "start_point": {"x": 110, "y": 0}, "justification": "outside"}, {"wall_id": "south_wall", "material": "Polycarbonate", "end_point": {"x": 0, "y": 100}, "length_ft": 110, "orientation": "South", "start_point": {"x": 110, "y": 100}, "justification": "outside"}, {"wall_id": "west_wall", "material": "Polycarbonate", "end_point": {"x": 0, "y": 0}, "length_ft": 100, "orientation": "West", "start_point": {"x": 0, "y": 100}, "justification": "outside"}]'::jsonb,
+  zones jsonb NOT NULL DEFAULT '[]'::jsonb,
   CONSTRAINT sites_pkey PRIMARY KEY (site_id),
   CONSTRAINT sites_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
   CONSTRAINT sites_lastupdated_by_fkey FOREIGN KEY (lastupdated_by) REFERENCES auth.users(id),
@@ -706,6 +885,13 @@ CREATE TABLE public.superadmin_impersonations (
   CONSTRAINT superadmin_impersonations_pkey PRIMARY KEY (id),
   CONSTRAINT superadmin_impersonations_super_admin_user_id_fkey FOREIGN KEY (super_admin_user_id) REFERENCES auth.users(id),
   CONSTRAINT superadmin_impersonations_target_company_id_fkey FOREIGN KEY (target_company_id) REFERENCES public.companies(company_id)
+);
+CREATE TABLE public.system_users (
+  system_user_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+  system_name text NOT NULL DEFAULT 'System'::text,
+  description text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT system_users_pkey PRIMARY KEY (system_user_id)
 );
 CREATE TABLE public.user_active_company_context (
   user_id uuid NOT NULL,
