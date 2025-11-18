@@ -535,9 +535,9 @@ CREATE POLICY "Super admins can view all snapshots"
   TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM user_roles ur
-      WHERE ur.user_id = auth.uid()
-        AND ur.role_name = 'super_admin'
+      SELECT 1 FROM users u
+      WHERE u.id = auth.uid()
+        AND u.is_super_admin = true
     )
   );
 
@@ -546,10 +546,11 @@ CREATE POLICY "Company admins can view company snapshots"
   ON session_wake_snapshots FOR SELECT
   TO authenticated
   USING (
-    company_id IN (
-      SELECT ur.company_id FROM user_roles ur
-      WHERE ur.user_id = auth.uid()
-        AND ur.role_name IN ('company_admin', 'super_admin')
+    EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = auth.uid()
+        AND u.company_id = session_wake_snapshots.company_id
+        AND (u.is_company_admin = true OR u.is_super_admin = true)
     )
   );
 

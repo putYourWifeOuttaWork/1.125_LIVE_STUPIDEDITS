@@ -238,3 +238,39 @@ Once coordinates are set:
 ✅ **Ready to Deploy**: Migration can be applied safely
 
 The system now correctly handles the transition from placement_json to dedicated coordinate columns while maintaining backward compatibility and valid PostgreSQL syntax.
+## RLS Policy Fix - Error #3
+
+### Problem
+Migration failed with:
+```
+ERROR: 42P01: relation "user_roles" does not exist
+```
+
+### Root Cause
+The migration RLS policies referenced `user_roles` table which doesn't exist in the schema.
+
+**Actual Schema**: Uses `users` table with columns:
+- `is_super_admin` (boolean)
+- `is_company_admin` (boolean)
+- `company_id` (uuid)
+
+### Fix Applied
+Updated RLS policies to use `users` table:
+
+```sql
+-- BEFORE (broken):
+SELECT 1 FROM user_roles ur
+WHERE ur.user_id = auth.uid()
+  AND ur.role_name = 'super_admin'
+
+-- AFTER (fixed):
+SELECT 1 FROM users u
+WHERE u.id = auth.uid()
+  AND u.is_super_admin = true
+```
+
+All three RLS policies updated:
+- Super admins policy ✅
+- Company admins policy ✅  
+- Field users policy ✅
+
