@@ -89,13 +89,13 @@ export function LiveFeedTable({ events, timezone }: LiveFeedTableProps) {
                   <div className="text-xs text-gray-500">{getRelativeTime(event.ts)}</div>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">
-                  {event.kind === 'payload' && event.meta.overage_flag && (
+                  {event.kind === 'payload' && event.meta?.overage_flag && (
                     <span className="text-amber-600">⚠ Overage</span>
                   )}
-                  {event.kind === 'image' && (
+                  {event.kind === 'image' && event.meta?.received_chunks !== undefined && (
                     <span>{event.meta.received_chunks}/{event.meta.total_chunks} chunks</span>
                   )}
-                  {event.kind === 'observation' && event.meta.is_device_generated && (
+                  {event.kind === 'observation' && event.meta?.is_device_generated && (
                     <span className="text-green-600">✓ Device-generated</span>
                   )}
                 </td>
