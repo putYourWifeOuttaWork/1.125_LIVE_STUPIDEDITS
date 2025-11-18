@@ -1,35 +1,75 @@
 import { createClient } from '@supabase/supabase-js';
-import { config } from 'dotenv';
+import dotenv from 'dotenv';
 
-config();
+dotenv.config();
 
-const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+);
 
-console.log('\nChecking sites table in detail...\n');
+console.log('🔍 Analyzing SITES table structure from sample data...\n');
 
-const { data: sites, error, count } = await supabase
+const { data: sites, error } = await supabase
   .from('sites')
-  .select('*', { count: 'exact' })
-  .order('created_at', { ascending: false });
+  .select('*')
+  .limit(3);
 
 if (error) {
-  console.log('Error:', error.message);
-  console.log('Details:', error);
-} else {
-  console.log(`Total sites in database: ${count}`);
-  if (sites && sites.length > 0) {
-    console.log('\nSites found:');
-    sites.forEach((site, idx) => {
-      console.log(`\n  ${idx + 1}. Site ID: ${site.site_id}`);
-      console.log(`     Name: ${site.name || site.site_name || 'No name'}`);
-      console.log(`     Program ID: ${site.program_id}`);
-      console.log(`     Created: ${site.created_at}`);
-    });
+  console.error('❌ Error:', error);
+  process.exit(1);
+}
+
+console.log(`Found ${sites.length} sites\n`);
+
+const firstSite = sites[0];
+console.log('📋 SITES Table Structure:');
+console.log('========================\n');
+
+const jsonbColumns = [];
+const arrayColumns = [];
+const scalarColumns = [];
+
+for (const [key, value] of Object.entries(firstSite)) {
+  const type = Array.isArray(value) ? 'array' : typeof value === 'object' && value !== null ? 'jsonb' : 'scalar';
+  
+  if (type === 'jsonb') {
+    jsonbColumns.push(key);
+  } else if (type === 'array') {
+    arrayColumns.push(key);
   } else {
-    console.log('\n⚠️  No sites found in the database.');
-    console.log('\nTroubleshooting:');
-    console.log('1. Did the site creation show a success message?');
-    console.log('2. Try refreshing your web app page');
-    console.log('3. Check if there were any error messages');
+    scalarColumns.push(key);
   }
 }
+
+console.log('📦 JSONB/Complex Columns (for 2D representation):');
+console.log('================================================');
+jsonbColumns.forEach(col => {
+  const value = firstSite[col];
+  if (value && Object.keys(value).length > 0) {
+    console.log(`\n  ${col}:`);
+    console.log(JSON.stringify(value, null, 4));
+  }
+});
+
+console.log('\n\n📚 Array Columns (lists/multi-value):');
+console.log('====================================');
+arrayColumns.forEach(col => {
+  const value = firstSite[col];
+  console.log(`  ${col}: ${Array.isArray(value) ? `[${value.length} items]` : 'null'}`);
+  if (value && value.length > 0) {
+    console.log(`    First item:`, JSON.stringify(value[0], null, 4));
+  }
+});
+
+console.log('\n\n🗺️  KEY 2D/Spatial Data Columns:');
+console.log('===========================');
+const spatialCols = ['wall_details', 'zones', 'airflow_vectors', 'door_details', 'platform_details'];
+spatialCols.forEach(col => {
+  const value = firstSite[col];
+  console.log(`\n  ${col}:`, value ? 'Present ✓' : 'Empty/Null');
+  if (value && value.length > 0) {
+    console.log(JSON.stringify(value, null, 4));
+  }
+});
+
