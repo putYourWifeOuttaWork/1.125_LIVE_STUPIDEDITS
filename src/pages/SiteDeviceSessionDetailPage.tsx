@@ -12,6 +12,7 @@ import {
   WifiOff,
   RefreshCw,
   AlertTriangle,
+  Map,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -260,9 +261,18 @@ const SiteDeviceSessionDetailPage = () => {
             )}
           </div>
         </div>
-        <Button variant="outline" onClick={handleRefresh} icon={<RefreshCw size={16} />}>
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            onClick={() => navigate(`/lab/sessions/${sessionId}/snapshots`)}
+            icon={<Map size={16} />}
+          >
+            View Snapshot Map
+          </Button>
+          <Button variant="outline" onClick={handleRefresh} icon={<RefreshCw size={16} />}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {isSessionExpired && (

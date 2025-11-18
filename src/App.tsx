@@ -39,6 +39,8 @@ const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
 const SessionSnapshotViewer = lazy(() => import('./pages/lab/SessionSnapshotViewer'));
+const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
+const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
 
 function App() {
   const navigate = useNavigate();
@@ -370,6 +372,16 @@ function App() {
               <Route path="/lab/sessions/:sessionId/snapshots" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <SessionSnapshotViewer />
+                </Suspense>
+              } />
+              <Route path="/lab/ingest-feed" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <IngestFeed />
+                </Suspense>
+              } />
+              <Route path="/lab/site-sessions" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <SiteSessions />
                 </Suspense>
               } />
             </Route>
