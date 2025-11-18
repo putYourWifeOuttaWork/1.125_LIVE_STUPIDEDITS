@@ -76,13 +76,38 @@ export default function IngestFeed() {
 
         // Apply filter if not 'all'
         if (filter !== 'all') {
-          query = query.eq('event_type', filter);
+          // The view uses 'kind' column, but filter values are pluralized
+          // Map: 'payloads' -> 'payload', 'images' -> 'image', 'observations' -> 'observation'
+          const kindValue = filter === 'payloads' ? 'payload'
+                          : filter === 'images' ? 'image'
+                          : filter === 'observations' ? 'observation'
+                          : filter;
+          query = query.eq('kind', kindValue);
         }
 
         const { data, error } = await query;
 
         if (error) throw error;
-        setEvents(data || []);
+
+        // Transform data to match expected format
+        const transformedEvents = (data || []).map((item: any) => ({
+          id: item.id,
+          kind: item.kind,
+          ts: item.ts,
+          device_name: item.device_name || 'Unknown Device',
+          device_mac: item.device_mac || '',
+          device_id: null, // View doesn't include device_id
+          site_id: null, // View doesn't include site_id
+          event_type: item.kind, // Add event_type for compatibility
+          meta: {
+            status: item.status,
+            image_name: item.image_name,
+            received_chunks: item.chunks_received,
+            total_chunks: item.total_chunks,
+          },
+        }));
+
+        setEvents(transformedEvents);
       }
     } catch (error: any) {
       console.error('Error fetching feed:', error);
