@@ -676,3 +676,76 @@ export type UnifiedAuditEntry = {
   user_email?: string | null;
   event_data: Record<string, any>;
 };
+
+// Session Wake Snapshot types for visualization
+export type DeviceSnapshotData = {
+  device_id: string;
+  device_name: string;
+  device_mac: string;
+  x_position: number;
+  y_position: number;
+  mgi_score: number | null;
+  mgi_velocity: number | null;
+  mgi_speed_per_day: number | null;
+  temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+  battery_voltage: number | null;
+  last_wake: string | null;
+  status: string;
+  placement_notes: string | null;
+};
+
+export type ZoneSnapshotData = {
+  zone_id: string;
+  zone_name: string;
+  zone_type: string;
+  coordinates: { x: number; y: number }[];
+  device_count: number;
+  avg_mgi: number | null;
+  avg_temperature: number | null;
+  avg_humidity: number | null;
+  risk_level: string | null;
+};
+
+export type SiteLayoutData = {
+  length: number;
+  width: number;
+  height: number;
+  wall_details: Array<{
+    wall_id: string;
+    orientation: string;
+    start_point: { x: number; y: number };
+    end_point: { x: number; y: number };
+    length_ft: number;
+    material: string;
+    justification: string;
+  }>;
+  door_details: any[];
+  platform_details: any[];
+  zones: any[];
+};
+
+export type SessionWakeSnapshot = {
+  snapshot_id: string;
+  session_id: string;
+  site_id: string;
+  program_id: string;
+  company_id: string;
+  wake_number: number;
+  wake_time: string;
+  site_state: {
+    devices: DeviceSnapshotData[];
+    zones: ZoneSnapshotData[];
+    site_layout: SiteLayoutData;
+    session_summary: {
+      total_devices: number;
+      active_devices: number;
+      avg_mgi: number | null;
+      avg_temperature: number | null;
+      avg_humidity: number | null;
+      high_risk_device_count: number;
+    };
+  };
+  created_at: string;
+};
