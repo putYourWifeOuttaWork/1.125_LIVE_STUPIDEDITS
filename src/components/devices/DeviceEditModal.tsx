@@ -18,22 +18,28 @@ export interface DeviceUpdateData {
   wake_schedule_cron?: string;
   notes?: string;
   zone_label?: string;
-  x_position: number;  // REQUIRED
-  y_position: number;  // REQUIRED
+  x_position: number;  // REQUIRED (primary source after migration)
+  y_position: number;  // REQUIRED (primary source after migration)
   placement_json?: {
+    x?: number;  // Kept for backward compatibility during migration
+    y?: number;  // Kept for backward compatibility during migration
     height?: string;
     notes?: string;
   };
 }
 
 const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalProps) => {
+  // Handle coordinate initialization: prefer columns, fallback to placement_json
+  const initialXPosition = device.x_position ?? device.placement_json?.x ?? 0;
+  const initialYPosition = device.y_position ?? device.placement_json?.y ?? 0;
+
   const [formData, setFormData] = useState<DeviceUpdateData>({
     device_name: device.device_name || '',
     wake_schedule_cron: device.wake_schedule_cron || '',
     notes: device.notes || '',
     zone_label: device.zone_label || '',
-    x_position: device.x_position || 0,
-    y_position: device.y_position || 0,
+    x_position: initialXPosition,
+    y_position: initialYPosition,
     placement_json: device.placement_json || { height: '', notes: '' },
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,7 +77,18 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
 
     setIsSubmitting(true);
     try {
-      await onSubmit(formData);
+      // Sync coordinates to placement_json for backward compatibility
+      // After migration, placement_json.x/y will be removed by the database
+      const updatedData = {
+        ...formData,
+        placement_json: {
+          ...formData.placement_json,
+          x: formData.x_position,
+          y: formData.y_position,
+        },
+      };
+
+      await onSubmit(updatedData);
       onClose();
     } catch (error) {
       console.error('Error updating device:', error);

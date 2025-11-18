@@ -322,9 +322,11 @@ export type Device = {
   battery_voltage: number | null;
   zone_id: string | null;
   zone_label: string | null;
-  x_position: number;  // REQUIRED for snapshot visualization
-  y_position: number;  // REQUIRED for snapshot visualization
+  x_position: number | null;  // Will be REQUIRED after migration (currently nullable for transition)
+  y_position: number | null;  // Will be REQUIRED after migration (currently nullable for transition)
   placement_json: {
+    x?: number;  // Legacy - being migrated to x_position column
+    y?: number;  // Legacy - being migrated to y_position column
     height?: string;
     notes?: string;
   } | null;

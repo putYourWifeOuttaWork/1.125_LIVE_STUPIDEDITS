@@ -1,43 +1,91 @@
 /*
-  # Session Wake Snapshot System - Phase 3 Complete Implementation
+  # Session Wake Snapshot System - Phase 3 Complete Implementation (FIXED)
 
   ## Overview
   Creates a wake-level snapshot system for capturing complete site state after each device wake round.
   Enables animated 2D visualization of MGI progression, environmental changes, and device states over time.
 
-  ## Key Concepts
-  - **Device as Observational Dataset**: Tracks mold growth (MGI) at specific (x,y) location
-  - **Wake Round**: All devices at a site report within a time window (e.g., hourly)
-  - **Snapshot**: Complete JSONB record of site state after wake round completes
-  - **MGI-Centric**: Primary metric with progression, velocity, and speed calculations
-  - **Device-Centered Zones**: Automatic zone generation around each device
+  ## Key Changes
+  1. **Data Migration**: Moves x/y coordinates from placement_json to dedicated columns
+  2. **Coordinate Requirements**: Makes x_position/y_position NOT NULL after backfilling
+  3. **Snapshot System**: Creates wake-level snapshot tables and functions
+  4. **Zone Generation**: Device-centered automatic zones
+  5. **MGI Calculations**: Progression, velocity, speed metrics
 
-  ## Changes Made
-
-  ### 1. New Tables
-  - `session_wake_snapshots` - Complete site state per wake round
-
-  ### 2. Modified Tables
-  - `devices` - Make x_position, y_position NOT NULL (required coordinates)
-  - `sites` - Enhance door_details and platform_details schema (already have empty arrays)
-
-  ### 3. Helper Functions
-  - `calculate_mgi_metrics()` - MGI progression, velocity, speed
-  - `generate_device_centered_zones()` - Automatic zone polygons
-  - `generate_session_wake_snapshot()` - Complete snapshot assembly
-  - `check_wake_round_complete()` - Trigger snapshot on round completion
-
-  ### 4. Deprecated
-  - `site_snapshots` table (unused, replaced by wake-level snapshots)
-
-  ## Visualization Preparation
-  - D3.js ready: Device positions, shapes, MGI color coding
-  - Zone overlays: Temperature/humidity gradients with transparency
-  - Animation: Iterate through snapshots to show temporal changes
+  ## Migration Steps
+  STEP 1: Backfill coordinates from placement_json
+  STEP 2: Set defaults for devices with no coordinates
+  STEP 3: Make columns NOT NULL
+  STEP 4: Create snapshot system
+  STEP 5: Clean up placement_json structure
 */
 
 -- =====================================================
--- STEP 1: Drop Old Snapshot System (Deprecated)
+-- STEP 1: Backfill Device Coordinates from placement_json
+-- =====================================================
+
+-- Migrate x/y from placement_json to columns where data exists
+UPDATE devices
+SET
+  x_position = (placement_json->>'x')::numeric,
+  y_position = (placement_json->>'y')::numeric,
+  updated_at = now()
+WHERE placement_json IS NOT NULL
+  AND placement_json->>'x' IS NOT NULL
+  AND placement_json->>'y' IS NOT NULL;
+
+-- Log migration results
+DO $$
+DECLARE
+  v_migrated_count integer;
+  v_null_count integer;
+BEGIN
+  SELECT COUNT(*) INTO v_migrated_count
+  FROM devices
+  WHERE x_position IS NOT NULL AND y_position IS NOT NULL;
+
+  SELECT COUNT(*) INTO v_null_count
+  FROM devices
+  WHERE x_position IS NULL OR y_position IS NULL;
+
+  RAISE NOTICE 'Coordinate Migration Results:';
+  RAISE NOTICE '  - Devices with coordinates: %', v_migrated_count;
+  RAISE NOTICE '  - Devices needing defaults: %', v_null_count;
+END $$;
+
+-- =====================================================
+-- STEP 2: Set Default Coordinates for Unmapped Devices
+-- =====================================================
+
+-- For devices with no coordinates, set default to (0, 0)
+-- These are typically test/system devices that need coordinates assigned later
+UPDATE devices
+SET
+  x_position = 0.0,
+  y_position = 0.0,
+  updated_at = now(),
+  notes = COALESCE(notes || E'\n\n', '') ||
+    '[AUTO-MIGRATED] Coordinates set to (0,0) - please update with actual position'
+WHERE x_position IS NULL OR y_position IS NULL;
+
+-- =====================================================
+-- STEP 3: Make Device Positioning Required
+-- =====================================================
+
+-- Now that all devices have coordinates, make them NOT NULL
+ALTER TABLE devices
+  ALTER COLUMN x_position SET NOT NULL,
+  ALTER COLUMN y_position SET NOT NULL;
+
+-- Add validation constraints
+ALTER TABLE devices ADD CONSTRAINT IF NOT EXISTS valid_device_position_bounds
+  CHECK (x_position >= 0 AND y_position >= 0);
+
+COMMENT ON COLUMN devices.x_position IS 'REQUIRED: Device X-coordinate in site grid (feet). Used for 2D visualization and zone calculation.';
+COMMENT ON COLUMN devices.y_position IS 'REQUIRED: Device Y-coordinate in site grid (feet). Used for 2D visualization and zone calculation.';
+
+-- =====================================================
+-- STEP 4: Drop Old Snapshot System (Deprecated)
 -- =====================================================
 
 DROP TABLE IF EXISTS site_snapshots CASCADE;
@@ -45,7 +93,7 @@ DROP TABLE IF EXISTS site_snapshots CASCADE;
 COMMENT ON SCHEMA public IS 'Deprecated site_snapshots table removed. Replaced by session_wake_snapshots for wake-level granularity.';
 
 -- =====================================================
--- STEP 2: Create Session Wake Snapshots Table
+-- STEP 5: Create Session Wake Snapshots Table
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS session_wake_snapshots (
@@ -83,11 +131,11 @@ CREATE TABLE IF NOT EXISTS session_wake_snapshots (
 );
 
 -- Indexes for efficient queries
-CREATE INDEX idx_wake_snapshots_session ON session_wake_snapshots(session_id, wake_number);
-CREATE INDEX idx_wake_snapshots_site_date ON session_wake_snapshots(site_id, wake_round_start);
-CREATE INDEX idx_wake_snapshots_program ON session_wake_snapshots(program_id, wake_round_start);
-CREATE INDEX idx_wake_snapshots_company ON session_wake_snapshots(company_id);
-CREATE INDEX idx_wake_snapshots_mgi ON session_wake_snapshots(max_mgi) WHERE max_mgi IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_wake_snapshots_session ON session_wake_snapshots(session_id, wake_number);
+CREATE INDEX IF NOT EXISTS idx_wake_snapshots_site_date ON session_wake_snapshots(site_id, wake_round_start);
+CREATE INDEX IF NOT EXISTS idx_wake_snapshots_program ON session_wake_snapshots(program_id, wake_round_start);
+CREATE INDEX IF NOT EXISTS idx_wake_snapshots_company ON session_wake_snapshots(company_id);
+CREATE INDEX IF NOT EXISTS idx_wake_snapshots_mgi ON session_wake_snapshots(max_mgi) WHERE max_mgi IS NOT NULL;
 
 -- Comments
 COMMENT ON TABLE session_wake_snapshots IS 'Wake-level snapshots of complete site state for animated visualization. One snapshot per wake round (e.g., 12/day for hourly rounds).';
@@ -95,23 +143,7 @@ COMMENT ON COLUMN session_wake_snapshots.site_state IS 'Complete JSONB snapshot:
 COMMENT ON COLUMN session_wake_snapshots.wake_number IS 'Sequential wake number within session (1-12 for hourly, 1-24 for 30min, etc.)';
 
 -- =====================================================
--- STEP 3: Enhance Device Positioning (Make Required)
--- =====================================================
-
--- Make device coordinates REQUIRED
-ALTER TABLE devices
-  ALTER COLUMN x_position SET NOT NULL,
-  ALTER COLUMN y_position SET NOT NULL;
-
--- Add validation constraints
-ALTER TABLE devices ADD CONSTRAINT valid_device_position_bounds
-  CHECK (x_position >= 0 AND y_position >= 0);
-
-COMMENT ON COLUMN devices.x_position IS 'REQUIRED: Device X-coordinate in site grid. Used for 2D visualization and zone calculation.';
-COMMENT ON COLUMN devices.y_position IS 'REQUIRED: Device Y-coordinate in site grid. Used for 2D visualization and zone calculation.';
-
--- =====================================================
--- STEP 4: MGI Calculation Helper Functions
+-- STEP 6: MGI Calculation Helper Functions
 -- =====================================================
 
 -- Calculate MGI progression, velocity, and speed for a device
@@ -154,7 +186,7 @@ BEGIN
   JOIN sites s ON s.site_id = d.site_id
   WHERE di.device_id = p_device_id
     AND di.mgi_score IS NOT NULL
-    AND DATE(di.captured_at AT TIME ZONE s.timezone) = DATE(p_current_timestamp AT TIME ZONE s.timezone)
+    AND DATE(di.captured_at AT TIME ZONE COALESCE(s.timezone, 'UTC')) = DATE(p_current_timestamp AT TIME ZONE COALESCE(s.timezone, 'UTC'))
   ORDER BY di.captured_at ASC
   LIMIT 1;
 
@@ -201,7 +233,7 @@ $$;
 COMMENT ON FUNCTION calculate_mgi_metrics IS 'Calculate MGI progression, velocity, and speed metrics for a device based on current and historical MGI scores.';
 
 -- =====================================================
--- STEP 5: Device-Centered Zone Generation
+-- STEP 7: Device-Centered Zone Generation
 -- =====================================================
 
 -- Generate zones centered around each device (Voronoi-style)
@@ -231,8 +263,8 @@ BEGIN
       'bounds', jsonb_build_object(
         'x1', GREATEST(0, x_position - p_zone_radius),
         'y1', GREATEST(0, y_position - p_zone_radius),
-        'x2', LEAST(v_site_length, x_position + p_zone_radius),
-        'y2', LEAST(v_site_width, y_position + p_zone_radius)
+        'x2', LEAST(COALESCE(v_site_length, 1000), x_position + p_zone_radius),
+        'y2', LEAST(COALESCE(v_site_width, 1000), y_position + p_zone_radius)
       ),
       'device_id', device_id,
       'device_code', device_code,
@@ -253,7 +285,7 @@ $$;
 COMMENT ON FUNCTION generate_device_centered_zones IS 'Generate circular zones around each device for environmental aggregation and visualization. Zones can overlap.';
 
 -- =====================================================
--- STEP 6: Generate Complete Wake Snapshot
+-- STEP 8: Generate Complete Wake Snapshot
 -- =====================================================
 
 CREATE OR REPLACE FUNCTION generate_session_wake_snapshot(
@@ -485,7 +517,7 @@ $$;
 COMMENT ON FUNCTION generate_session_wake_snapshot IS 'Generate complete JSONB snapshot of site state after wake round completes. Includes all devices, MGI metrics, telemetry, zones, and alerts.';
 
 -- =====================================================
--- STEP 7: RLS Policies for Snapshots
+-- STEP 9: RLS Policies for Snapshots
 -- =====================================================
 
 ALTER TABLE session_wake_snapshots ENABLE ROW LEVEL SECURITY;
@@ -526,7 +558,7 @@ CREATE POLICY "Field users can view their program snapshots"
   );
 
 -- =====================================================
--- STEP 8: Grant Permissions
+-- STEP 10: Grant Permissions
 -- =====================================================
 
 GRANT SELECT ON session_wake_snapshots TO authenticated;
@@ -535,5 +567,43 @@ GRANT EXECUTE ON FUNCTION generate_device_centered_zones TO authenticated;
 GRANT EXECUTE ON FUNCTION generate_session_wake_snapshot TO authenticated;
 
 -- =====================================================
+-- STEP 11: Clean Up placement_json Structure (Optional)
+-- =====================================================
+
+-- Remove x/y from placement_json since they're now in dedicated columns
+-- Keep height and notes
+UPDATE devices
+SET placement_json = jsonb_build_object(
+  'height', placement_json->>'height',
+  'notes', placement_json->>'notes'
+)
+WHERE placement_json IS NOT NULL
+  AND (placement_json ? 'x' OR placement_json ? 'y');
+
+-- =====================================================
 -- End Migration
 -- =====================================================
+
+-- Final summary
+DO $$
+DECLARE
+  v_device_count integer;
+  v_snapshot_table_exists boolean;
+BEGIN
+  SELECT COUNT(*) INTO v_device_count
+  FROM devices
+  WHERE x_position IS NOT NULL AND y_position IS NOT NULL;
+
+  SELECT EXISTS (
+    SELECT FROM information_schema.tables
+    WHERE table_schema = 'public'
+    AND table_name = 'session_wake_snapshots'
+  ) INTO v_snapshot_table_exists;
+
+  RAISE NOTICE '========================================';
+  RAISE NOTICE 'Migration Complete!';
+  RAISE NOTICE '========================================';
+  RAISE NOTICE 'Devices with coordinates: %', v_device_count;
+  RAISE NOTICE 'Snapshot system created: %', v_snapshot_table_exists;
+  RAISE NOTICE '========================================';
+END $$;
