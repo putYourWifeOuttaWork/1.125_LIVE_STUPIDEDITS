@@ -1,11 +1,21 @@
 # Snapshot System Migration Fix - November 18, 2025
 
-## Problem Encountered
+## Problems Encountered & Fixed
 
+### ❌ Error #1: NULL Constraint Violation
 Initial migration `20251118000000_session_wake_snapshots.sql` **FAILED** with error:
 ```
 ERROR: 23502: column "x_position" of relation "devices" contains null values
 ```
+
+### ❌ Error #2: Invalid PostgreSQL Syntax
+Second attempt **FAILED** with error:
+```
+ERROR: 42601: syntax error at or near "NOT"
+LINE 81: ALTER TABLE devices ADD CONSTRAINT IF NOT EXISTS valid_device_position_bounds
+```
+
+**Cause**: PostgreSQL does not support `ADD CONSTRAINT IF NOT EXISTS` syntax.
 
 ## Root Cause Analysis
 
@@ -35,6 +45,24 @@ The original migration tried to make `x_position` and `y_position` NOT NULL imme
 3. **Step 3**: Make columns NOT NULL
    - NOW safe because all devices have coordinates
    - Adds validation constraint: x >= 0, y >= 0
+   - **FIX APPLIED**: Changed from `ADD CONSTRAINT IF NOT EXISTS` (invalid) to `DO $$ ... END $$` block (valid)
+
+   ```sql
+   -- BEFORE (invalid):
+   ALTER TABLE devices ADD CONSTRAINT IF NOT EXISTS valid_device_position_bounds
+     CHECK (x_position >= 0 AND y_position >= 0);
+
+   -- AFTER (fixed):
+   DO $$
+   BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'valid_device_position_bounds'
+     ) THEN
+       ALTER TABLE devices ADD CONSTRAINT valid_device_position_bounds
+         CHECK (x_position >= 0 AND y_position >= 0);
+     END IF;
+   END $$;
+   ```
 
 4. **Steps 4-10**: Create snapshot system
    - Same as before: tables, functions, RLS policies
@@ -197,10 +225,16 @@ Once coordinates are set:
 
 ## Summary
 
+### Fixes Applied
+1. ✅ **NULL Constraint Fix**: Added data backfill before making columns NOT NULL
+2. ✅ **Syntax Error Fix**: Changed `ADD CONSTRAINT IF NOT EXISTS` to `DO $$ ... END $$` block
+
+### Status
 ✅ **Migration Fixed**: Properly handles NULL coordinates
+✅ **PostgreSQL Valid**: All SQL syntax corrected
 ✅ **Data Safe**: Backfills from placement_json, sets defaults
 ✅ **App Compatible**: Reads/writes both formats during transition
 ✅ **Build Passing**: No TypeScript errors
 ✅ **Ready to Deploy**: Migration can be applied safely
 
-The system now correctly handles the transition from placement_json to dedicated coordinate columns while maintaining backward compatibility.
+The system now correctly handles the transition from placement_json to dedicated coordinate columns while maintaining backward compatibility and valid PostgreSQL syntax.

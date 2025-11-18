@@ -77,9 +77,16 @@ ALTER TABLE devices
   ALTER COLUMN x_position SET NOT NULL,
   ALTER COLUMN y_position SET NOT NULL;
 
--- Add validation constraints
-ALTER TABLE devices ADD CONSTRAINT IF NOT EXISTS valid_device_position_bounds
-  CHECK (x_position >= 0 AND y_position >= 0);
+-- Add validation constraints (using DO block for IF NOT EXISTS logic)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'valid_device_position_bounds'
+  ) THEN
+    ALTER TABLE devices ADD CONSTRAINT valid_device_position_bounds
+      CHECK (x_position >= 0 AND y_position >= 0);
+  END IF;
+END $$;
 
 COMMENT ON COLUMN devices.x_position IS 'REQUIRED: Device X-coordinate in site grid (feet). Used for 2D visualization and zone calculation.';
 COMMENT ON COLUMN devices.y_position IS 'REQUIRED: Device Y-coordinate in site grid (feet). Used for 2D visualization and zone calculation.';
