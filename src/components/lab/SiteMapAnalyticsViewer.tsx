@@ -1,8 +1,11 @@
 import { useRef, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Camera, Battery, Clock, Thermometer } from 'lucide-react';
+import { MapPin, Camera, Battery, Clock, Thermometer, Droplets } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import { formatDistanceToNow } from 'date-fns';
+import { Delaunay } from 'd3-delaunay';
+import { scaleSequential } from 'd3-scale';
+import { interpolateRdYlBu, interpolateYlGnBu } from 'd3-scale-chromatic';
 
 interface DevicePosition {
   device_id: string;
@@ -17,6 +20,8 @@ interface DevicePosition {
   humidity: number | null;
 }
 
+type ZoneMode = 'none' | 'temperature' | 'humidity' | 'battery';
+
 interface SiteMapAnalyticsViewerProps {
   siteLength: number;
   siteWidth: number;
@@ -24,6 +29,8 @@ interface SiteMapAnalyticsViewerProps {
   devices: DevicePosition[];
   onDeviceClick?: (deviceId: string) => void;
   className?: string;
+  showControls?: boolean;
+  height?: number;
 }
 
 export default function SiteMapAnalyticsViewer({
@@ -33,12 +40,15 @@ export default function SiteMapAnalyticsViewer({
   devices,
   onDeviceClick,
   className = '',
+  showControls = true,
+  height,
 }: SiteMapAnalyticsViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredDevice, setHoveredDevice] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<DevicePosition | null>(null);
-  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 400 });
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: height || 400 });
+  const [zoneMode, setZoneMode] = useState<ZoneMode>('temperature');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -48,14 +58,14 @@ export default function SiteMapAnalyticsViewer({
       for (const entry of entries) {
         const { width } = entry.contentRect;
         const aspectRatio = siteWidth / siteLength;
-        const height = Math.min(width * aspectRatio, 400);
-        setCanvasSize({ width, height });
+        const calculatedHeight = height || Math.min(width * aspectRatio, 400);
+        setCanvasSize({ width, height: calculatedHeight });
       }
     });
 
     resizeObserver.observe(containerRef.current);
     return () => resizeObserver.disconnect();
-  }, [siteLength, siteWidth]);
+  }, [siteLength, siteWidth, height]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -66,17 +76,22 @@ export default function SiteMapAnalyticsViewer({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Background
-    ctx.fillStyle = '#f9fafb';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Draw Voronoi zones if enabled and we have enough devices
+    if (zoneMode !== 'none' && devices.length >= 2) {
+      drawVoronoiZones(ctx, canvas, zoneMode);
+    } else {
+      // Background
+      ctx.fillStyle = '#f9fafb';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     // Border
     ctx.strokeStyle = '#e5e7eb';
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, canvas.width, canvas.height);
 
-    // Grid
-    ctx.strokeStyle = '#e5e7eb';
+    // Grid (lighter when zones are shown)
+    ctx.strokeStyle = zoneMode !== 'none' ? 'rgba(229, 231, 235, 0.3)' : '#e5e7eb';
     ctx.lineWidth = 0.5;
     const gridSize = 1;
     const gridSpacingX = (canvas.width / siteLength) * gridSize;
@@ -148,7 +163,103 @@ export default function SiteMapAnalyticsViewer({
       }
     });
 
-  }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth]);
+  }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode]);
+
+  const drawVoronoiZones = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, mode: ZoneMode) => {
+    if (devices.length < 2) return;
+
+    // Convert device positions to pixel coordinates
+    const points: [number, number][] = devices.map(device => [
+      (device.x / siteLength) * canvas.width,
+      (device.y / siteWidth) * canvas.height,
+    ]);
+
+    // Create Delaunay triangulation and Voronoi diagram
+    const delaunay = Delaunay.from(points);
+    const voronoi = delaunay.voronoi([0, 0, canvas.width, canvas.height]);
+
+    // Get data range for color scale
+    let minValue = Infinity;
+    let maxValue = -Infinity;
+
+    devices.forEach(device => {
+      let value: number | null = null;
+      if (mode === 'temperature') value = device.temperature;
+      else if (mode === 'humidity') value = device.humidity;
+      else if (mode === 'battery') value = device.battery_level;
+
+      if (value !== null) {
+        minValue = Math.min(minValue, value);
+        maxValue = Math.max(maxValue, value);
+      }
+    });
+
+    // Create color scale
+    const colorScale = mode === 'humidity'
+      ? scaleSequential(interpolateYlGnBu).domain([minValue, maxValue])
+      : scaleSequential(interpolateRdYlBu).domain([maxValue, minValue]); // Inverted for temp (red=hot)
+
+    // Draw Voronoi cells
+    devices.forEach((device, i) => {
+      const cell = voronoi.cellPolygon(i);
+      if (!cell) return;
+
+      let value: number | null = null;
+      if (mode === 'temperature') value = device.temperature;
+      else if (mode === 'humidity') value = device.humidity;
+      else if (mode === 'battery') value = device.battery_level;
+
+      if (value === null) {
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
+      } else {
+        const color = colorScale(value);
+        ctx.fillStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(cell[0][0], cell[0][1]);
+      for (let j = 1; j < cell.length; j++) {
+        ctx.lineTo(cell[j][0], cell[j][1]);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      // Draw cell borders
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Draw zone value label
+      if (value !== null) {
+        const pixelX = (device.x / siteLength) * canvas.width;
+        const pixelY = (device.y / siteWidth) * canvas.height;
+
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        let label = '';
+        if (mode === 'temperature') label = `${value.toFixed(1)}°F`;
+        else if (mode === 'humidity') label = `${value.toFixed(0)}%`;
+        else if (mode === 'battery') label = `${value}%`;
+
+        // Draw label background
+        const metrics = ctx.measureText(label);
+        const padding = 4;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillRect(
+          pixelX - metrics.width / 2 - padding,
+          pixelY - 30,
+          metrics.width + padding * 2,
+          20
+        );
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillText(label, pixelX, pixelY - 20);
+      }
+    });
+  };
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -203,6 +314,13 @@ export default function SiteMapAnalyticsViewer({
     return null;
   }
 
+  // Calculate zone statistics
+  const zoneStats = {
+    avgTemp: devices.filter(d => d.temperature !== null).reduce((sum, d) => sum + (d.temperature || 0), 0) / devices.filter(d => d.temperature !== null).length || 0,
+    avgHumidity: devices.filter(d => d.humidity !== null).reduce((sum, d) => sum + (d.humidity || 0), 0) / devices.filter(d => d.humidity !== null).length || 0,
+    avgBattery: devices.filter(d => d.battery_level !== null).reduce((sum, d) => sum + (d.battery_level || 0), 0) / devices.filter(d => d.battery_level !== null).length || 0,
+  };
+
   return (
     <div className={`${className}`} ref={containerRef}>
       <Card>
@@ -212,10 +330,49 @@ export default function SiteMapAnalyticsViewer({
               <MapPin className="text-primary-600" size={18} />
               <h3 className="text-lg font-semibold text-gray-900">Site Map</h3>
             </div>
-            <div className="text-sm text-gray-600">
-              {siteName} • {siteLength}ft × {siteWidth}ft
+            <div className="flex items-center gap-4">
+              {showControls && devices.length >= 2 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Zones:</span>
+                  <select
+                    value={zoneMode}
+                    onChange={(e) => setZoneMode(e.target.value as ZoneMode)}
+                    className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
+                  >
+                    <option value="none">None</option>
+                    <option value="temperature">Temperature</option>
+                    <option value="humidity">Humidity</option>
+                    <option value="battery">Battery</option>
+                  </select>
+                </div>
+              )}
+              <div className="text-sm text-gray-600">
+                {siteName} • {siteLength}ft × {siteWidth}ft
+              </div>
             </div>
           </div>
+          {zoneMode !== 'none' && devices.length >= 2 && (
+            <div className="mt-2 flex items-center gap-4 text-xs text-gray-600">
+              {zoneMode === 'temperature' && (
+                <div className="flex items-center gap-1">
+                  <Thermometer size={14} />
+                  <span>Avg: {zoneStats.avgTemp.toFixed(1)}°F</span>
+                </div>
+              )}
+              {zoneMode === 'humidity' && (
+                <div className="flex items-center gap-1">
+                  <Droplets size={14} />
+                  <span>Avg: {zoneStats.avgHumidity.toFixed(0)}%</span>
+                </div>
+              )}
+              {zoneMode === 'battery' && (
+                <div className="flex items-center gap-1">
+                  <Battery size={14} />
+                  <span>Avg: {zoneStats.avgBattery.toFixed(0)}%</span>
+                </div>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="relative">
