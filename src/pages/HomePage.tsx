@@ -96,7 +96,7 @@ const HomePage = () => {
             device_name,
             x_position,
             y_position,
-            battery_level,
+            battery_health_percent,
             status,
             last_seen
           `)
@@ -129,7 +129,7 @@ const HomePage = () => {
               device_name: device.device_name,
               x: device.x_position,
               y: device.y_position,
-              battery_level: device.battery_level,
+              battery_level: device.battery_health_percent,
               status: device.status,
               last_seen: device.last_seen,
               temperature: telemetryData?.temperature || null,
