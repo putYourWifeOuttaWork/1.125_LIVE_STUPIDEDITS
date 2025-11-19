@@ -120,7 +120,7 @@ const HomePage = () => {
               .from('device_telemetry')
               .select('temperature, humidity')
               .eq('device_id', device.device_id)
-              .order('recorded_at', { ascending: false })
+              .order('captured_at', { ascending: false })
               .limit(1)
               .maybeSingle();
 
