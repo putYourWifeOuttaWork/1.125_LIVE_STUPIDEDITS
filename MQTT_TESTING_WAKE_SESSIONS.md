@@ -66,7 +66,121 @@ When a device first connects, it **auto-provisions** with only its MAC address. 
 ---
 
 ## Complete Wake Session Simulation
+1) Device → Server: HELLO / alive
 
+Topic: device/esp32cam-01/status
+Message:
+
+{
+  "device_id": "esp32cam-01",
+  "device_mac": "AC:67:B2:11:22:33",
+  "status": "alive",
+  "pending_count": 0,
+  "firmware_version": "bt-aws-v4.0.0",
+  "hardware_version": "ESP32-S3",
+  "wifi_rssi": -58,
+  "battery_voltage": 3.95
+}
+
+2) Server → Device: command to capture now (and tell it when to wake next)
+
+Topic: device/esp32cam-01/cmd
+Message:
+
+{
+  "device_id": "esp32cam-01",
+  "command": "capture_image",
+  "next_wake": "2025-11-15T10:30:00Z"
+}
+
+3) Device → Server: send metadata for the capture
+
+Topic: device/esp32cam-01/data
+Message:
+
+{
+  "device_id": "esp32cam-01",
+  "capture_timestamp": "2025-11-14T19:00:00Z",
+  "image_name": "image_001.jpg",
+  "image_size": 123456,
+  "max_chunk_size": 128,
+  "total_chunks_count": 5,
+  "location": "GH-01-West",
+  "error": 0,
+  "temperature": 8.9,
+  "humidity": 82.0,
+  "pressure": 1009.7,
+  "gas_resistance": 15.3,
+  "battery_voltage": 3.92,
+  "wifi_rssi": -60
+}
+
+4) Device → Server: send chunks 1–5
+
+Send FIVE separate messages (change chunk_id and payload_b64 each time).
+
+Topic: device/esp32cam-01/data
+Message (example for chunk 1):
+
+{
+  "device_id": "esp32cam-01",
+  "image_name": "image_001.jpg",
+  "chunk_id": 1,
+  "max_chunk_size": 128,
+  "payload_b64": "iVBORw0KGgoAAAANSUhEUg==" 
+}
+
+
+Repeat for chunk_id 2, 3, 4, 5. (Use any base64 test strings—you’re just exercising your server path.)
+
+5) Server → Device: simulate a missing chunk (force a retry)
+
+Pretend the server is missing chunk 3.
+
+Topic: device/esp32cam-01/ack
+Message:
+
+{
+  "device_id": "esp32cam-01",
+  "image_name": "image_001.jpg",
+  "missing_chunks": [3]
+}
+
+6) Device → Server: resend only the requested chunk(s)
+
+Topic: device/esp32cam-01/data
+Message (resend chunk 3):
+
+{
+  "device_id": "esp32cam-01",
+  "image_name": "image_001.jpg",
+  "chunk_id": 3,
+  "max_chunk_size": 128,
+  "payload_b64": "R0lGODlhAQABAIAAAAUEBA==" 
+}
+
+7) Server → Device: ACK_OK + next wake time
+
+Topic: device/esp32cam-01/ack
+Message:
+
+{
+  "device_id": "esp32cam-01",
+  "image_name": "image_001.jpg",
+  "ACK_OK": { "next_wake_time": "2025-11-15T10:30:00Z" }
+}
+
+What this should light up in your DB
+
+devices: new row resolved by device_mac (or matched if you already seeded it), last_seen_at & next_wake_at updated.
+
+device_wake_sessions: one in-progress→completed session with chunks_total=5, chunks_sent=6 (includes retry), chunks_missing=[3] then cleared, transmission_complete=true.
+
+device_images: row for image_001.jpg with total_chunks=5, received_chunks=5, status='complete', and received_at populated.
+
+device_ack_log: entries for both the missing_chunks reply and the final ACK_OK (with next_wake_time).
+
+device_wake_payloads and device_telemetry: single capture’s environmental data tied to the same device/session.
 ### Step 1: Device HELLO (Alive Message)
 
 **Topic:** `device/B8F862F9CFB8/status`
