@@ -180,23 +180,33 @@ BEGIN
     SELECT generate_device_centered_zones(v_site_id, 15.0) AS zones_array
   ),
 
-  -- Environmental aggregates per zone
-  zone_environment AS (
-    SELECT jsonb_agg(
-      jsonb_build_object(
-        'zone_id', d.zone_id,
-        'zone_label', d.zone_label,
-        'avg_temperature', AVG(dt.temperature),
-        'avg_humidity', AVG(dt.humidity),
-        'avg_pressure', AVG(dt.pressure),
-        'device_count', COUNT(DISTINCT d.device_id)
-      )
-    ) AS zone_environment_data
+  -- Environmental aggregates per zone (first aggregate, then build JSON)
+  zone_environment_agg AS (
+    SELECT
+      d.zone_id,
+      d.zone_label,
+      AVG(dt.temperature) AS avg_temperature,
+      AVG(dt.humidity) AS avg_humidity,
+      AVG(dt.pressure) AS avg_pressure,
+      COUNT(DISTINCT d.device_id) AS device_count
     FROM devices d
     LEFT JOIN device_telemetry dt ON dt.device_id = d.device_id
       AND dt.captured_at BETWEEN p_wake_round_start AND p_wake_round_end
     WHERE d.site_id = v_site_id AND d.is_active = true
     GROUP BY d.zone_id, d.zone_label
+  ),
+  zone_environment AS (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'zone_id', zone_id,
+        'zone_label', zone_label,
+        'avg_temperature', avg_temperature,
+        'avg_humidity', avg_humidity,
+        'avg_pressure', avg_pressure,
+        'device_count', device_count
+      )
+    ) AS zone_environment_data
+    FROM zone_environment_agg
   ),
 
   -- MGI aggregates
