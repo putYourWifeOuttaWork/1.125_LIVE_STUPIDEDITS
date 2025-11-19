@@ -429,8 +429,8 @@ CREATE TABLE public.devices (
   device_reported_location text,
   device_code text UNIQUE,
   company_id uuid,
-  x_position numeric,
-  y_position numeric,
+  x_position numeric NOT NULL,
+  y_position numeric NOT NULL,
   zone_id uuid,
   zone_label text,
   placement_json jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -681,6 +681,30 @@ CREATE TABLE public.session_creation_log (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT session_creation_log_pkey PRIMARY KEY (log_id)
 );
+CREATE TABLE public.session_wake_snapshots (
+  snapshot_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  program_id uuid NOT NULL,
+  site_id uuid NOT NULL,
+  session_id uuid NOT NULL,
+  wake_number integer NOT NULL CHECK (wake_number > 0),
+  wake_round_start timestamp with time zone NOT NULL,
+  wake_round_end timestamp with time zone NOT NULL,
+  site_state jsonb NOT NULL DEFAULT '{}'::jsonb,
+  active_devices_count integer DEFAULT 0,
+  new_images_this_round integer DEFAULT 0,
+  new_alerts_this_round integer DEFAULT 0,
+  avg_temperature numeric,
+  avg_humidity numeric,
+  avg_mgi numeric,
+  max_mgi numeric,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT session_wake_snapshots_pkey PRIMARY KEY (snapshot_id),
+  CONSTRAINT session_wake_snapshots_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
+  CONSTRAINT session_wake_snapshots_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
+  CONSTRAINT session_wake_snapshots_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
+  CONSTRAINT session_wake_snapshots_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.site_device_sessions(session_id)
+);
 CREATE TABLE public.site_device_sessions (
   session_id uuid NOT NULL DEFAULT gen_random_uuid(),
   company_id uuid NOT NULL,
@@ -724,25 +748,6 @@ CREATE TABLE public.site_program_assignments (
   CONSTRAINT site_program_assignments_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
   CONSTRAINT site_program_assignments_assigned_by_user_id_fkey FOREIGN KEY (assigned_by_user_id) REFERENCES public.users(id),
   CONSTRAINT site_program_assignments_unassigned_by_user_id_fkey FOREIGN KEY (unassigned_by_user_id) REFERENCES public.users(id)
-);
-CREATE TABLE public.site_snapshots (
-  snapshot_id uuid NOT NULL DEFAULT gen_random_uuid(),
-  company_id uuid NOT NULL,
-  program_id uuid NOT NULL,
-  site_id uuid NOT NULL,
-  site_code bigint NOT NULL,
-  phase_descriptor character varying,
-  snapshot_date date NOT NULL,
-  placements_snapshot jsonb DEFAULT '{}'::jsonb,
-  airflow_snapshot jsonb DEFAULT '{}'::jsonb,
-  created_at timestamp with time zone DEFAULT now(),
-  day_number integer NOT NULL DEFAULT 1,
-  snapshot_sequence integer DEFAULT 1,
-  risk_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
-  CONSTRAINT site_snapshots_pkey PRIMARY KEY (snapshot_id),
-  CONSTRAINT site_snapshots_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
-  CONSTRAINT site_snapshots_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
-  CONSTRAINT site_snapshots_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id)
 );
 CREATE TABLE public.sites (
   site_id uuid NOT NULL DEFAULT gen_random_uuid(),
