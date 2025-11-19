@@ -100,19 +100,22 @@ const ActiveAlertsPanel = () => {
         .from('device_alerts')
         .update({
           resolved_at: new Date().toISOString(),
-          resolution_notes: 'Acknowledged by user',
+          resolution_note: 'Acknowledged by user',
         })
         .eq('alert_id', alertId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Acknowledge error:', error);
+        throw error;
+      }
 
       toast.success('Alert acknowledged');
 
-      // Reload alerts
+      // Remove from list immediately
       setAlerts(alerts.filter(a => a.alert_id !== alertId));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error acknowledging alert:', error);
-      toast.error('Failed to acknowledge alert');
+      toast.error(error.message || 'Failed to acknowledge alert');
     }
   };
 
@@ -214,7 +217,10 @@ const ActiveAlertsPanel = () => {
           <div className="flex items-center gap-2">
             {isAdmin && (
               <button
-                onClick={() => navigate('/lab/admin/alert-thresholds')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/lab/admin/company-alert-thresholds');
+                }}
                 className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 px-2 py-1 hover:bg-gray-100 rounded transition-colors"
                 title="Configure Alert Thresholds"
               >

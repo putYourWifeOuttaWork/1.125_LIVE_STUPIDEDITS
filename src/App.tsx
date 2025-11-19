@@ -41,6 +41,8 @@ const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSession
 const SessionSnapshotViewer = lazy(() => import('./pages/lab/SessionSnapshotViewer'));
 const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
 const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
+const CompanyAlertThresholds = lazy(() => import('./pages/lab/admin/CompanyAlertThresholds'));
+const CompanyAlertPrefs = lazy(() => import('./pages/lab/admin/CompanyAlertPrefs'));
 
 function App() {
   const navigate = useNavigate();
@@ -382,6 +384,20 @@ function App() {
               <Route path="/lab/site-sessions" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <SiteSessions />
+                </Suspense>
+              } />
+              <Route path="/lab/admin/company-alert-thresholds" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <RequireCompanyAdmin>
+                    <CompanyAlertThresholds />
+                  </RequireCompanyAdmin>
+                </Suspense>
+              } />
+              <Route path="/lab/admin/company-alert-prefs" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <RequireCompanyAdmin>
+                    <CompanyAlertPrefs />
+                  </RequireCompanyAdmin>
                 </Suspense>
               } />
             </Route>
