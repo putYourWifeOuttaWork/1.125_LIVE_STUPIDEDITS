@@ -93,12 +93,13 @@ BEGIN
   LEFT JOIN sites s ON s.site_id = d.site_id
   WHERE d.company_id = v_site_company_id
     AND (
-      d.site_id IS NULL OR 
+      d.site_id IS NULL OR
       d.site_id = p_site_id OR
       (d.x_position IS NULL AND d.y_position IS NULL)  -- Awaiting mapping
     )
     AND d.device_type IN ('physical', 'virtual')
-    AND d.provisioning_status IN ('approved', 'active', 'pending_approval')
+    AND d.provisioning_status IN ('approved', 'active', 'pending_approval', 'pending_mapping', 'mapped')
+    AND d.is_active = true  -- Only show active devices
   ORDER BY 
     d.site_id IS NULL DESC,
     (d.x_position IS NULL AND d.y_position IS NULL) DESC,
