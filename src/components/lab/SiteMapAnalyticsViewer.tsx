@@ -31,6 +31,8 @@ interface SiteMapAnalyticsViewerProps {
   className?: string;
   showControls?: boolean;
   height?: number;
+  zoneMode?: ZoneMode;
+  onZoneModeChange?: (mode: ZoneMode) => void;
 }
 
 export default function SiteMapAnalyticsViewer({
@@ -42,14 +44,19 @@ export default function SiteMapAnalyticsViewer({
   className = '',
   showControls = true,
   height,
+  zoneMode: externalZoneMode,
+  onZoneModeChange,
 }: SiteMapAnalyticsViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredDevice, setHoveredDevice] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<DevicePosition | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: height || 400 });
-  const [zoneMode, setZoneMode] = useState<ZoneMode>('temperature');
+  const [internalZoneMode, setInternalZoneMode] = useState<ZoneMode>('temperature');
   const navigate = useNavigate();
+
+  const zoneMode = externalZoneMode !== undefined ? externalZoneMode : internalZoneMode;
+  const setZoneMode = onZoneModeChange || setInternalZoneMode;
 
   useEffect(() => {
     if (!containerRef.current) return;

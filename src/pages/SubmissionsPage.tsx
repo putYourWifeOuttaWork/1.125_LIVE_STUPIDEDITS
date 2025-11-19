@@ -24,6 +24,7 @@ import SubmissionCardSkeleton from '../components/submissions/SubmissionCardSkel
 import { supabase } from '../lib/supabaseClient';
 import { debounce } from '../utils/helpers';
 import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
+import ZoneAnalytics from '../components/lab/ZoneAnalytics';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 
 const SubmissionsPage = () => {
@@ -52,6 +53,7 @@ const SubmissionsPage = () => {
   const queryClient = useQueryClient();
   const [siteDevices, setSiteDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
+  const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
   
   // Use the useSubmissions hook to get access to submissions and related functions
   const {
@@ -104,7 +106,7 @@ const SubmissionsPage = () => {
               .from('device_telemetry')
               .select('temperature, humidity')
               .eq('device_id', device.device_id)
-              .order('recorded_at', { ascending: false })
+              .order('captured_at', { ascending: false })
               .limit(1)
               .maybeSingle();
 
@@ -427,23 +429,23 @@ const SubmissionsPage = () => {
         </div>
       </div>
 
-      {/* Site Map */}
+      {/* Site Map with Zones */}
       {selectedSite && selectedSite.length && selectedSite.width && siteDevices.length > 0 && (
-        <Card className="mb-4 md:mb-6">
-          <CardHeader>
-            <h2 className="text-lg font-semibold">Site Map</h2>
-          </CardHeader>
-          <CardContent>
-            <SiteMapAnalyticsViewer
-              siteLength={selectedSite.length}
-              siteWidth={selectedSite.width}
-              siteName={selectedSite.name}
-              devices={siteDevices}
-              showControls={false}
-              height={300}
-            />
-          </CardContent>
-        </Card>
+        <div className="mb-4 md:mb-6">
+          <SiteMapAnalyticsViewer
+            siteLength={selectedSite.length}
+            siteWidth={selectedSite.width}
+            siteName={selectedSite.name}
+            devices={siteDevices}
+            showControls={true}
+            height={300}
+            zoneMode={zoneMode}
+            onZoneModeChange={setZoneMode}
+          />
+          {zoneMode !== 'none' && siteDevices.length >= 2 && (
+            <ZoneAnalytics devices={siteDevices} zoneMode={zoneMode} />
+          )}
+        </div>
       )}
 
       {hasAnyData && (
