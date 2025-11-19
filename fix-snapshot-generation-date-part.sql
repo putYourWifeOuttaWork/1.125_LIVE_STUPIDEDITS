@@ -148,14 +148,13 @@ BEGIN
               'alert_id', alert_id,
               'alert_type', alert_type,
               'severity', severity,
-              'threshold_value', threshold_value,
-              'actual_value', actual_value,
+              'message', message,
               'triggered_at', triggered_at
             )
           )
           FROM device_alerts da
           WHERE da.device_id = d.device_id
-            AND da.is_acknowledged = false
+            AND da.resolved_at IS NULL
         ),
         'display', jsonb_build_object(
           'color', CASE
