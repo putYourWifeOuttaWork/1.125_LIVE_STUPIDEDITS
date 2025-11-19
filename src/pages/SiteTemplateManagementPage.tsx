@@ -786,8 +786,9 @@ const SiteTemplateManagementPage = () => {
                 siteId={siteId!}
                 siteLength={selectedSite.length || 0}
                 siteWidth={selectedSite.width || 0}
-                onDevicesAssigned={() => {
-                  // Refresh or show success message
+                onDevicesAssigned={(assignments) => {
+                  toast.success(`Successfully assigned ${assignments.length} ${assignments.length === 1 ? 'device' : 'devices'} to site`);
+                  setShowDeviceMapping(false);
                 }}
               />
             </CardContent>
