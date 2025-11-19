@@ -72,15 +72,23 @@ BEGIN
     d.device_mac,
     d.device_type,
     d.provisioning_status,
-    d.device_status,
-    d.battery_level,
-    d.last_seen,
+    -- Compute device_status based on available data
+    CASE
+      WHEN NOT d.is_active THEN 'inactive'
+      WHEN d.provisioning_status = 'system' THEN 'system'
+      WHEN d.site_id IS NULL AND d.program_id IS NULL THEN 'unassigned'
+      WHEN d.site_id IS NOT NULL AND (d.x_position IS NULL OR d.y_position IS NULL) THEN 'awaiting_mapping'
+      WHEN d.site_id IS NOT NULL AND d.program_id IS NOT NULL THEN 'active'
+      ELSE 'available'
+    END::TEXT as device_status,
+    CAST(COALESCE(d.battery_health_percent, 0) AS INTEGER) as battery_level,
+    d.last_seen_at as last_seen,
     d.firmware_version,
     (d.site_id IS NOT NULL) as is_currently_assigned,
     d.site_id as current_site_id,
     s.name as current_site_name,
-    d.x_position,
-    d.y_position
+    CAST(d.x_position AS INTEGER) as x_position,
+    CAST(d.y_position AS INTEGER) as y_position
   FROM devices d
   LEFT JOIN sites s ON s.site_id = d.site_id
   WHERE d.company_id = v_site_company_id
