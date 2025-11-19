@@ -1,5 +1,12 @@
 # Device Code Auto-Provision Fix
 
+## Context: Device Testing for Site Mapping
+
+This fix is part of testing the device and site mapping functionality. We're validating that:
+- **Existing devices** (matching MAC) can send data and receive proper updates ✅
+- **New devices** (unknown MAC) are auto-provisioned correctly ✅
+- The site mapping UI can assign devices to locations on the site map
+
 ## Problem
 
 When devices with new MAC addresses send MQTT status messages, the auto-provisioning system attempts to create a new device record. However, the `device_code` column was added to the schema without a default value or trigger to generate unique codes automatically.
@@ -96,9 +103,47 @@ Expected outcome:
 - Gets assigned `DEVICE-ESP32S3-001` (or next available)
 - No duplicate key error
 
+## Behavior Summary
+
+### For Existing Devices (Matching MAC Address)
+When a device with a **known MAC** sends messages:
+
+**Status Messages (`/status`):**
+- ✅ **Allowed** - Updates device record
+- Updates `last_seen_at`, `last_wake_at`, battery, wifi
+- Calculates `next_wake_at` based on schedule
+- Creates telemetry record (if battery/wifi data present)
+
+**Image/Data Messages (`/data`):**
+- ✅ **Allowed** - Processes images and creates submissions
+- Uses `fn_resolve_device_lineage` to get site/program/company
+- Requires complete lineage (device must be mapped to site/program)
+- Creates device_images, updates session counters, stores chunks
+
+### For New Devices (Unknown MAC Address)
+When a device with an **unknown MAC** sends messages:
+
+**Status Messages (`/status`):**
+- ✅ **Auto-provisions** new device record
+- Generates unique `device_code` (e.g., `DEVICE-ESP32S3-001`)
+- Sets status to `pending_mapping`
+- Device can wake and report but can't create submissions yet
+
+**Image/Data Messages (`/data`):**
+- ❌ **Rejected** - Requires complete lineage
+- Device must be mapped to a site/program first
+- Admin needs to assign via UI before images are accepted
+
+### Testing Flow
+1. Send status from new MAC → Auto-provisions device
+2. Check Devices page → See new device with `pending_mapping`
+3. Assign device to site/program via mapping UI
+4. Send image data → Now accepted and creates submissions
+
 ## Notes
 
 - The fix maintains backward compatibility
 - Existing devices are not affected
 - The logic handles any hardware version format
 - Gaps in numbering are filled (prefers lower numbers)
+- **Security:** New devices can't pollute data until explicitly mapped by admin
