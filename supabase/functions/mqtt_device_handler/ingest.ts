@@ -52,39 +52,14 @@ export async function handleHelloStatus(
       // Auto-provision new device (per PDF Section 7)
       console.log('[Ingest] Auto-provisioning new device:', payload.device_id);
 
-      // Generate unique device_code by finding the next available number
-      const hardwareType = payload.hardware_version || 'ESP32-S3';
-      const codePrefix = `DEVICE-${hardwareType.replace(/[^A-Z0-9]/g, '')}-`;
-
-      // Query last device code with this prefix
-      const { data: lastDevice } = await supabase
-        .from('devices')
-        .select('device_code')
-        .like('device_code', `${codePrefix}%`)
-        .order('device_code', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      let nextNumber = 1;
-      if (lastDevice && lastDevice.device_code) {
-        const match = lastDevice.device_code.match(/-(\d+)$/);
-        if (match) {
-          nextNumber = parseInt(match[1], 10) + 1;
-        }
-      }
-
-      const deviceCode = `${codePrefix}${String(nextNumber).padStart(3, '0')}`;
-      console.log('[Ingest] Generated device_code:', deviceCode);
-
       const { data: newDevice, error: insertError } = await supabase
         .from('devices')
         .insert({
           device_mac: payload.device_mac || payload.device_id,
-          device_code: deviceCode, // CRITICAL: Must be unique
           mqtt_client_id: payload.device_id, // Store firmware-reported ID
           device_name: `Device ${payload.device_id}`,
           firmware_version: payload.firmware_version || 'unknown',
-          hardware_version: hardwareType,
+          hardware_version: payload.hardware_version || 'ESP32-S3',
           battery_voltage: payload.battery_voltage, // Trigger auto-calculates health
           wifi_rssi: payload.wifi_rssi,
           wifi_ssid: null, // Will be set during mapping
@@ -104,7 +79,7 @@ export async function handleHelloStatus(
         return;
       }
 
-      console.log('[Ingest] Device auto-provisioned:', newDevice.device_id, 'Code:', newDevice.device_code);
+      console.log('[Ingest] Device auto-provisioned:', newDevice.device_id);
       return; // Done with auto-provisioning
     } else {
       // Update existing device
