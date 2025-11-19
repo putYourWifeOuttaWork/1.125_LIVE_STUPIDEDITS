@@ -3,6 +3,7 @@ import { Camera, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import useCompanies from '../../hooks/useCompanies';
 import DevicePoolSelector, { AvailableDevice } from './DevicePoolSelector';
 import SiteMapEditor from './SiteMapEditor';
 import Button from '../common/Button';
@@ -53,9 +54,9 @@ export default function DeviceSetupStep({
   const [thresholdsDevice, setThresholdsDevice] = useState<AvailableDevice | null>(null);
   const [reassignDevice, setReassignDevice] = useState<AvailableDevice | null>(null);
   const [unassignDevice, setUnassignDevice] = useState<AvailableDevice | null>(null);
-  const [deactivateDevice, setDeactivateDevice] = useState<AvailableDevice | null>(null);
   const [deleteDevice, setDeleteDevice] = useState<AvailableDevice | null>(null);
   const navigate = useNavigate();
+  const { userCompany } = useCompanies();
 
   useEffect(() => {
     loadAvailableDevices();
@@ -249,26 +250,6 @@ export default function DeviceSetupStep({
     return availableDevices.find(d => d.device_id === contextMenu.deviceId) || null;
   };
 
-  const handleDeactivateDevice = async () => {
-    if (!deactivateDevice) return;
-
-    try {
-      const { error } = await supabase
-        .from('devices')
-        .update({ status: 'deactivated' })
-        .eq('device_id', deactivateDevice.device_id);
-
-      if (error) throw error;
-
-      toast.success('Device deactivated successfully');
-      loadAvailableDevices();
-      setDeactivateDevice(null);
-    } catch (error: any) {
-      console.error('Error deactivating device:', error);
-      toast.error('Failed to deactivate device');
-    }
-  };
-
   const handleDeleteDevice = async () => {
     if (!deleteDevice) return;
 
@@ -414,7 +395,7 @@ export default function DeviceSetupStep({
           }}
           onReassign={() => setReassignDevice(getContextMenuDevice())}
           onUnassign={() => setUnassignDevice(getContextMenuDevice())}
-          onDeactivate={() => setDeactivateDevice(getContextMenuDevice())}
+          onDeactivate={() => setUnassignDevice(getContextMenuDevice())}
           onDelete={() => setDeleteDevice(getContextMenuDevice())}
           onClose={() => setContextMenu(null)}
         />
@@ -441,16 +422,37 @@ export default function DeviceSetupStep({
         <DeviceSettingsModal
           isOpen={true}
           onClose={() => setSettingsDevice(null)}
-          deviceId={settingsDevice.device_id}
+          device={{
+            device_id: settingsDevice.device_id,
+            device_code: settingsDevice.device_code,
+            device_name: settingsDevice.device_name,
+            device_mac: settingsDevice.device_mac,
+            device_type: settingsDevice.device_type,
+            provisioning_status: settingsDevice.provisioning_status,
+            status: settingsDevice.status,
+            battery_level: settingsDevice.battery_level,
+            last_seen: settingsDevice.last_seen,
+            firmware_version: settingsDevice.firmware_version,
+            wake_schedule_cron: null,
+            notes: null,
+            x_position: settingsDevice.x_position,
+            y_position: settingsDevice.y_position,
+          } as any}
+          onSuccess={() => {
+            setSettingsDevice(null);
+            loadAvailableDevices();
+          }}
         />
       )}
 
       {/* Alert Thresholds Modal */}
-      {thresholdsDevice && (
+      {thresholdsDevice && userCompany && (
         <DeviceAlertThresholdsModal
           isOpen={true}
           onClose={() => setThresholdsDevice(null)}
           deviceId={thresholdsDevice.device_id}
+          deviceCode={thresholdsDevice.device_code}
+          companyId={userCompany.company_id}
         />
       )}
 
@@ -477,18 +479,6 @@ export default function DeviceSetupStep({
             await handleDeviceRemove(unassignDevice.device_id);
             setUnassignDevice(null);
           }}
-        />
-      )}
-
-      {/* Deactivate Confirmation Modal */}
-      {deactivateDevice && (
-        <DeleteConfirmModal
-          isOpen={true}
-          onClose={() => setDeactivateDevice(null)}
-          onConfirm={handleDeactivateDevice}
-          title="Deactivate Device"
-          message={`Are you sure you want to deactivate ${deactivateDevice.device_name}? The device will no longer collect data.`}
-          confirmText="Deactivate"
         />
       )}
 

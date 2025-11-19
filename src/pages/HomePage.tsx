@@ -117,8 +117,7 @@ const HomePage = () => {
             y_position,
             battery_level,
             status,
-            last_seen,
-            latest_telemetry:device_telemetry(temperature, humidity)
+            last_seen
           `)
           .eq('site_id', selectedSiteId)
           .not('x_position', 'is', null)
@@ -127,18 +126,31 @@ const HomePage = () => {
 
         if (error) throw error;
 
-        const devicesWithTelemetry = (data || []).map(device => ({
-          device_id: device.device_id,
-          device_code: device.device_code,
-          device_name: device.device_name,
-          x: device.x_position,
-          y: device.y_position,
-          battery_level: device.battery_level,
-          status: device.status,
-          last_seen: device.last_seen,
-          temperature: Array.isArray(device.latest_telemetry) && device.latest_telemetry[0]?.temperature || null,
-          humidity: Array.isArray(device.latest_telemetry) && device.latest_telemetry[0]?.humidity || null,
-        }));
+        // Fetch latest telemetry for each device
+        const devicesWithTelemetry = await Promise.all(
+          (data || []).map(async (device) => {
+            const { data: telemetryData } = await supabase
+              .from('device_telemetry')
+              .select('temperature, humidity')
+              .eq('device_id', device.device_id)
+              .order('recorded_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            return {
+              device_id: device.device_id,
+              device_code: device.device_code,
+              device_name: device.device_name,
+              x: device.x_position,
+              y: device.y_position,
+              battery_level: device.battery_level,
+              status: device.status,
+              last_seen: device.last_seen,
+              temperature: telemetryData?.temperature || null,
+              humidity: telemetryData?.humidity || null,
+            };
+          })
+        );
 
         setSiteDevices(devicesWithTelemetry);
       } catch (error: any) {
