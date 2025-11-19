@@ -22,13 +22,35 @@ function getImageKey(deviceId, imageName) {
 }
 
 async function generateDeviceCode(hardwareVersion = 'ESP32-S3') {
-  const prefix = hardwareVersion.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-  const { count } = await supabase
+  const hwNormalized = hardwareVersion.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const prefix = `DEVICE-${hwNormalized}-`;
+
+  // Query existing device codes with this prefix
+  const { data: existingDevices } = await supabase
     .from('devices')
-    .select('device_id', { count: 'exact', head: true })
-    .ilike('device_code', `DEVICE-${prefix}-%`);
-  const sequence = String((count || 0) + 1).padStart(3, '0');
-  return `DEVICE-${prefix}-${sequence}`;
+    .select('device_code')
+    .like('device_code', `${prefix}%`)
+    .order('device_code');
+
+  // Extract numbers from existing codes
+  const numbers = [];
+  existingDevices?.forEach((d) => {
+    if (d.device_code) {
+      const match = d.device_code.match(new RegExp(`${prefix.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}(\\d+)`));
+      if (match) {
+        numbers.push(parseInt(match[1]));
+      }
+    }
+  });
+
+  // Find the first available number (starting from 1)
+  let nextNum = 1;
+  while (numbers.includes(nextNum)) {
+    nextNum++;
+  }
+
+  // Return zero-padded code
+  return `${prefix}${String(nextNum).padStart(3, '0')}`;
 }
 
 async function autoProvisionDevice(deviceMac) {

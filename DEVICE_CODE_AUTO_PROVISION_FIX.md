@@ -59,9 +59,13 @@ The next device would get: `DEVICE-ESP32S3-001` (fills the gap)
 
 ## Files Modified
 
-1. `/supabase/functions/mqtt_device_handler/ingest.ts`
+1. `/supabase/functions/mqtt_device_handler/ingest.ts` (Edge Function)
    - Added `generateDeviceCode()` function
    - Updated auto-provision logic to generate and set `device_code`
+
+2. `/mqtt-service/index.js` (Local MQTT Service)
+   - Fixed `generateDeviceCode()` function to find first available number
+   - Previously just counted devices and added 1 (caused duplicates)
 
 ## Testing
 
