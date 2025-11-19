@@ -513,7 +513,11 @@ const HomePage = () => {
             </div>
           </CardHeader>
           <CardContent>
-            {siteDevices.length > 0 && selectedSite.length && selectedSite.width ? (
+            {devicesLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : siteDevices.length > 0 && selectedSite.length && selectedSite.width ? (
               <SiteMapAnalyticsViewer
                 siteLength={selectedSite.length}
                 siteWidth={selectedSite.width}
@@ -528,7 +532,12 @@ const HomePage = () => {
                 <MapPin className="mx-auto h-16 w-16 text-gray-300" />
                 <p className="text-gray-600 mt-4 font-medium">No Device Positions Set</p>
                 <p className="text-sm text-gray-500 mt-2">
-                  Devices need to be placed on the site map before visualization is available
+                  {!selectedSite.length || !selectedSite.width
+                    ? `Site dimensions not configured (Length: ${selectedSite.length || 'not set'}, Width: ${selectedSite.width || 'not set'})`
+                    : siteDevices.length === 0
+                    ? 'No devices with positions found for this site'
+                    : 'Devices need to be placed on the site map before visualization is available'
+                  }
                 </p>
                 <Button
                   variant="primary"
