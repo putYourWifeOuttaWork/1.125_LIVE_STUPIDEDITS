@@ -403,13 +403,14 @@ export async function handleTelemetryOnly(
   client: MqttClient,
   payload: TelemetryOnlyMessage
 ): Promise<void> {
-  console.log('[Ingest] Telemetry-only from device:', payload.device_id, 'temp:', payload.temperature, 'rh:', payload.humidity);
+  const deviceMac = (payload as any).device_mac || payload.device_id;
+  console.log('[Ingest] Telemetry-only from device:', deviceMac, 'temp:', payload.temperature, 'rh:', payload.humidity);
 
   try {
     // Resolve device MAC to get device_id and company_id
     const { data: lineageData, error: lineageError } = await supabase.rpc(
       'fn_resolve_device_lineage',
-      { p_device_mac: payload.device_id }
+      { p_device_mac: deviceMac }
     );
 
     if (lineageError) {
@@ -441,8 +442,9 @@ export async function handleTelemetryOnly(
 
     // Update device properties if battery or wifi data present
     if (payload.battery_voltage !== undefined || payload.wifi_rssi !== undefined) {
+      const capturedAt = payload.captured_at || (payload as any).capture_timestamp || new Date().toISOString();
       const deviceUpdates: any = {
-        last_seen_at: payload.captured_at,
+        last_seen_at: capturedAt,
         last_updated_by_user_id: SYSTEM_USER_UUID, // System update
       };
 
@@ -469,12 +471,13 @@ export async function handleTelemetryOnly(
 
     // Insert into device_telemetry table
     // DOES NOT create device_images or touch session counters
+    const capturedAt = payload.captured_at || (payload as any).capture_timestamp || new Date().toISOString();
     const { error: insertError } = await supabase
       .from('device_telemetry')
       .insert({
         device_id: lineageData.device_id,
         company_id: lineageData.company_id,
-        captured_at: payload.captured_at,
+        captured_at: capturedAt,
         temperature: payload.temperature,
         humidity: payload.humidity,
         pressure: payload.pressure,

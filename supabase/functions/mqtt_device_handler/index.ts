@@ -28,13 +28,12 @@ let configGlobal: any = null;
  */
 async function handleMqttMessage(
   topic: string,
-  message: Buffer,
+  payload: any,
   client: any,
   supabase: any,
   config: any
 ): Promise<void> {
   try {
-    const payload = JSON.parse(message.toString());
     const deviceMac = topic.split('/')[1];
 
     console.log(`[MQTT] ${topic.includes('/status') ? 'HELLO' : 'DATA'} from ${deviceMac}`);
@@ -143,7 +142,7 @@ Deno.serve(async (req: Request) => {
       console.log(`[HTTP] Received ${topic}`);
 
       // Process the message (no MQTT client needed)
-      await handleMqttMessage(topic, Buffer.from(JSON.stringify(payload)), null as any, supabaseClient, configGlobal);
+      await handleMqttMessage(topic, payload, null as any, supabaseClient, configGlobal);
 
       return new Response(
         JSON.stringify({
