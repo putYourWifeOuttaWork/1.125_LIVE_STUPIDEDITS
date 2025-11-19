@@ -53,7 +53,7 @@ BEGIN
     'program_id', p.program_id,
     'program_name', p.name,
     'company_id', c.company_id,
-    'company_name', c.company_name,
+    'company_name', c.name,
     'timezone', COALESCE(s.timezone, 'UTC'),
     'wake_schedule_cron', d.wake_schedule_cron,
     'is_active', d.is_active,
