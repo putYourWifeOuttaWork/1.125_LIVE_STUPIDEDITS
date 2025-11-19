@@ -244,96 +244,98 @@ const ActiveAlertsPanel = () => {
             {alerts.map((alert) => (
               <div
                 key={alert.alert_id}
-                className={`border rounded-lg p-3 ${getSeverityColor(alert.severity)} ${
+                className={`border rounded-lg ${getSeverityColor(alert.severity)} ${
                   alert.resolved_at ? 'opacity-60' : ''
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2 flex-1">
-                    <div className="mt-0.5">
+                {/* Compact Header */}
+                <div className="flex items-center justify-between gap-2 p-2.5">
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    <div className="mt-0.5 flex-shrink-0">
                       {getSeverityIcon(alert.severity)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      {/* Category & Severity */}
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-xs font-medium">
-                          {getCategoryLabel(alert.alert_category)}
-                        </span>
-                        <span className="text-xs uppercase font-bold">
-                          {alert.severity}
-                        </span>
+                      <div className="text-xs font-semibold mb-0.5 uppercase">
+                        {getCategoryLabel(alert.alert_category)} {alert.severity}
                       </div>
-
-                      {/* Message */}
-                      <p className="text-sm font-medium mb-1.5">{alert.message}</p>
-
-                      {/* Routing Context */}
-                      <div className="text-xs space-y-0.5">
-                        {alert.metadata?.device_code && (
-                          <div>
-                            <span className="font-medium">Device:</span> {alert.metadata.device_code}
-                          </div>
-                        )}
-                        {alert.zone_label && (
-                          <div>
-                            <span className="font-medium">Zone:</span> {alert.zone_label}
-                          </div>
-                        )}
-                        {alert.site_name && (
-                          <div>
-                            <span className="font-medium">Site:</span> {alert.site_name}
-                          </div>
-                        )}
-                        {alert.program_name && (
-                          <div>
-                            <span className="font-medium">Program:</span> {alert.program_name}
-                          </div>
-                        )}
-                        <div className="text-gray-600">
-                          {format(new Date(alert.triggered_at), 'MMM d, h:mm a')}
-                        </div>
+                      <p className="text-sm font-medium leading-snug">
+                        {alert.message}
+                      </p>
+                      <div className="text-xs text-gray-700 mt-0.5">
+                        Site: {alert.site_name || 'Unknown'} - Device: {alert.metadata?.device_code || 'Unknown'}
                       </div>
-
-                      {/* Threshold Context */}
-                      {alert.threshold_context && Object.keys(alert.threshold_context).length > 0 && (
-                        <details className="mt-1.5">
-                          <summary className="text-xs font-medium cursor-pointer hover:text-gray-900">
-                            View Details
-                          </summary>
-                          <div className="mt-1 text-xs space-y-0.5 pl-2 border-l-2 border-gray-300">
-                            {Object.entries(alert.threshold_context).map(([key, value]) => (
-                              <div key={key}>
-                                <span className="font-medium">{key}:</span> {JSON.stringify(value)}
-                              </div>
-                            ))}
-                          </div>
-                        </details>
-                      )}
                     </div>
                   </div>
 
                   {/* Actions */}
-                  {!alert.resolved_at && (
-                    <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {!alert.resolved_at && (
                       <button
                         onClick={() => acknowledgeAlert(alert.alert_id)}
-                        className="p-1.5 border border-gray-300 rounded hover:bg-white transition-colors"
+                        className="p-1.5 border border-gray-400 rounded hover:bg-white transition-colors"
                         title="Acknowledge"
                       >
                         <CheckCircle className="w-3.5 h-3.5" />
                       </button>
-                      {alert.device_id && (
-                        <a
-                          href={`/devices/${alert.device_id}`}
-                          className="p-1.5 border border-gray-300 rounded hover:bg-white transition-colors"
-                          title="View Device"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      )}
-                    </div>
-                  )}
+                    )}
+                    {alert.device_id && (
+                      <a
+                        href={`/devices/${alert.device_id}`}
+                        className="p-1.5 border border-gray-400 rounded hover:bg-white transition-colors"
+                        title="View Device"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
                 </div>
+
+                {/* Collapsible Details */}
+                <details className="border-t border-gray-300">
+                  <summary className="px-2.5 py-1.5 text-xs font-medium cursor-pointer hover:bg-white/50 transition-colors">
+                    View Details
+                  </summary>
+                  <div className="px-2.5 py-2 bg-white/30 text-xs space-y-1">
+                    {/* Full Context */}
+                    {alert.zone_label && (
+                      <div>
+                        <span className="font-semibold">Zone:</span> {alert.zone_label}
+                      </div>
+                    )}
+                    {alert.device_coords && (
+                      <div>
+                        <span className="font-semibold">Coordinates:</span> {alert.device_coords}
+                      </div>
+                    )}
+                    {alert.program_name && (
+                      <div>
+                        <span className="font-semibold">Program:</span> {alert.program_name}
+                      </div>
+                    )}
+                    {alert.actual_value !== null && alert.threshold_value !== null && (
+                      <div>
+                        <span className="font-semibold">Value:</span> {alert.actual_value} (threshold: {alert.threshold_value})
+                      </div>
+                    )}
+                    <div>
+                      <span className="font-semibold">Triggered:</span> {format(new Date(alert.triggered_at), 'MMM d, yyyy h:mm a')}
+                    </div>
+
+                    {/* Threshold Context */}
+                    {alert.threshold_context && Object.keys(alert.threshold_context).length > 0 && (
+                      <div className="mt-1.5 pt-1.5 border-t border-gray-300">
+                        <div className="font-semibold mb-0.5">Threshold Context:</div>
+                        <div className="space-y-0.5 pl-2">
+                          {Object.entries(alert.threshold_context).map(([key, value]) => (
+                            <div key={key}>
+                              <span className="font-medium">{key}:</span> {JSON.stringify(value)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </details>
               </div>
             ))}
           </div>

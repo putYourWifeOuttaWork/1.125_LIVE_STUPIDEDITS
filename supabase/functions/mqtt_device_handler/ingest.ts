@@ -493,6 +493,32 @@ export async function handleTelemetryOnly(
 
     console.log('[Ingest] Telemetry saved successfully for device:', lineageData.device_name);
 
+    // Check for threshold alerts
+    try {
+      const { data: alerts, error: alertError } = await supabase.rpc(
+        'check_absolute_thresholds',
+        {
+          p_device_id: lineageData.device_id,
+          p_temperature: payload.temperature || null,
+          p_humidity: payload.humidity || null,
+          p_mgi: null,
+          p_measurement_timestamp: capturedAt,
+        }
+      );
+
+      if (alertError) {
+        console.error('[Ingest] Error checking alerts:', alertError);
+      } else if (alerts && alerts.length > 0) {
+        console.log('[Ingest] Alerts triggered:', alerts.length, 'alerts');
+        alerts.forEach((alert: any) => {
+          console.log(`  - ${alert.type} (${alert.severity}): ${alert.message}`);
+        });
+      }
+    } catch (alertErr) {
+      console.error('[Ingest] Exception checking alerts:', alertErr);
+      // Don't fail the whole operation if alert check fails
+    }
+
   } catch (err) {
     console.error('[Ingest] Exception handling telemetry:', err);
 
