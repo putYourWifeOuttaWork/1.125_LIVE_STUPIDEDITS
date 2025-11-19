@@ -97,8 +97,9 @@ const HomePage = () => {
             x_position,
             y_position,
             battery_health_percent,
-            status,
-            last_seen
+            is_active,
+            provisioning_status,
+            last_seen_at
           `)
           .eq('site_id', selectedSiteId)
           .not('x_position', 'is', null)
@@ -130,8 +131,8 @@ const HomePage = () => {
               x: device.x_position,
               y: device.y_position,
               battery_level: device.battery_health_percent,
-              status: device.status,
-              last_seen: device.last_seen,
+              status: device.is_active ? 'active' : 'inactive',
+              last_seen: device.last_seen_at,
               temperature: telemetryData?.temperature || null,
               humidity: telemetryData?.humidity || null,
             };
