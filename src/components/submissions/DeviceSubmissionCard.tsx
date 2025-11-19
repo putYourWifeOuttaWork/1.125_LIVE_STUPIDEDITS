@@ -93,121 +93,112 @@ const DeviceSubmissionCard = ({
       className="hover:shadow-lg transition-all duration-200 cursor-pointer border-l-4 border-l-blue-500"
       onClick={handleViewDetails}
     >
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+      <div className="p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-2 flex-1 min-w-0">
+            <Wifi className="h-4 w-4 text-blue-600 flex-shrink-0" />
+            <h3 className="text-sm font-semibold text-gray-900 truncate">Device Submission</h3>
+            <span className={`text-xs px-1.5 py-0.5 rounded border flex items-center space-x-1 ${getStatusColor(submission.status)}`}>
+              {getStatusIcon(submission.status)}
+              <span className="font-medium text-xs">{submission.status === 'in_progress' ? 'IN_PROGRESS' : submission.status.toUpperCase()}</span>
+            </span>
+          </div>
+          <div className="flex items-center text-xs text-gray-600 space-x-2 flex-shrink-0">
+            <Calendar className="h-3 w-3" />
+            <span>{format(new Date(submission.session_date), 'MMM dd, yyyy')}</span>
+            <Clock className="h-3 w-3 ml-2" />
+            <span>{format(new Date(submission.session_start_time), 'HH:mm')} - {format(new Date(submission.session_end_time), 'HH:mm')}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between space-x-4">
+          {/* Compact Progress Bar */}
+          <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-2 mb-1">
-              <Wifi className="h-5 w-5 text-blue-600" />
-              <h3 className="text-lg font-semibold text-gray-900">
-                Device Submission
-              </h3>
-              <span className={`text-xs px-2 py-1 rounded-full border flex items-center space-x-1 ${getStatusColor(submission.status)}`}>
-                {getStatusIcon(submission.status)}
-                <span className="font-medium">{submission.status.toUpperCase()}</span>
-              </span>
-            </div>
-            <div className="flex items-center text-sm text-gray-600 space-x-3">
-              <div className="flex items-center">
-                <Calendar className="h-4 w-4 mr-1" />
-                {format(new Date(submission.session_date), 'MMM dd, yyyy')}
+              <span className="text-xs text-gray-600">Completion</span>
+              <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                <div
+                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${completionPercentage}%` }}
+                />
               </div>
-              <div className="flex items-center">
-                <Clock className="h-4 w-4 mr-1" />
-                {format(new Date(submission.session_start_time), 'HH:mm')} - {format(new Date(submission.session_end_time), 'HH:mm')}
+              <span className="text-xs font-bold text-blue-600 w-8 text-right">{completionPercentage}%</span>
+            </div>
+          </div>
+
+          {/* Compact Stats */}
+          <div className="flex items-center space-x-3">
+            <div className="text-center">
+              <div className="flex items-center space-x-1">
+                <Activity className="h-3 w-3 text-blue-500" />
+                <span className="text-sm font-bold text-blue-600">{submission.expected_wake_count}</span>
               </div>
+              <div className="text-xs text-gray-500">Expected</div>
+            </div>
+
+            <div className="text-center">
+              <div className="flex items-center space-x-1">
+                <Wifi className="h-3 w-3 text-green-500" />
+                <span className="text-sm font-bold text-green-600">{submission.completed_wake_count}</span>
+              </div>
+              <div className="text-xs text-gray-500">Completed</div>
+            </div>
+
+            <div className="text-center">
+              <div className="flex items-center space-x-1">
+                <WifiOff className="h-3 w-3 text-red-500" />
+                <span className="text-sm font-bold text-red-600">{submission.failed_wake_count}</span>
+              </div>
+              <div className="text-xs text-gray-500">Failed</div>
+            </div>
+
+            <div className="text-center">
+              <div className="flex items-center space-x-1">
+                <AlertCircle className="h-3 w-3 text-yellow-500" />
+                <span className="text-sm font-bold text-yellow-600">{submission.extra_wake_count}</span>
+              </div>
+              <div className="text-xs text-gray-500">Extra</div>
             </div>
           </div>
-        </div>
-      </CardHeader>
 
-      <CardContent className="py-3">
-        {/* Completion Progress */}
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Completion</span>
-            <span className="text-sm font-bold text-blue-600">{completionPercentage}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <div
-              className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-              style={{ width: `${completionPercentage}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Wake Stats */}
-        <div className="grid grid-cols-4 gap-3 text-center">
-          <div className="bg-gray-50 rounded-lg p-2">
-            <div className="flex justify-center mb-1">
-              <Activity className="h-4 w-4 text-blue-500" />
-            </div>
-            <div className="text-lg font-bold text-blue-600">{submission.expected_wake_count}</div>
-            <div className="text-xs text-gray-600">Expected</div>
-          </div>
-
-          <div className="bg-green-50 rounded-lg p-2">
-            <div className="flex justify-center mb-1">
-              <Wifi className="h-4 w-4 text-green-500" />
-            </div>
-            <div className="text-lg font-bold text-green-600">{submission.completed_wake_count}</div>
-            <div className="text-xs text-gray-600">Completed</div>
-          </div>
-
-          <div className="bg-red-50 rounded-lg p-2">
-            <div className="flex justify-center mb-1">
-              <WifiOff className="h-4 w-4 text-red-500" />
-            </div>
-            <div className="text-lg font-bold text-red-600">{submission.failed_wake_count}</div>
-            <div className="text-xs text-gray-600">Failed</div>
-          </div>
-
-          <div className="bg-yellow-50 rounded-lg p-2">
-            <div className="flex justify-center mb-1">
-              <AlertCircle className="h-4 w-4 text-yellow-500" />
-            </div>
-            <div className="text-lg font-bold text-yellow-600">{submission.extra_wake_count}</div>
-            <div className="text-xs text-gray-600">Extra</div>
-          </div>
-        </div>
-
-        {/* Config Changed Flag */}
-        {submission.config_changed_flag && (
-          <div className="mt-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center text-sm text-yellow-700">
-            <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-            <span>Device configuration changed during this session</span>
-          </div>
-        )}
-
-        {/* Locked Status */}
-        {submission.status === 'locked' && submission.locked_at && (
-          <div className="mt-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg flex items-center text-sm text-gray-700">
-            <Lock className="h-4 w-4 mr-2 flex-shrink-0" />
-            <span>Locked at {format(new Date(submission.locked_at), 'MMM dd, HH:mm')}</span>
-          </div>
-        )}
-      </CardContent>
-
-      <CardFooter className="pt-3 border-t">
-        <div className="flex items-center justify-between w-full">
-          <div className="text-sm text-gray-600">
-            <span className="font-medium">{totalWakes}</span> total wakes
-            {submission.device_count && (
-              <> across <span className="font-medium">{submission.device_count}</span> devices</>
-            )}
-          </div>
           <Button
             variant="ghost"
             size="sm"
-            icon={<ChevronRight size={16} />}
+            icon={<ChevronRight size={14} />}
             onClick={(e) => {
               e.stopPropagation();
               handleViewDetails();
             }}
+            className="flex-shrink-0"
           >
-            View Details
+            <span className="text-xs">View</span>
           </Button>
         </div>
-      </CardFooter>
+
+        {/* Alerts on same row if present */}
+        <div className="flex items-center space-x-2 mt-2">
+          {submission.config_changed_flag && (
+            <div className="flex items-center px-2 py-1 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              <span>Config changed</span>
+            </div>
+          )}
+          {submission.status === 'locked' && submission.locked_at && (
+            <div className="flex items-center px-2 py-1 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
+              <Lock className="h-3 w-3 mr-1" />
+              <span>Locked {format(new Date(submission.locked_at), 'MMM dd, HH:mm')}</span>
+            </div>
+          )}
+          {totalWakes > 0 && (
+            <div className="text-xs text-gray-600 ml-auto">
+              <span className="font-medium">{totalWakes}</span> total wakes
+              {submission.device_count && (
+                <> across <span className="font-medium">{submission.device_count}</span> devices</>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </Card>
   );
 };

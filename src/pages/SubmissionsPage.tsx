@@ -23,6 +23,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import SubmissionCardSkeleton from '../components/submissions/SubmissionCardSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import { debounce } from '../utils/helpers';
+import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
+import Card, { CardHeader, CardContent } from '../components/common/Card';
 
 const SubmissionsPage = () => {
   const navigate = useNavigate();
@@ -48,6 +50,8 @@ const SubmissionsPage = () => {
   const [lastActivityTimes, setLastActivityTimes] = useState<{ [key: string]: string }>({});
   const [searchDelayCompleted, setSearchDelayCompleted] = useState(true);
   const queryClient = useQueryClient();
+  const [siteDevices, setSiteDevices] = useState<any[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
   
   // Use the useSubmissions hook to get access to submissions and related functions
   const {
@@ -63,6 +67,72 @@ const SubmissionsPage = () => {
     isLoading: deviceSessionsLoading,
     refetchSessions: refetchDeviceSessions
   } = useSiteDeviceSessions(siteId);
+
+  // Load devices for site map
+  useEffect(() => {
+    const loadSiteDevices = async () => {
+      if (!siteId) {
+        setSiteDevices([]);
+        return;
+      }
+
+      try {
+        setDevicesLoading(true);
+        const { data, error } = await supabase
+          .from('devices')
+          .select(`
+            device_id,
+            device_code,
+            device_name,
+            x_position,
+            y_position,
+            battery_health_percent,
+            is_active,
+            last_seen_at
+          `)
+          .eq('site_id', siteId)
+          .not('x_position', 'is', null)
+          .not('y_position', 'is', null)
+          .order('device_code');
+
+        if (error) throw error;
+
+        // Fetch latest telemetry
+        const devicesWithTelemetry = await Promise.all(
+          (data || []).map(async (device) => {
+            const { data: telemetryData } = await supabase
+              .from('device_telemetry')
+              .select('temperature, humidity')
+              .eq('device_id', device.device_id)
+              .order('recorded_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            return {
+              device_id: device.device_id,
+              device_code: device.device_code,
+              device_name: device.device_name,
+              x: device.x_position,
+              y: device.y_position,
+              battery_level: device.battery_health_percent,
+              status: device.is_active ? 'active' : 'inactive',
+              last_seen: device.last_seen_at,
+              temperature: telemetryData?.temperature || null,
+              humidity: telemetryData?.humidity || null,
+            };
+          })
+        );
+
+        setSiteDevices(devicesWithTelemetry);
+      } catch (error: any) {
+        console.error('Error loading site devices:', error);
+      } finally {
+        setDevicesLoading(false);
+      }
+    };
+
+    loadSiteDevices();
+  }, [siteId]);
   
   // Session status query
   const sessionStatusesQuery = useQuery({
@@ -356,6 +426,25 @@ const SubmissionsPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* Site Map */}
+      {selectedSite && selectedSite.length && selectedSite.width && siteDevices.length > 0 && (
+        <Card className="mb-4 md:mb-6">
+          <CardHeader>
+            <h2 className="text-lg font-semibold">Site Map</h2>
+          </CardHeader>
+          <CardContent>
+            <SiteMapAnalyticsViewer
+              siteLength={selectedSite.length}
+              siteWidth={selectedSite.width}
+              siteName={selectedSite.name}
+              devices={siteDevices}
+              showControls={false}
+              height={300}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {hasAnyData && (
         <div className="relative mb-4 md:mb-6">
