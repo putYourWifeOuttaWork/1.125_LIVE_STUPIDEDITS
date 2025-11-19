@@ -2,10 +2,18 @@ import { useState, useEffect } from 'react';
 import { Camera, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 import DevicePoolSelector, { AvailableDevice } from './DevicePoolSelector';
 import SiteMapEditor from './SiteMapEditor';
 import Button from '../common/Button';
 import DevicePlacementModal, { DevicePlacementSettings } from '../devices/DevicePlacementModal';
+import DeviceMapContextMenu from '../devices/DeviceMapContextMenu';
+import DeviceEditModal from '../devices/DeviceEditModal';
+import DeviceSettingsModal from '../devices/DeviceSettingsModal';
+import DeviceAlertThresholdsModal from '../devices/DeviceAlertThresholdsModal';
+import DeviceReassignModal from '../devices/DeviceReassignModal';
+import DeviceUnassignModal from '../devices/DeviceUnassignModal';
+import DeleteConfirmModal from '../common/DeleteConfirmModal';
 
 interface DeviceAssignment {
   device_id: string;
@@ -39,6 +47,15 @@ export default function DeviceSetupStep({
   const [saving, setSaving] = useState(false);
   const [placementModalOpen, setPlacementModalOpen] = useState(false);
   const [pendingPlacement, setPendingPlacement] = useState<{ device: AvailableDevice; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ deviceId: string; x: number; y: number } | null>(null);
+  const [editingDevice, setEditingDevice] = useState<AvailableDevice | null>(null);
+  const [settingsDevice, setSettingsDevice] = useState<AvailableDevice | null>(null);
+  const [thresholdsDevice, setThresholdsDevice] = useState<AvailableDevice | null>(null);
+  const [reassignDevice, setReassignDevice] = useState<AvailableDevice | null>(null);
+  const [unassignDevice, setUnassignDevice] = useState<AvailableDevice | null>(null);
+  const [deactivateDevice, setDeactivateDevice] = useState<AvailableDevice | null>(null);
+  const [deleteDevice, setDeleteDevice] = useState<AvailableDevice | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadAvailableDevices();
@@ -223,6 +240,55 @@ export default function DeviceSetupStep({
     }
   };
 
+  const handleDeviceRightClick = (deviceId: string, x: number, y: number) => {
+    setContextMenu({ deviceId, x, y });
+  };
+
+  const getContextMenuDevice = () => {
+    if (!contextMenu) return null;
+    return availableDevices.find(d => d.device_id === contextMenu.deviceId) || null;
+  };
+
+  const handleDeactivateDevice = async () => {
+    if (!deactivateDevice) return;
+
+    try {
+      const { error } = await supabase
+        .from('devices')
+        .update({ status: 'deactivated' })
+        .eq('device_id', deactivateDevice.device_id);
+
+      if (error) throw error;
+
+      toast.success('Device deactivated successfully');
+      loadAvailableDevices();
+      setDeactivateDevice(null);
+    } catch (error: any) {
+      console.error('Error deactivating device:', error);
+      toast.error('Failed to deactivate device');
+    }
+  };
+
+  const handleDeleteDevice = async () => {
+    if (!deleteDevice) return;
+
+    try {
+      const { error } = await supabase
+        .from('devices')
+        .delete()
+        .eq('device_id', deleteDevice.device_id);
+
+      if (error) throw error;
+
+      toast.success('Device deleted successfully');
+      loadAvailableDevices();
+      setDeleteDevice(null);
+    } catch (error: any) {
+      console.error('Error deleting device:', error);
+      toast.error('Failed to delete device');
+    }
+  };
+
   const handleSave = () => {
     if (onDevicesAssigned) {
       onDevicesAssigned(assignments);
@@ -279,6 +345,7 @@ export default function DeviceSetupStep({
               onDevicePositionUpdate={handleDevicePositionUpdate}
               onDeviceRemove={handleDeviceRemove}
               onDeviceDoubleClick={handleDeviceDoubleClick}
+              onDeviceRightClick={handleDeviceRightClick}
               selectedDevice={selectedDevice}
               onMapClick={handleMapClick}
             />
@@ -324,6 +391,116 @@ export default function DeviceSetupStep({
           device={pendingPlacement.device}
           position={{ x: pendingPlacement.x, y: pendingPlacement.y }}
           onSave={handlePlacementSave}
+        />
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && getContextMenuDevice() && (
+        <DeviceMapContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          deviceId={contextMenu.deviceId}
+          deviceName={getContextMenuDevice()!.device_name}
+          onEdit={() => setEditingDevice(getContextMenuDevice())}
+          onSettings={() => setSettingsDevice(getContextMenuDevice())}
+          onAlertThresholds={() => setThresholdsDevice(getContextMenuDevice())}
+          onPlacement={() => {
+            const device = getContextMenuDevice();
+            const assignment = assignments.find(a => a.device_id === device?.device_id);
+            if (device && assignment) {
+              setPendingPlacement({ device, x: assignment.x, y: assignment.y });
+              setPlacementModalOpen(true);
+            }
+          }}
+          onReassign={() => setReassignDevice(getContextMenuDevice())}
+          onUnassign={() => setUnassignDevice(getContextMenuDevice())}
+          onDeactivate={() => setDeactivateDevice(getContextMenuDevice())}
+          onDelete={() => setDeleteDevice(getContextMenuDevice())}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Device Edit Modal */}
+      {editingDevice && (
+        <DeviceEditModal
+          isOpen={true}
+          onClose={() => {
+            setEditingDevice(null);
+            loadAvailableDevices();
+          }}
+          device={editingDevice}
+          onSave={() => {
+            setEditingDevice(null);
+            loadAvailableDevices();
+          }}
+        />
+      )}
+
+      {/* Device Settings Modal */}
+      {settingsDevice && (
+        <DeviceSettingsModal
+          isOpen={true}
+          onClose={() => setSettingsDevice(null)}
+          deviceId={settingsDevice.device_id}
+        />
+      )}
+
+      {/* Alert Thresholds Modal */}
+      {thresholdsDevice && (
+        <DeviceAlertThresholdsModal
+          isOpen={true}
+          onClose={() => setThresholdsDevice(null)}
+          deviceId={thresholdsDevice.device_id}
+        />
+      )}
+
+      {/* Reassign Device Modal */}
+      {reassignDevice && (
+        <DeviceReassignModal
+          isOpen={true}
+          onClose={() => setReassignDevice(null)}
+          device={reassignDevice}
+          onReassign={() => {
+            setReassignDevice(null);
+            loadAvailableDevices();
+          }}
+        />
+      )}
+
+      {/* Unassign Device Modal */}
+      {unassignDevice && (
+        <DeviceUnassignModal
+          isOpen={true}
+          onClose={() => setUnassignDevice(null)}
+          device={unassignDevice}
+          onUnassign={async () => {
+            await handleDeviceRemove(unassignDevice.device_id);
+            setUnassignDevice(null);
+          }}
+        />
+      )}
+
+      {/* Deactivate Confirmation Modal */}
+      {deactivateDevice && (
+        <DeleteConfirmModal
+          isOpen={true}
+          onClose={() => setDeactivateDevice(null)}
+          onConfirm={handleDeactivateDevice}
+          title="Deactivate Device"
+          message={`Are you sure you want to deactivate ${deactivateDevice.device_name}? The device will no longer collect data.`}
+          confirmText="Deactivate"
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteDevice && (
+        <DeleteConfirmModal
+          isOpen={true}
+          onClose={() => setDeleteDevice(null)}
+          onConfirm={handleDeleteDevice}
+          title="Delete Device"
+          message={`Are you sure you want to permanently delete ${deleteDevice.device_name}? This action cannot be undone.`}
+          confirmText="Delete"
         />
       )}
     </div>

@@ -30,6 +30,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useSiteDeviceSessions } from '../hooks/useSiteDeviceSessions';
 import SiteDeviceSessionCard from '../components/devices/SiteDeviceSessionCard';
 import ActiveAlertsPanel from '../components/devices/ActiveAlertsPanel';
+import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
 
 // Type for recent submission from the get_recent_submissions RPC
 interface RecentSubmission {
@@ -79,6 +80,8 @@ const HomePage = () => {
     userCompany?.default_weather || 'Clear'
   );
   const [hasUserManuallySetWeather, setHasUserManuallySetWeather] = useState(false);
+  const [siteDevices, setSiteDevices] = useState<any[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
   
   // Get session store for sessions drawer
   const {
@@ -93,6 +96,60 @@ const HomePage = () => {
     isLoading: deviceSessionsLoading,
     refetchSessions: refetchDeviceSessions
   } = useSiteDeviceSessions(selectedSiteId || undefined);
+
+  // Load devices for selected site
+  useEffect(() => {
+    const loadSiteDevices = async () => {
+      if (!selectedSiteId) {
+        setSiteDevices([]);
+        return;
+      }
+
+      try {
+        setDevicesLoading(true);
+        const { data, error } = await supabase
+          .from('devices')
+          .select(`
+            device_id,
+            device_code,
+            device_name,
+            x_position,
+            y_position,
+            battery_level,
+            status,
+            last_seen,
+            latest_telemetry:device_telemetry(temperature, humidity)
+          `)
+          .eq('site_id', selectedSiteId)
+          .not('x_position', 'is', null)
+          .not('y_position', 'is', null)
+          .order('device_code');
+
+        if (error) throw error;
+
+        const devicesWithTelemetry = (data || []).map(device => ({
+          device_id: device.device_id,
+          device_code: device.device_code,
+          device_name: device.device_name,
+          x: device.x_position,
+          y: device.y_position,
+          battery_level: device.battery_level,
+          status: device.status,
+          last_seen: device.last_seen,
+          temperature: Array.isArray(device.latest_telemetry) && device.latest_telemetry[0]?.temperature || null,
+          humidity: Array.isArray(device.latest_telemetry) && device.latest_telemetry[0]?.humidity || null,
+        }));
+
+        setSiteDevices(devicesWithTelemetry);
+      } catch (error: any) {
+        console.error('Error loading site devices:', error);
+      } finally {
+        setDevicesLoading(false);
+      }
+    };
+
+    loadSiteDevices();
+  }, [selectedSiteId]);
   
   // Pre-select the first active program when the page loads, but only once
   useEffect(() => {
@@ -513,6 +570,18 @@ const HomePage = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Site Map Analytics - Only show if site is selected and has devices with positions */}
+      {selectedSite && siteDevices.length > 0 && selectedSite.length && selectedSite.width && (
+        <div className="mb-4">
+          <SiteMapAnalyticsViewer
+            siteLength={selectedSite.length}
+            siteWidth={selectedSite.width}
+            siteName={selectedSite.name}
+            devices={siteDevices}
+          />
+        </div>
+      )}
 
       {/* Combined Row - Device Sessions, Recent Submissions (left 2/3) and Weather (right 1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">

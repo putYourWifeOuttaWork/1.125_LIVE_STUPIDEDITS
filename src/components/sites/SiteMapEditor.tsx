@@ -21,6 +21,7 @@ interface SiteMapEditorProps {
   onDevicePositionUpdate: (deviceId: string, x: number, y: number) => void;
   onDeviceRemove?: (deviceId: string) => void;
   onDeviceDoubleClick?: (deviceId: string) => void;
+  onDeviceRightClick?: (deviceId: string, x: number, y: number) => void;
   selectedDevice: AvailableDevice | null;
   onMapClick?: (x: number, y: number) => void;
   className?: string;
@@ -33,6 +34,7 @@ export default function SiteMapEditor({
   onDevicePositionUpdate,
   onDeviceRemove,
   onDeviceDoubleClick,
+  onDeviceRightClick,
   selectedDevice,
   onMapClick,
   className = '',
@@ -242,6 +244,16 @@ export default function SiteMapEditor({
     setDraggingDevice(null);
   };
 
+  const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const { x, y } = getCanvasCoords(e);
+    const deviceId = findDeviceAtPosition(x, y);
+
+    if (deviceId && onDeviceRightClick) {
+      onDeviceRightClick(deviceId, e.clientX, e.clientY);
+    }
+  };
+
   return (
     <div className={`flex flex-col h-full ${className}`} ref={containerRef}>
       <div className="mb-4">
@@ -288,6 +300,7 @@ export default function SiteMapEditor({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onContextMenu={handleContextMenu}
           />
         </CardContent>
       </Card>
