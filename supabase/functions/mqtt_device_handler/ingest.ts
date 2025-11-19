@@ -14,6 +14,43 @@ import { getOrCreateBuffer, storeChunk } from './idempotency.ts';
 const SYSTEM_USER_UUID = '00000000-0000-0000-0000-000000000001';
 
 /**
+ * Generate a unique device_code based on hardware version
+ * Format: DEVICE-{HARDWARE}-{NNN} where NNN is zero-padded sequential number
+ */
+async function generateDeviceCode(supabase: SupabaseClient, hardwareVersion: string): Promise<string> {
+  // Normalize hardware version for code generation
+  const hwNormalized = hardwareVersion.replace(/[^A-Z0-9]/g, '').toUpperCase();
+  const prefix = `DEVICE-${hwNormalized}-`;
+
+  // Query existing device codes with this prefix
+  const { data: existingDevices } = await supabase
+    .from('devices')
+    .select('device_code')
+    .like('device_code', `${prefix}%`)
+    .order('device_code');
+
+  // Extract numbers from existing codes
+  const numbers: number[] = [];
+  existingDevices?.forEach(d => {
+    if (d.device_code) {
+      const match = d.device_code.match(new RegExp(`${prefix}(\\d+)`));
+      if (match) {
+        numbers.push(parseInt(match[1]));
+      }
+    }
+  });
+
+  // Find the first available number (starting from 1)
+  let nextNum = 1;
+  while (numbers.includes(nextNum)) {
+    nextNum++;
+  }
+
+  // Return zero-padded code
+  return `${prefix}${String(nextNum).padStart(3, '0')}`;
+}
+
+/**
  * Handle device HELLO status message
  * Auto-provisions new devices or updates existing ones
  * Updates last_seen_at, battery data, wifi_rssi, mqtt_client_id, and calculates next_wake_at
@@ -52,14 +89,20 @@ export async function handleHelloStatus(
       // Auto-provision new device (per PDF Section 7)
       console.log('[Ingest] Auto-provisioning new device:', payload.device_id);
 
+      // Generate unique device_code
+      const hardwareVersion = payload.hardware_version || 'ESP32-S3';
+      const deviceCode = await generateDeviceCode(supabase, hardwareVersion);
+      console.log('[Ingest] Generated device_code:', deviceCode);
+
       const { data: newDevice, error: insertError } = await supabase
         .from('devices')
         .insert({
           device_mac: payload.device_mac || payload.device_id,
+          device_code: deviceCode, // Add generated code
           mqtt_client_id: payload.device_id, // Store firmware-reported ID
           device_name: `Device ${payload.device_id}`,
           firmware_version: payload.firmware_version || 'unknown',
-          hardware_version: payload.hardware_version || 'ESP32-S3',
+          hardware_version: hardwareVersion,
           battery_voltage: payload.battery_voltage, // Trigger auto-calculates health
           wifi_rssi: payload.wifi_rssi,
           wifi_ssid: null, // Will be set during mapping
@@ -79,7 +122,7 @@ export async function handleHelloStatus(
         return;
       }
 
-      console.log('[Ingest] Device auto-provisioned:', newDevice.device_id);
+      console.log('[Ingest] Device auto-provisioned:', newDevice.device_id, 'Code:', deviceCode);
       return; // Done with auto-provisioning
     } else {
       // Update existing device
