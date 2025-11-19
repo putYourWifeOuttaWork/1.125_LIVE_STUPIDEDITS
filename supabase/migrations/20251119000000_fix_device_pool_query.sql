@@ -1,22 +1,26 @@
 /*
   # Fix Device Pool Query to Include Awaiting Mapping Devices
-  
+
   1. Problem
     - Devices with site_id but no x,y positions weren't appearing in device pool
     - These "awaiting mapping" devices should be available for any site in the company
-    
+
   2. Solution
     - Updated fn_get_available_devices_for_site to include devices where:
       - site_id IS NULL (unassigned), OR
       - site_id = this_site (editing), OR
       - x_position IS NULL AND y_position IS NULL (awaiting mapping)
-    
+
   3. Effect
     - Devices provisioned but never positioned are now available
     - Enables flexible device reassignment within company
     - Maintains company isolation via RLS
 */
 
+-- Drop existing function first (return type changed from status to device_status)
+DROP FUNCTION IF EXISTS fn_get_available_devices_for_site(uuid);
+
+-- Recreate with correct column name
 CREATE OR REPLACE FUNCTION fn_get_available_devices_for_site(
   p_site_id UUID
 )
