@@ -1,17 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Leaf,
   Plus,
   CloudRain,
   Sun,
   Cloud,
   Clock,
   Building,
-  ArrowRight,
   MapPin,
-  Home,
-  Hash,
   ClipboardList,
 } from 'lucide-react';
 import Button from '../components/common/Button';
@@ -31,21 +27,6 @@ import { useSiteDeviceSessions } from '../hooks/useSiteDeviceSessions';
 import SiteDeviceSessionCard from '../components/devices/SiteDeviceSessionCard';
 import ActiveAlertsPanel from '../components/devices/ActiveAlertsPanel';
 import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
-
-// Type for recent submission from the get_recent_submissions RPC
-interface RecentSubmission {
-  submission_id: string;
-  site_id: string;
-  site_name: string;
-  program_id: string;
-  program_name: string;
-  temperature: number;
-  humidity: number;
-  created_at: string;
-  petri_count: number;
-  gasifier_count?: number;
-  global_submission_id?: number;
-}
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -74,8 +55,6 @@ const HomePage = () => {
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [sitesLoading, setSitesLoading] = useState(false);
-  const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>([]);
-  const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [weatherType, setWeatherType] = useState<'Clear' | 'Cloudy' | 'Rain'>(
     userCompany?.default_weather || 'Clear'
   );
@@ -263,80 +242,6 @@ const HomePage = () => {
     }
   }, [selectedSiteId, sites]);
   
-  // Fetch recent submissions - memoized with useCallback
-  const fetchRecentSubmissions = useCallback(async () => {
-    if (!selectedSiteId) {
-      setRecentSubmissions([]);
-      return;
-    }
-
-    setSubmissionsLoading(true);
-    try {
-      // Direct query: Get submissions for the selected site
-      // This leverages the parent-child relationship (submissions.site_id -> sites.site_id)
-      const { data, error } = await supabase
-        .from('submissions')
-        .select(`
-          submission_id,
-          site_id,
-          program_id,
-          temperature,
-          humidity,
-          weather,
-          created_at,
-          global_submission_id,
-          sites!inner (
-            name
-          ),
-          pilot_programs!inner (
-            name
-          ),
-          petri_observations (
-            observation_id
-          ),
-          gasifier_observations (
-            observation_id
-          )
-        `)
-        .eq('site_id', selectedSiteId)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-
-      // Transform the data to match the RecentSubmission interface
-      const transformedData: RecentSubmission[] = (data || []).map((submission: any) => ({
-        submission_id: submission.submission_id,
-        site_id: submission.site_id,
-        site_name: submission.sites?.name || 'Unknown Site',
-        program_id: submission.program_id,
-        program_name: submission.pilot_programs?.name || 'Unknown Program',
-        temperature: submission.temperature,
-        humidity: submission.humidity,
-        created_at: submission.created_at,
-        petri_count: submission.petri_observations?.length || 0,
-        gasifier_count: submission.gasifier_observations?.length || 0,
-        global_submission_id: submission.global_submission_id
-      }));
-
-      setRecentSubmissions(transformedData);
-    } catch (error) {
-      console.error('Error fetching recent submissions:', error);
-      toast.error('Error fetching recent submissions');
-    } finally {
-      setSubmissionsLoading(false);
-    }
-  }, [selectedSiteId]);
-  
-  // Fetch recent submissions when program or site selection changes
-  useEffect(() => {
-    // Only fetch when site is selected
-    if (selectedSiteId) {
-      fetchRecentSubmissions();
-    } else {
-      setRecentSubmissions([]);
-    }
-  }, [selectedSiteId, fetchRecentSubmissions]);
   
   // Set weather type based on Visual Crossing API data when it loads
   useEffect(() => {
@@ -583,21 +488,67 @@ const HomePage = () => {
         </Card>
       </div>
 
-      {/* Site Map Analytics - Only show if site is selected and has devices with positions */}
-      {selectedSite && siteDevices.length > 0 && selectedSite.length && selectedSite.width && (
-        <div className="mb-4">
-          <SiteMapAnalyticsViewer
-            siteLength={selectedSite.length}
-            siteWidth={selectedSite.width}
-            siteName={selectedSite.name}
-            devices={siteDevices}
-          />
-        </div>
+      {/* Site Map Analytics - Large, prominent, clickable */}
+      {selectedSite && (
+        <Card className="mb-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`)}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-blue-600" />
+                <div>
+                  <h2 className="text-lg font-semibold">{selectedSite.name} - Site Map</h2>
+                  <p className="text-sm text-gray-600">Click to view full site details and analytics</p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`);
+                }}
+              >
+                View Site Details
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {siteDevices.length > 0 && selectedSite.length && selectedSite.width ? (
+              <SiteMapAnalyticsViewer
+                siteLength={selectedSite.length}
+                siteWidth={selectedSite.width}
+                siteName={selectedSite.name}
+                devices={siteDevices}
+                onDeviceClick={(deviceId) => {
+                  navigate(`/devices/${deviceId}`);
+                }}
+              />
+            ) : (
+              <div className="text-center py-12 bg-gray-50 rounded-lg">
+                <MapPin className="mx-auto h-16 w-16 text-gray-300" />
+                <p className="text-gray-600 mt-4 font-medium">No Device Positions Set</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Devices need to be placed on the site map before visualization is available
+                </p>
+                <Button
+                  variant="primary"
+                  className="mt-4"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`);
+                  }}
+                >
+                  Configure Site
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      {/* Combined Row - Device Sessions, Recent Submissions (left 2/3) and Weather (right 1/3) */}
+      {/* Combined Row - Device Sessions (left 2/3) and Weather (right 1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        {/* Left Column - Device Sessions and Recent Submissions stacked */}
+        {/* Left Column - Device Sessions Only */}
         <div className="lg:col-span-2 space-y-4">
           {/* Device Sessions Card */}
           {(deviceSessions.length > 0 || selectedSite) && (
@@ -643,136 +594,6 @@ const HomePage = () => {
                 )}
               </CardContent>
             </Card>
-          )}
-
-          {/* Recent Submissions Card */}
-          {(recentSubmissions.length > 0 || selectedSite) && (
-            <Card>
-          <CardHeader className="flex justify-between items-center">
-            <div className="flex items-center">
-              <Clock className="mr-2 h-5 w-5 text-primary-500" />
-              <h2 className="text-lg font-semibold">Recent Submissions</h2>
-            </div>
-            <div className="flex space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchRecentSubmissions}
-              >
-                Refresh
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {submissionsLoading ? (
-              <div className="flex justify-center p-6">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-              </div>
-            ) : recentSubmissions.length === 0 ? (
-              <div className="text-center py-8">
-                <Leaf className="mx-auto h-12 w-12 text-gray-300" />
-                <p className="text-gray-600 mt-2">No recent submissions found</p>
-                {selectedSite && (
-                  <Button
-                    variant="primary"
-                    className="mt-4"
-                    icon={<Plus size={16} />}
-                    onClick={handleQuickLog}
-                    disabled={weatherLoading}
-                  >
-                    Create New Submission
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Submission ID
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Program
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Site
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Temperature
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Humidity
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Samples
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {recentSubmissions.map((submission) => (
-                      <tr key={submission.submission_id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {submission.global_submission_id ? (
-                            <span className="inline-flex items-center">
-                              <Hash size={14} className="mr-1 text-primary-500" />
-                              {submission.global_submission_id}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {format(new Date(submission.created_at), 'MMM d, yyyy HH:mm')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {submission.program_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {submission.site_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {submission.temperature}°F
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {submission.humidity}%
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <div className="flex space-x-2">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-800">
-                              {submission.petri_count} Petri
-                            </span>
-                            {submission.gasifier_count !== undefined && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-accent-100 text-accent-800">
-                                {submission.gasifier_count} Gasifier
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <button 
-                            onClick={() => navigate(`/programs/${submission.program_id}/sites/${submission.site_id}`)}
-                            className="text-primary-600 hover:text-primary-900 flex items-center justify-end"
-                            aria-label={`View submission details for ${submission.site_name} on ${format(new Date(submission.created_at), 'MMM d, yyyy')}`}
-                          >
-                            View 
-                            <ArrowRight className="ml-1 h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
           )}
         </div>
 
