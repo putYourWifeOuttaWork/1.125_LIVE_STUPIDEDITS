@@ -86,6 +86,8 @@ const HomePage = () => {
 
       try {
         setDevicesLoading(true);
+        console.log('Loading devices for site:', selectedSiteId);
+
         const { data, error } = await supabase
           .from('devices')
           .select(`
@@ -103,7 +105,12 @@ const HomePage = () => {
           .not('y_position', 'is', null)
           .order('device_code');
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error querying devices:', error);
+          throw error;
+        }
+
+        console.log('Found devices with positions:', data?.length || 0, data);
 
         // Fetch latest telemetry for each device
         const devicesWithTelemetry = await Promise.all(
@@ -131,6 +138,7 @@ const HomePage = () => {
           })
         );
 
+        console.log('Devices with telemetry:', devicesWithTelemetry);
         setSiteDevices(devicesWithTelemetry);
       } catch (error: any) {
         console.error('Error loading site devices:', error);
@@ -498,6 +506,12 @@ const HomePage = () => {
                 <div>
                   <h2 className="text-lg font-semibold">{selectedSite.name} - Site Map</h2>
                   <p className="text-sm text-gray-600">Click to view full site details and analytics</p>
+                  {console.log('Site data:', {
+                    site_id: selectedSite.site_id,
+                    length: selectedSite.length,
+                    width: selectedSite.width,
+                    devicesCount: siteDevices.length
+                  })}
                 </div>
               </div>
               <Button
