@@ -67,11 +67,11 @@ BEGIN
   RETURN QUERY
   SELECT
     d.device_id,
-    d.device_code,
-    d.device_name,
-    d.device_mac,
-    d.device_type,
-    d.provisioning_status,
+    CAST(d.device_code AS TEXT) as device_code,
+    CAST(d.device_name AS TEXT) as device_name,
+    CAST(d.device_mac AS TEXT) as device_mac,
+    CAST(d.device_type AS TEXT) as device_type,
+    CAST(d.provisioning_status AS TEXT) as provisioning_status,
     -- Compute device_status based on available data
     CASE
       WHEN NOT d.is_active THEN 'inactive'
@@ -83,10 +83,10 @@ BEGIN
     END::TEXT as device_status,
     CAST(COALESCE(d.battery_health_percent, 0) AS INTEGER) as battery_level,
     d.last_seen_at as last_seen,
-    d.firmware_version,
+    CAST(d.firmware_version AS TEXT) as firmware_version,
     (d.site_id IS NOT NULL) as is_currently_assigned,
     d.site_id as current_site_id,
-    s.name as current_site_name,
+    CAST(s.name AS TEXT) as current_site_name,
     CAST(d.x_position AS INTEGER) as x_position,
     CAST(d.y_position AS INTEGER) as y_position
   FROM devices d
