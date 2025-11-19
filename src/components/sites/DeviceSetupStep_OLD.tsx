@@ -5,7 +5,6 @@ import { toast } from 'react-toastify';
 import DevicePoolSelector, { AvailableDevice } from './DevicePoolSelector';
 import SiteMapEditor from './SiteMapEditor';
 import Button from '../common/Button';
-import DevicePlacementModal, { DevicePlacementSettings } from '../devices/DevicePlacementModal';
 
 interface DeviceAssignment {
   device_id: string;
@@ -37,8 +36,6 @@ export default function DeviceSetupStep({
   const [selectedDevice, setSelectedDevice] = useState<AvailableDevice | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [placementModalOpen, setPlacementModalOpen] = useState(false);
-  const [pendingPlacement, setPendingPlacement] = useState<{ device: AvailableDevice; x: number; y: number } | null>(null);
 
   useEffect(() => {
     loadAvailableDevices();
@@ -55,20 +52,19 @@ export default function DeviceSetupStep({
 
       setAvailableDevices(data || []);
 
-      // Load currently assigned devices
-      const assigned = (data || [])
-        .filter((d: AvailableDevice) => d.is_currently_assigned)
+      const alreadyAssigned = (data || [])
+        .filter((d: AvailableDevice) => d.is_currently_assigned && d.x_position !== null && d.y_position !== null)
         .map((d: AvailableDevice) => ({
           device_id: d.device_id,
           device_code: d.device_code,
           device_name: d.device_name,
-          x: d.x_position || 0,
-          y: d.y_position || 0,
+          x: d.x_position!,
+          y: d.y_position!,
           battery_level: d.battery_level,
           status: d.status,
         }));
 
-      setAssignments(assigned);
+      setAssignments(alreadyAssigned);
     } catch (error: any) {
       console.error('Error loading devices:', error);
       toast.error('Failed to load available devices');
@@ -78,105 +74,59 @@ export default function DeviceSetupStep({
   };
 
   const handleDeviceSelect = (device: AvailableDevice) => {
+    if (device.is_currently_assigned && device.x_position !== null && device.y_position !== null) {
+      const existing = assignments.find(a => a.device_id === device.device_id);
+      if (existing) {
+        setSelectedDevice(null);
+        return;
+      }
+    }
     setSelectedDevice(device);
   };
 
-  const handleMapClick = (x: number, y: number) => {
+  const handleMapClick = async (x: number, y: number) => {
     if (!selectedDevice) return;
 
-    // Open modal for device configuration before placing
-    setPendingPlacement({ device: selectedDevice, x, y });
-    setPlacementModalOpen(true);
-  };
-
-  const handlePlacementSave = async (settings: DevicePlacementSettings) => {
-    if (!pendingPlacement) return;
-
-    const { device, x, y } = pendingPlacement;
-
     try {
-      // First assign device to site with coordinates
-      // This RPC function handles both site_id AND program_id assignment
-      const { data: assignData, error: assignError } = await supabase.rpc('fn_assign_device_to_site', {
-        p_device_id: device.device_id,
+      const { data, error } = await supabase.rpc('fn_assign_device_to_site', {
+        p_device_id: selectedDevice.device_id,
         p_site_id: siteId,
         p_x_position: x,
         p_y_position: y,
       });
 
-      if (assignError) throw assignError;
+      if (error) throw error;
 
-      if (!assignData?.success) {
-        throw new Error(assignData?.message || 'Failed to assign device');
+      if (data?.success) {
+        const newAssignment: DeviceAssignment = {
+          device_id: selectedDevice.device_id,
+          device_code: selectedDevice.device_code,
+          device_name: selectedDevice.device_name,
+          x,
+          y,
+          battery_level: selectedDevice.battery_level,
+          status: selectedDevice.status,
+        };
+
+        setAssignments(prev => {
+          const filtered = prev.filter(a => a.device_id !== selectedDevice.device_id);
+          return [...filtered, newAssignment];
+        });
+
+        setAvailableDevices(prev =>
+          prev.map(d =>
+            d.device_id === selectedDevice.device_id
+              ? { ...d, is_currently_assigned: true, x_position: x, y_position: y }
+              : d
+          )
+        );
+
+        setSelectedDevice(null);
+        toast.success(`${selectedDevice.device_code} assigned to position (${x}, ${y})`);
       }
-
-      // Now update device settings (name, schedule, notes, zone label)
-      const updatePayload: any = {
-        x_position: x,
-        y_position: y,
-      };
-
-      if (settings.device_name) updatePayload.device_name = settings.device_name;
-      if (settings.wake_schedule_cron) updatePayload.wake_schedule_cron = settings.wake_schedule_cron;
-      if (settings.notes) updatePayload.notes = settings.notes;
-      if (settings.zone_label) updatePayload.zone_label = settings.zone_label;
-
-      // Build placement_json with all details
-      updatePayload.placement_json = {
-        x,
-        y,
-        height: settings.placement_height || 'Floor mounted',
-        notes: settings.placement_notes || '',
-      };
-
-      const { error: updateError } = await supabase
-        .from('devices')
-        .update(updatePayload)
-        .eq('device_id', device.device_id);
-
-      if (updateError) throw updateError;
-
-      // Update local state
-      const newAssignment: DeviceAssignment = {
-        device_id: device.device_id,
-        device_code: device.device_code,
-        device_name: settings.device_name || device.device_name,
-        x,
-        y,
-        battery_level: device.battery_level,
-        status: device.status,
-      };
-
-      setAssignments(prev => {
-        const filtered = prev.filter(a => a.device_id !== device.device_id);
-        return [...filtered, newAssignment];
-      });
-
-      setAvailableDevices(prev =>
-        prev.map(d =>
-          d.device_id === device.device_id
-            ? { ...d, is_currently_assigned: true, x_position: x, y_position: y }
-            : d
-        )
-      );
-
-      setSelectedDevice(null);
-      setPendingPlacement(null);
-      toast.success(`${device.device_code} configured and placed at (${x}, ${y})`);
     } catch (error: any) {
-      console.error('Error placing device:', error);
-      toast.error(error.message || 'Failed to place device');
-      throw error;
-    }
-  };
-
-  const handleDeviceDoubleClick = (deviceId: string) => {
-    const device = availableDevices.find(d => d.device_id === deviceId);
-    const assignment = assignments.find(a => a.device_id === deviceId);
-
-    if (device && assignment) {
-      setPendingPlacement({ device, x: assignment.x, y: assignment.y });
-      setPlacementModalOpen(true);
+      console.error('Error assigning device:', error);
+      toast.error('Failed to assign device to site');
     }
   };
 
@@ -278,7 +228,6 @@ export default function DeviceSetupStep({
               devices={assignments}
               onDevicePositionUpdate={handleDevicePositionUpdate}
               onDeviceRemove={handleDeviceRemove}
-              onDeviceDoubleClick={handleDeviceDoubleClick}
               selectedDevice={selectedDevice}
               onMapClick={handleMapClick}
             />
@@ -312,20 +261,6 @@ export default function DeviceSetupStep({
           )}
         </div>
       </div>
-
-      {/* Device Placement Modal */}
-      {pendingPlacement && (
-        <DevicePlacementModal
-          isOpen={placementModalOpen}
-          onClose={() => {
-            setPlacementModalOpen(false);
-            setPendingPlacement(null);
-          }}
-          device={pendingPlacement.device}
-          position={{ x: pendingPlacement.x, y: pendingPlacement.y }}
-          onSave={handlePlacementSave}
-        />
-      )}
     </div>
   );
 }

@@ -20,6 +20,7 @@ interface SiteMapEditorProps {
   devices: DevicePosition[];
   onDevicePositionUpdate: (deviceId: string, x: number, y: number) => void;
   onDeviceRemove?: (deviceId: string) => void;
+  onDeviceDoubleClick?: (deviceId: string) => void;
   selectedDevice: AvailableDevice | null;
   onMapClick?: (x: number, y: number) => void;
   className?: string;
@@ -31,6 +32,7 @@ export default function SiteMapEditor({
   devices,
   onDevicePositionUpdate,
   onDeviceRemove,
+  onDeviceDoubleClick,
   selectedDevice,
   onMapClick,
   className = '',
@@ -43,6 +45,8 @@ export default function SiteMapEditor({
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [scale, setScale] = useState(1);
+  const [lastClickTime, setLastClickTime] = useState<number>(0);
+  const [lastClickedDevice, setLastClickedDevice] = useState<string | null>(null);
 
   const gridSize = 10;
   
@@ -196,12 +200,29 @@ export default function SiteMapEditor({
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y } = getCanvasCoords(e);
     const deviceId = findDeviceAtPosition(x, y);
-    
+
     if (deviceId) {
-      setDraggingDevice(deviceId);
+      // Check for double-click (within 300ms of last click on same device)
+      const now = Date.now();
+      const isDoubleClick =
+        now - lastClickTime < 300 &&
+        lastClickedDevice === deviceId &&
+        onDeviceDoubleClick;
+
+      if (isDoubleClick) {
+        onDeviceDoubleClick(deviceId);
+        setLastClickTime(0);
+        setLastClickedDevice(null);
+      } else {
+        setDraggingDevice(deviceId);
+        setLastClickTime(now);
+        setLastClickedDevice(deviceId);
+      }
     } else if (selectedDevice && onMapClick) {
       const siteCoords = pixelToSiteCoords(x, y);
       onMapClick(siteCoords.x, siteCoords.y);
+      setLastClickTime(0);
+      setLastClickedDevice(null);
     }
   };
 
