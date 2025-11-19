@@ -50,7 +50,7 @@ export default function SiteMapEditor({
   const [lastClickTime, setLastClickTime] = useState<number>(0);
   const [lastClickedDevice, setLastClickedDevice] = useState<string | null>(null);
 
-  const gridSize = 10;
+  const gridSize = 1;
   
   useEffect(() => {
     if (!containerRef.current) return;

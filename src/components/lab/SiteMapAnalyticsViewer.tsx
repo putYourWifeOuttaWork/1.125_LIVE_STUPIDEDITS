@@ -78,7 +78,7 @@ export default function SiteMapAnalyticsViewer({
     // Grid
     ctx.strokeStyle = '#e5e7eb';
     ctx.lineWidth = 0.5;
-    const gridSize = 10;
+    const gridSize = 1;
     const gridSpacingX = (canvas.width / siteLength) * gridSize;
     const gridSpacingY = (canvas.height / siteWidth) * gridSize;
 
