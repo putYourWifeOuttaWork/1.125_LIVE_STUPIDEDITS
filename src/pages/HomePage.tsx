@@ -497,31 +497,22 @@ const HomePage = () => {
         </Card>
       </div>
 
-      {/* Site Map Analytics - Large, prominent, clickable */}
+      {/* Site Map Analytics - Large, prominent map with color zones */}
       {selectedSite && (
-        <Card className="mb-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`)}>
+        <Card className="mb-4">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-blue-600" />
                 <div>
                   <h2 className="text-lg font-semibold">{selectedSite.name} - Site Map</h2>
-                  <p className="text-sm text-gray-600">Click to view full site details and analytics</p>
-                  {console.log('Site data:', {
-                    site_id: selectedSite.site_id,
-                    length: selectedSite.length,
-                    width: selectedSite.width,
-                    devicesCount: siteDevices.length
-                  })}
+                  <p className="text-sm text-gray-600">Device positions and environmental zones</p>
                 </div>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`);
-                }}
+                onClick={() => navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`)}
               >
                 View Site Details
               </Button>
@@ -541,6 +532,7 @@ const HomePage = () => {
                 onDeviceClick={(deviceId) => {
                   navigate(`/devices/${deviceId}`);
                 }}
+                showControls={true}
               />
             ) : (
               <div className="text-center py-12 bg-gray-50 rounded-lg">
@@ -557,10 +549,7 @@ const HomePage = () => {
                 <Button
                   variant="primary"
                   className="mt-4"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`);
-                  }}
+                  onClick={() => navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`)}
                 >
                   Configure Site
                 </Button>
