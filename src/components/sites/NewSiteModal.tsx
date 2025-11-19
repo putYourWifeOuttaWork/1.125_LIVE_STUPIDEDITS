@@ -409,8 +409,8 @@ const NewSiteModal = ({ isOpen, onClose, programId, onSiteCreated }: NewSiteModa
           break;
         case 'location':
           // Create the site before moving to device setup
-          await createSiteFromForm();
-          if (createdSiteId) {
+          const site = await createSiteFromForm();
+          if (site) {
             setCurrentStep('deviceSetup');
           }
           break;

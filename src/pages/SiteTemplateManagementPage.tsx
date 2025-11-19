@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, Settings, Trash2, Zap, MapPin, Building, LayoutGrid, Box, ThermometerSnowflake, Warehouse } from 'lucide-react';
+import { ArrowLeft, FileText, Settings, Trash2, Zap, MapPin, Building, LayoutGrid, Box, ThermometerSnowflake, Warehouse, Camera } from 'lucide-react';
 import { useSites } from '../hooks/useSites';
 import { usePilotProgramStore } from '../stores/pilotProgramStore';
 import useUserRole from '../hooks/useUserRole';
@@ -9,6 +9,7 @@ import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
 import PermissionModal from '../components/common/PermissionModal';
 import SiteTemplateForm from '../components/sites/SiteTemplateForm';
+import DeviceSetupStep from '../components/sites/DeviceSetupStep';
 import { PetriDefaults, SubmissionDefaults, GasifierDefaults } from '../lib/types';
 import { toast } from 'react-toastify';
 import useCompanies from '../hooks/useCompanies';
@@ -39,6 +40,7 @@ const SiteTemplateManagementPage = () => {
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [adminEmail, setAdminEmail] = useState<string | undefined>();
+  const [showDeviceMapping, setShowDeviceMapping] = useState(false);
 
   // Load site data and check for template defaults
   useEffect(() => {
@@ -754,6 +756,43 @@ const SiteTemplateManagementPage = () => {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Device Mapping Section */}
+      {!isEditing && selectedSite && (
+        <Card className="mt-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Camera className="text-primary-600" size={20} />
+                <h2 className="text-xl font-semibold">Device Mapping</h2>
+              </div>
+              <Button
+                variant={showDeviceMapping ? 'outline' : 'primary'}
+                size="sm"
+                icon={<Camera size={16} />}
+                onClick={() => setShowDeviceMapping(!showDeviceMapping)}
+              >
+                {showDeviceMapping ? 'Hide Device Map' : 'Manage Devices'}
+              </Button>
+            </div>
+            <p className="text-sm text-gray-600 mt-1">
+              Assign IoT devices to this site and position them on the site map for spatial analytics.
+            </p>
+          </CardHeader>
+          {showDeviceMapping && (
+            <CardContent>
+              <DeviceSetupStep
+                siteId={siteId!}
+                siteLength={selectedSite.length || 0}
+                siteWidth={selectedSite.width || 0}
+                onDevicesAssigned={() => {
+                  // Refresh or show success message
+                }}
+              />
+            </CardContent>
+          )}
+        </Card>
       )}
     </div>
   );
