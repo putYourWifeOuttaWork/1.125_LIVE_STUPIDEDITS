@@ -605,9 +605,17 @@ function connectToMQTT() {
 
       client.subscribe('device/+/status', (err) => {
         if (err) {
-          console.error('[MQTT] ❌ Subscription error (device):', err);
+          console.error('[MQTT] ❌ Subscription error (device/status):', err);
         } else {
           console.log('[MQTT] ✅ Subscribed to device/+/status');
+        }
+      });
+
+      client.subscribe('device/+/data', (err) => {
+        if (err) {
+          console.error('[MQTT] ❌ Subscription error (device/data):', err);
+        } else {
+          console.log('[MQTT] ✅ Subscribed to device/+/data');
         }
       });
 
