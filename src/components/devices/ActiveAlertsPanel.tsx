@@ -100,7 +100,7 @@ const ActiveAlertsPanel = () => {
         .from('device_alerts')
         .update({
           resolved_at: new Date().toISOString(),
-          resolution_note: 'Acknowledged by user',
+          resolution_notes: 'Acknowledged by user',
         })
         .eq('alert_id', alertId);
 
