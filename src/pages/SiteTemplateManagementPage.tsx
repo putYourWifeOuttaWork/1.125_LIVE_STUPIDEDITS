@@ -234,6 +234,44 @@ const SiteTemplateManagementPage = () => {
         </div>
       </div>
 
+      {/* Device Mapping Section - Priority placement at top */}
+      {!isEditing && selectedSite && (
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Camera className="text-primary-600" size={20} />
+                <h2 className="text-xl font-semibold">Device Mapping</h2>
+              </div>
+              <Button
+                variant={showDeviceMapping ? 'outline' : 'primary'}
+                size="sm"
+                icon={<Camera size={16} />}
+                onClick={() => setShowDeviceMapping(!showDeviceMapping)}
+              >
+                {showDeviceMapping ? 'Hide Device Map' : 'Manage Devices'}
+              </Button>
+            </div>
+            <p className="text-sm text-gray-600 mt-1">
+              Assign IoT devices to this site and position them on the site map for spatial analytics.
+            </p>
+          </CardHeader>
+          {showDeviceMapping && (
+            <CardContent>
+              <DeviceSetupStep
+                siteId={siteId!}
+                siteLength={selectedSite.length || 0}
+                siteWidth={selectedSite.width || 0}
+                onDevicesAssigned={(assignments) => {
+                  toast.success(`Successfully assigned ${assignments.length} ${assignments.length === 1 ? 'device' : 'devices'} to site`);
+                  setShowDeviceMapping(false);
+                }}
+              />
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       {isEditing ? (
         <Card>
           <CardHeader>
@@ -756,44 +794,6 @@ const SiteTemplateManagementPage = () => {
             </Button>
           </div>
         </div>
-      )}
-
-      {/* Device Mapping Section */}
-      {!isEditing && selectedSite && (
-        <Card className="mt-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Camera className="text-primary-600" size={20} />
-                <h2 className="text-xl font-semibold">Device Mapping</h2>
-              </div>
-              <Button
-                variant={showDeviceMapping ? 'outline' : 'primary'}
-                size="sm"
-                icon={<Camera size={16} />}
-                onClick={() => setShowDeviceMapping(!showDeviceMapping)}
-              >
-                {showDeviceMapping ? 'Hide Device Map' : 'Manage Devices'}
-              </Button>
-            </div>
-            <p className="text-sm text-gray-600 mt-1">
-              Assign IoT devices to this site and position them on the site map for spatial analytics.
-            </p>
-          </CardHeader>
-          {showDeviceMapping && (
-            <CardContent>
-              <DeviceSetupStep
-                siteId={siteId!}
-                siteLength={selectedSite.length || 0}
-                siteWidth={selectedSite.width || 0}
-                onDevicesAssigned={(assignments) => {
-                  toast.success(`Successfully assigned ${assignments.length} ${assignments.length === 1 ? 'device' : 'devices'} to site`);
-                  setShowDeviceMapping(false);
-                }}
-              />
-            </CardContent>
-          )}
-        </Card>
       )}
     </div>
   );
