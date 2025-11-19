@@ -48,6 +48,23 @@ mosquitto_pub -h 1305ceddedc94b9fa7fba9428fe4624e.s1.eu.hivemq.cloud \
    - Password: BrainlyTest@1234
    - Enable TLS: Yes
 
+## Important: Device Auto-Provisioning
+
+When a device first connects, it **auto-provisions** with only its MAC address. Position, zone, site assignment, and other fields are set later when an admin maps the device via the web UI.
+
+**What device provides at first connection:**
+- `device_mac` (MAC address, e.g., B8F862F9CFB8)
+- `status` ("alive")
+- `pendingImg` (count of images waiting to upload)
+
+**What is NOT provided (set during manual mapping):**
+- Position coordinates (x, y)
+- Zone assignment
+- Site assignment
+- Company assignment
+
+---
+
 ## Complete Wake Session Simulation
 
 ### Step 1: Device HELLO (Alive Message)
@@ -73,6 +90,17 @@ mosquitto_pub -h 1305ceddedc94b9fa7fba9428fe4624e.s1.eu.hivemq.cloud \
   -t "device/B8F862F9CFB8/status" \
   -m '{"device_id":"B8F862F9CFB8","status":"alive","pendingImg":0}'
 ```
+
+**What happens:**
+1. MQTT service receives message
+2. Checks if device exists in database
+3. If not found, auto-provisions device with:
+   - `device_mac` = B8F862F9CFB8
+   - `device_code` = DEVICE-ESP32S3-XXX (auto-generated)
+   - `provisioning_status` = 'pending_mapping'
+   - `hardware_version` = 'ESP32-S3'
+4. Device appears in DevicesPage with status "Pending Mapping"
+5. Admin can then map device to site via UI
 
 ---
 
