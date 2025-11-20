@@ -231,17 +231,22 @@ export default function SiteMapAnalyticsViewer({
       } else {
         const color = colorScale(value);
         // Convert hex or rgb to rgba with 40% opacity
-        if (color.startsWith('#')) {
-          // Hex to rgba
-          const r = parseInt(color.slice(1, 3), 16);
-          const g = parseInt(color.slice(3, 5), 16);
-          const b = parseInt(color.slice(5, 7), 16);
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
-        } else if (color.startsWith('rgb')) {
-          // rgb to rgba
-          ctx.fillStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
+        if (color && typeof color === 'string') {
+          if (color.startsWith('#')) {
+            // Hex to rgba
+            const r = parseInt(color.slice(1, 3), 16);
+            const g = parseInt(color.slice(3, 5), 16);
+            const b = parseInt(color.slice(5, 7), 16);
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
+          } else if (color.startsWith('rgb')) {
+            // rgb to rgba
+            ctx.fillStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
+          } else {
+            // Fallback
+            ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
+          }
         } else {
-          // Fallback
+          // Fallback if color is undefined
           ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
         }
       }
