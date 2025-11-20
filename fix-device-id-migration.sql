@@ -29,12 +29,13 @@ BEGIN
   END IF;
 END $$;
 
--- Backfill device_id from submissions
+-- Backfill device_id from submissions (using created_by_device_id)
 UPDATE petri_observations po
-SET device_id = sub.device_id
+SET device_id = sub.created_by_device_id
 FROM submissions sub
 WHERE po.submission_id = sub.submission_id
-AND po.device_id IS NULL;
+AND po.device_id IS NULL
+AND sub.created_by_device_id IS NOT NULL;
 
 -- Add index for efficient device + MGI queries
 CREATE INDEX IF NOT EXISTS idx_petri_observations_device_mgi
