@@ -5,7 +5,7 @@ import Card, { CardHeader, CardContent } from '../common/Card';
 import { formatDistanceToNow } from 'date-fns';
 import { Delaunay } from 'd3-delaunay';
 import { scaleSequential } from 'd3-scale';
-import { interpolateRdYlBu, interpolateYlGnBu } from 'd3-scale-chromatic';
+import { interpolateRdYlBu, interpolateYlGnBu, interpolateRdYlGn } from 'd3-scale-chromatic';
 
 interface DevicePosition {
   device_id: string;
@@ -18,9 +18,10 @@ interface DevicePosition {
   last_seen: string | null;
   temperature: number | null;
   humidity: number | null;
+  mgi_score: number | null;
 }
 
-type ZoneMode = 'none' | 'temperature' | 'humidity' | 'battery';
+type ZoneMode = 'none' | 'temperature' | 'humidity' | 'battery' | 'mgi';
 
 interface SiteMapAnalyticsViewerProps {
   siteLength: number;
@@ -194,6 +195,7 @@ export default function SiteMapAnalyticsViewer({
       if (mode === 'temperature') value = device.temperature;
       else if (mode === 'humidity') value = device.humidity;
       else if (mode === 'battery') value = device.battery_level;
+      else if (mode === 'mgi') value = device.mgi_score;
 
       if (value !== null) {
         minValue = Math.min(minValue, value);
@@ -202,9 +204,16 @@ export default function SiteMapAnalyticsViewer({
     });
 
     // Create color scale
-    const colorScale = mode === 'humidity'
-      ? scaleSequential(interpolateYlGnBu).domain([minValue, maxValue])
-      : scaleSequential(interpolateRdYlBu).domain([maxValue, minValue]); // Inverted for temp (red=hot)
+    let colorScale;
+    if (mode === 'humidity') {
+      colorScale = scaleSequential(interpolateYlGnBu).domain([minValue, maxValue]);
+    } else if (mode === 'mgi') {
+      // MGI: Green (low/good) to Red (high/bad)
+      colorScale = scaleSequential(interpolateRdYlGn).domain([maxValue, minValue]); // Inverted: 0=green, 1=red
+    } else {
+      // Temperature and battery: Red (hot/low) to Blue (cold/high)
+      colorScale = scaleSequential(interpolateRdYlBu).domain([maxValue, minValue]);
+    }
 
     // Draw Voronoi cells
     devices.forEach((device, i) => {
@@ -215,6 +224,7 @@ export default function SiteMapAnalyticsViewer({
       if (mode === 'temperature') value = device.temperature;
       else if (mode === 'humidity') value = device.humidity;
       else if (mode === 'battery') value = device.battery_level;
+      else if (mode === 'mgi') value = device.mgi_score;
 
       if (value === null) {
         ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
@@ -250,6 +260,7 @@ export default function SiteMapAnalyticsViewer({
         if (mode === 'temperature') label = `${value.toFixed(1)}°F`;
         else if (mode === 'humidity') label = `${value.toFixed(0)}%`;
         else if (mode === 'battery') label = `${value}%`;
+        else if (mode === 'mgi') label = `MGI ${(value * 100).toFixed(0)}%`;
 
         // Draw label background
         const metrics = ctx.measureText(label);
@@ -326,6 +337,7 @@ export default function SiteMapAnalyticsViewer({
     avgTemp: devices.filter(d => d.temperature !== null).reduce((sum, d) => sum + (d.temperature || 0), 0) / devices.filter(d => d.temperature !== null).length || 0,
     avgHumidity: devices.filter(d => d.humidity !== null).reduce((sum, d) => sum + (d.humidity || 0), 0) / devices.filter(d => d.humidity !== null).length || 0,
     avgBattery: devices.filter(d => d.battery_level !== null).reduce((sum, d) => sum + (d.battery_level || 0), 0) / devices.filter(d => d.battery_level !== null).length || 0,
+    avgMGI: devices.filter(d => d.mgi_score !== null).reduce((sum, d) => sum + (d.mgi_score || 0), 0) / devices.filter(d => d.mgi_score !== null).length || 0,
   };
 
   return (
@@ -350,6 +362,7 @@ export default function SiteMapAnalyticsViewer({
                     <option value="temperature">Temperature</option>
                     <option value="humidity">Humidity</option>
                     <option value="battery">Battery</option>
+                    <option value="mgi">Mold Growth (MGI)</option>
                   </select>
                 </div>
               )}
@@ -376,6 +389,12 @@ export default function SiteMapAnalyticsViewer({
                 <div className="flex items-center gap-1">
                   <Battery size={14} />
                   <span>Avg: {zoneStats.avgBattery.toFixed(0)}%</span>
+                </div>
+              )}
+              {zoneMode === 'mgi' && (
+                <div className="flex items-center gap-1">
+                  <Camera size={14} />
+                  <span>Avg MGI: {(zoneStats.avgMGI * 100).toFixed(0)}%</span>
                 </div>
               )}
             </div>

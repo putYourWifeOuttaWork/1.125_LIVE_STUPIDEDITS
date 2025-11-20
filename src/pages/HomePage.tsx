@@ -113,13 +113,23 @@ const HomePage = () => {
 
         console.log('Found devices with positions:', data?.length || 0, data);
 
-        // Fetch latest telemetry for each device
+        // Fetch latest telemetry and MGI score for each device
         const devicesWithTelemetry = await Promise.all(
           (data || []).map(async (device) => {
             const { data: telemetryData } = await supabase
               .from('device_telemetry')
               .select('temperature, humidity')
               .eq('device_id', device.device_id)
+              .order('captured_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            // Fetch latest MGI score
+            const { data: mgiData } = await supabase
+              .from('petri_observations')
+              .select('mgi_score')
+              .eq('device_id', device.device_id)
+              .not('mgi_score', 'is', null)
               .order('captured_at', { ascending: false })
               .limit(1)
               .maybeSingle();
@@ -135,6 +145,7 @@ const HomePage = () => {
               last_seen: device.last_seen_at,
               temperature: telemetryData?.temperature || null,
               humidity: telemetryData?.humidity || null,
+              mgi_score: mgiData?.mgi_score || null,
             };
           })
         );
