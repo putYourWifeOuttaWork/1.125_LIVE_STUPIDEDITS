@@ -1,311 +1,255 @@
-# MGI Visualization System - Implementation Complete
+# MGI Visualization System - Current State & Requirements
 
-## Overview
+## ✅ What Already Exists
 
-MGI (Mold Growth Index) is now a **first-class metric** displayed prominently throughout the application. This includes dynamic node coloring, velocity pulse animations, and comprehensive data displays.
+### 1. **MGI Utilities** (`src/utils/mgiUtils.ts`)
+Complete set of utility functions for MGI scoring and visualization:
+- **MGI Color Coding**: 
+  - 0-30%: Green (healthy)
+  - 31-50%: Yellow/Amber (warning)
+  - 51-65%: Orange (concerning)
+  - 65%+: Red (critical)
+- **Velocity Thresholds**: 1-3% (small), 4-7% (medium), 8-12% (large), 12%+ (very large)
+- **Pulse Sizing & Duration**: Dynamically calculated based on velocity
+- **Formatting Functions**: `formatMGI()`, `formatVelocity()`, `formatSpeed()`
 
----
+### 2. **SiteMapViewer Component** (`src/components/lab/SiteMapViewer.tsx`)
+**READ-ONLY** D3-based map viewer with:
+- ✅ Device positioning from site coordinates
+- ✅ MGI color coding on device circles
+- ✅ Velocity pulse animations (continuous, growing circles)
+- ✅ Pulse radius scales with velocity (small → very large)
+- ✅ Pulse duration speeds up with higher velocity
+- ✅ Wall/obstacle rendering
+- ✅ Grid overlay with 10ft reference
+- ✅ Device tooltips on hover
+- ✅ Responsive sizing based on site dimensions
+- ✅ Device click handler for navigation
 
-## Visual System
+**Status**: This is your SNAPSHOT VIEWER for read-only display
 
-### Node Color Thresholds
+### 3. **SiteMapEditor Component** (`src/components/sites/SiteMapEditor.tsx`)
+**INTERACTIVE** Canvas-based editor with:
+- ✅ Drag-and-drop device positioning
+- ✅ Grid snapping
+- ✅ Device status color coding (active=green, offline=red)
+- ✅ Right-click context menu support
+- ✅ Double-click for device details
+- ✅ Grid toggle
+- ✅ Real-time coordinate display
+- ✅ Battery level indicators
 
-**Color-coded by MGI percentage:**
-- **0-30%**: Green (Healthy)
-- **31-50%**: Yellow/Amber (Warning)
-- **51-65%**: Orange (Concerning)  
-- **65%+**: Red (Critical)
+**Status**: This is your WORKING MAP for device placement
 
-### Velocity Pulse Animation
+### 4. **SiteMapAnalyticsViewer Component** (`src/components/lab/SiteMapAnalyticsViewer.tsx`)
+Canvas-based viewer with:
+- ✅ Voronoi zone visualization (temperature, humidity, battery, MGI)
+- ✅ Delaunay triangulation for heat mapping
+- ✅ D3 color scales for gradient zones
+- ✅ Zone mode switching
+- ✅ Device click handlers
 
-**For high-growth devices** (velocity > 15% per session):
-- Animated gradient circle emanates from device node
-- Circle size scales with velocity magnitude
-- Circle color matches the device MGI color
-- Creates visual alert for rapid mold growth
+**Status**: Analytics-focused viewer with zone overlays
 
----
+### 5. **Current Usage**
 
-## Implementation Details
+**HomePage** (`src/pages/HomePage.tsx`):
+- Uses `SiteMapAnalyticsViewer`
+- Shows current state of selected site
+- Displays devices with latest MGI from `petri_observations` ⚠️
 
-### Files Created
+**SitesPage** (`src/pages/SitesPage.tsx`):
+- Shows site cards/list
+- No map visualization currently
 
-1. **`src/utils/mgiUtils.ts`** - Core MGI utilities
-   - Threshold constants
-   - Color functions
-   - Formatting helpers
-   - Velocity calculations
-   - Badge styling
-
-2. **`src/components/devices/DeviceMGIBadge.tsx`** - Reusable MGI badge
-   - Displays MGI score with color coding
-   - Shows velocity indicator (up/down/stable arrows)
-   - Multiple size variants
-   - Tooltips with descriptions
-
-3. **`fix-device-id-migration.sql`** - Database migration
-   - Adds `device_id` column to `petri_observations`
-   - Backfills from `submissions.created_by_device_id`
-   - Creates optimized indexes
-
-### Files Updated
-
-1. **`src/components/lab/SiteMapViewer.tsx`**
-   - Uses MGI utils for coloring
-   - Adds velocity pulse animation
-   - Enhanced tooltips with MGI + velocity
-
-2. **`src/components/lab/MGILegend.tsx`**
-   - Re-exports all MGI utilities
-   - Updated thresholds to match new system
-   - Maintains backward compatibility
-
-3. **`src/pages/HomePage.tsx`**
-   - Fetches latest MGI scores per device
-   - Uses correct column name (`created_at`)
-   - Passes data to map visualization
-
-4. **`test-mgi-visualization.mjs`**
-   - Creates mock MGI data for testing
-   - Includes all required fields
-   - Generates 3 devices with varied scores
+**SiteTemplateManagementPage** (`src/pages/SiteTemplateManagementPage.tsx`):
+- Uses `DeviceSetupStep` component
+- Contains `SiteMapEditor` for device placement
+- This is where devices are positioned on the working map
 
 ---
 
-## Color Thresholds
+## 🚨 Critical Issues Found
+
+### 1. **HomePage Still Using `petri_observations`**
+Location: `src/pages/HomePage.tsx:129`
 
 ```typescript
-export const MGI_THRESHOLDS = {
-  healthy: 30,      // 0-30%: Green
-  warning: 50,      // 31-50%: Yellow
-  concerning: 65,   // 51-65%: Orange
-  critical: 65,     // 65%+: Red
-};
-
-export const VELOCITY_THRESHOLDS = {
-  normal: 5,        // < 5% per session
-  elevated: 10,     // 5-10% per session
-  high: 15,         // > 15% per session = show pulse
-};
+// ❌ OLD: Fetching MGI from petri_observations
+const { data: mgiData } = await supabase
+  .from('petri_observations')
+  .select('mgi_score')
+  .eq('device_id', device.device_id)
+  .not('mgi_score', 'is', null)
+  .order('created_at', { ascending: false })
+  .limit(1)
+  .maybeSingle();
 ```
 
----
-
-## Utility Functions
-
-### Formatting
+**Should be:**
 ```typescript
-formatMGI(mgiScore: number | null): string
-// Returns: "45.3%" or "N/A"
-
-formatVelocity(velocity: number | null): string
-// Returns: "+12.5%" or "-3.2%"
-
-formatSpeed(speed: number | null): string  
-// Returns: "+2.1%/day"
+// ✅ NEW: Fetch MGI from device_images
+const { data: mgiData } = await supabase
+  .from('device_images')
+  .select('mgi_score, mgi_velocity')
+  .eq('device_id', device.device_id)
+  .not('mgi_score', 'is', null)
+  .order('captured_at', { ascending: false })
+  .limit(1)
+  .maybeSingle();
 ```
 
-### Coloring
+### 2. **Missing Velocity Data on HomePage**
+Current code only fetches `mgi_score`, but we also need `mgi_velocity` for pulse animations.
+
+### 3. **MGI Thresholds Don't Match Requirements**
+Current thresholds in `mgiUtils.ts`:
+- 0-30%: Green
+- 31-50%: Yellow
+- 51-65%: Orange
+- 65%+: Red
+
+**Your Requirements:**
+- 0-10: Green
+- 11-25: Yellow
+- 26-40: Orange
+- 41+: Red
+
+### 4. **Velocity Thresholds Don't Match Requirements**
+Current thresholds:
+- 1-3%: Small
+- 4-7%: Medium
+- 8-12%: Large
+- 12%+: Very Large
+
+**Your Requirements (MGIV = MGI Velocity):**
+- 1-5: Green, small pulse
+- 6-8: Yellow, medium-small pulse
+- 9-12: Orange, medium pulse
+- 13-16: Red, large pulse
+- 17+: Critical (red with SVG icon)
+
+---
+
+## 📋 What Needs to Be Built
+
+### 1. **Timeline Animation System**
+**NEW Component**: `SessionSnapshotViewer` (already exists at `src/pages/lab/SessionSnapshotViewer.tsx`)
+
+Requirements:
+- Load all snapshots for a site since program start
+- Show snapshots for selected day
+- Animated playback with play/pause/scrub controls
+- Timeline slider to navigate between snapshots
+- Each snapshot shows:
+  - Device positions (static)
+  - Device MGI color at that snapshot time
+  - Velocity pulse animation at that snapshot time
+  - Critical indicator (SVG) if velocity > 16
+
+### 2. **Fix HomePage MGI Data Source**
+- Change from `petri_observations` to `device_images`
+- Fetch both `mgi_score` and `mgi_velocity`
+- Use `device.latest_mgi_score` and `device.latest_mgi_velocity` from devices table (faster)
+
+### 3. **Update MGI Thresholds**
+Update `src/utils/mgiUtils.ts`:
+- Fix MGI_THRESHOLDS to match 0-10, 11-25, 26-40, 41+
+- Fix VELOCITY_THRESHOLDS to match 1-5, 6-8, 9-12, 13-16, 17+
+- Add critical velocity SVG indicator function
+
+### 4. **Snapshot Generation Integration**
+- Call `generate_site_snapshot(site_id)` periodically (every 3 hours default)
+- Store in `site_snapshots` table
+- Query snapshots for timeline playback
+
+---
+
+## 🎯 Implementation Plan
+
+### Phase 1: Fix Existing Issues (URGENT)
+1. Update `mgiUtils.ts` thresholds to match requirements
+2. Fix HomePage to use `device_images` instead of `petri_observations`
+3. Add `mgi_velocity` to device data fetching
+
+### Phase 2: Snapshot Timeline Viewer
+1. Check existing `SessionSnapshotViewer` component
+2. Build timeline controls (play, pause, scrub, date picker)
+3. Load snapshots from `site_snapshots` table
+4. Render devices with snapshot-time MGI/velocity
+
+### Phase 3: Critical Velocity Indicator
+1. Add SVG icon for critical velocity (17+)
+2. Update `SiteMapViewer` to show critical icon
+3. Add to snapshot viewer
+
+### Phase 4: Testing & Polish
+1. Test with real snapshot data
+2. Verify pulse animations match velocity
+3. Ensure timeline scrubbing is smooth
+4. Add loading states
+
+---
+
+## 🗺️ Map Component Decision Matrix
+
+| Component | Type | Use Case | Location | Features |
+|-----------|------|----------|----------|----------|
+| `SiteMapViewer` | READ-ONLY | Snapshot viewing | Lab pages | D3, MGI colors, velocity pulses |
+| `SiteMapEditor` | INTERACTIVE | Device placement | Template management | Drag-drop, grid snapping |
+| `SiteMapAnalyticsViewer` | READ-ONLY | Current state | HomePage | Voronoi zones, analytics |
+| `SessionSnapshotViewer` | READ-ONLY | Timeline playback | Site detail page | Animation, scrubbing |
+
+---
+
+## 📊 Data Architecture
+
+**Current State (HomePage):**
+```
+Sites Page → Selected Site → SiteMapAnalyticsViewer
+                           → Devices with latest MGI from petri_observations ❌
+```
+
+**Target State:**
+```
+Sites Page → Selected Site → SiteMapAnalyticsViewer
+                           → Devices with latest_mgi_* from devices table ✅
+           → Site Detail → SessionSnapshotViewer
+                         → site_snapshots table (timeline data)
+```
+
+**Snapshot Structure:**
 ```typescript
-getMGIColor(mgiScore: number | null): string
-// Returns: '#10b981' (green) to '#ef4444' (red)
-
-getMGIBadgeClass(mgiScore: number | null): string
-// Returns: Tailwind classes for badges
-
-getMGIColorWithOpacity(mgiScore, opacity): string
-// Returns: rgba() with specified opacity
-```
-
-### Velocity
-```typescript
-shouldShowVelocityPulse(velocity: number | null): boolean
-// Returns true if velocity > 15%
-
-getVelocityPulseRadius(velocity: number | null): number
-// Returns radius for animated pulse circle
+site_snapshots {
+  snapshot_id: UUID
+  site_id: UUID
+  snapshot_time: timestamp
+  device_states: JSONB {
+    device_id, device_name, x_position, y_position,
+    latest_mgi_score, latest_mgi_velocity, battery_voltage
+  }[]
+  device_count: int
+  active_device_count: int
+}
 ```
 
 ---
 
-## How to Apply
+## ✨ Summary
 
-### 1. Apply Database Migration
+You have excellent foundations:
+- ✅ MGI utilities with pulse animations
+- ✅ Read-only and interactive map components
+- ✅ Site snapshot table and functions
+- ✅ D3-based visualization
 
-**Via Supabase Dashboard:**
-1. Open SQL Editor
-2. Copy/paste contents of `fix-device-id-migration.sql`
-3. Click Run
+**Critical fixes needed:**
+1. Fix MGI thresholds (0-10, 11-25, 26-40, 41+)
+2. Fix velocity thresholds (1-5, 6-8, 9-12, 13-16, 17+)
+3. Update HomePage to use `device_images` not `petri_observations`
+4. Add critical velocity indicator (SVG icon for 17+)
 
-### 2. Create Test Data
+**New feature to build:**
+- Timeline animation system using `site_snapshots`
 
-```bash
-node test-mgi-visualization.mjs
-```
-
-Creates 3 devices with MGI scores:
-- Device 1: 25% (green)
-- Device 2: 65% (yellow)  
-- Device 3: 85% (red)
-
-### 3. View Results
-
-1. Refresh homepage
-2. Select site
-3. Choose "Mold Growth (MGI)" from Zones dropdown
-4. See colored device nodes
-5. Devices with high velocity show pulsing circles!
-
----
-
-## Animation Details
-
-**Velocity Pulse** (for devices with velocity > 15%):
-
-```typescript
-// Animated properties:
-- Initial radius: 10px
-- Final radius: 20-40px (scales with velocity)
-- Duration: 2000ms
-- Easing: d3.easeQuadOut
-- Opacity: 0.8 → 0
-- Loops infinitely
-```
-
-The pulse creates a "radar ping" effect that draws attention to rapidly growing mold spots.
-
----
-
-## Integration with Roboflow
-
-**Automatic MGI Scoring:**
-
-The Roboflow edge function (`supabase/functions/score_mgi_image`) automatically:
-1. Receives petri dish images
-2. Analyzes mold growth
-3. Returns MGI score (0-100%)
-4. Saves to `petri_observations.mgi_score`
-5. Triggers map re-render with new colors
-
----
-
-## Data Flow
-
-```
-Device captures image
-    ↓
-MQTT handler receives chunks
-    ↓
-Image assembled and stored
-    ↓
-Roboflow API called
-    ↓
-MGI score saved to petri_observations
-    ↓
-HomePage fetches latest MGI per device
-    ↓
-Map renders with color + pulse
-```
-
----
-
-## Future Enhancements
-
-### Planned Features:
-1. MGI badges on device cards (component created, needs integration)
-2. MGI prominently on device detail pages
-3. MGI trends charts over time
-4. Alert triggers for rapid velocity changes
-5. Submission records showing MGI scores
-6. Export MGI data in reports
-
-### Database Views Ready:
-- Latest MGI per device (with velocity)
-- MGI trends over time
-- Zone-level MGI aggregates
-- Alert threshold tracking
-
----
-
-## Testing with Real Images
-
-```bash
-# Get a public petri dish image URL
-IMAGE_URL="https://example.com/petri-dish.jpg"
-
-# Score with Roboflow
-node test/test_mgi_scoring.mjs test-image-1 "$IMAGE_URL"
-```
-
-The system will:
-1. Send image to Roboflow
-2. Get MGI score back
-3. Save to database
-4. Display on map immediately!
-
----
-
-## Build Status
-
-✅ **All TypeScript compiled successfully**  
-✅ **No errors**  
-✅ **Build time: 17.67s**  
-✅ **Ready for deployment**
-
----
-
-## Files Summary
-
-**Created:**
-- `src/utils/mgiUtils.ts` (MGI utilities)
-- `src/components/devices/DeviceMGIBadge.tsx` (badge component)
-- `fix-device-id-migration.sql` (database migration)
-- `APPLY_DEVICE_ID_MIGRATION_FINAL.md` (instructions)
-
-**Updated:**
-- `src/components/lab/SiteMapViewer.tsx` (pulse animation)
-- `src/components/lab/MGILegend.tsx` (utilities re-export)
-- `src/pages/HomePage.tsx` (fetch MGI data)
-- `test-mgi-visualization.mjs` (test script)
-
----
-
-## Quick Reference
-
-```typescript
-// Import MGI utilities
-import { 
-  getMGIColor, 
-  formatMGI, 
-  formatVelocity,
-  shouldShowVelocityPulse,
-  getMGIBadgeClass 
-} from '../../utils/mgiUtils';
-
-// Use in components
-const color = getMGIColor(0.65); // '#f97316' (orange)
-const display = formatMGI(0.653); // "65.3%"
-const showPulse = shouldShowVelocityPulse(0.18); // true
-```
-
----
-
-## Key Achievements
-
-✅ **Dynamic node coloring** - Devices change color based on MGI  
-✅ **Velocity pulse animation** - Visual alert for rapid growth  
-✅ **Comprehensive tooltips** - MGI + velocity + environmental data  
-✅ **Reusable utilities** - Easy to add MGI anywhere in app  
-✅ **Database optimized** - Indexes for fast MGI queries  
-✅ **Test data ready** - Mock MGI scores for visualization  
-✅ **Roboflow integrated** - Automatic real image scoring  
-
----
-
-## Run the test script
-
-```bash
-node test-mgi-visualization.mjs
-```
-
-Then refresh your homepage and watch the magic happen! 🎨✨
+Your architecture is solid - we just need to fix the thresholds, data sources, and add the timeline playback system!
