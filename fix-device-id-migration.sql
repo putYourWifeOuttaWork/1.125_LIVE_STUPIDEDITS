@@ -39,12 +39,12 @@ AND sub.created_by_device_id IS NOT NULL;
 
 -- Add index for efficient device + MGI queries
 CREATE INDEX IF NOT EXISTS idx_petri_observations_device_mgi
-ON petri_observations(device_id, captured_at DESC)
+ON petri_observations(device_id, created_at DESC)
 WHERE mgi_score IS NOT NULL;
 
--- Add index for device + captured_at (for latest observation queries)
-CREATE INDEX IF NOT EXISTS idx_petri_observations_device_captured
-ON petri_observations(device_id, captured_at DESC);
+-- Add index for device + created_at (for latest observation queries)
+CREATE INDEX IF NOT EXISTS idx_petri_observations_device_created
+ON petri_observations(device_id, created_at DESC);
 
 -- Update comment
 COMMENT ON COLUMN petri_observations.device_id IS 'Device that captured this observation (denormalized from submissions for efficient querying)';

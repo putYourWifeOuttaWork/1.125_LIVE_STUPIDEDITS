@@ -130,7 +130,7 @@ const HomePage = () => {
               .select('mgi_score')
               .eq('device_id', device.device_id)
               .not('mgi_score', 'is', null)
-              .order('captured_at', { ascending: false })
+              .order('created_at', { ascending: false })
               .limit(1)
               .maybeSingle();
 
