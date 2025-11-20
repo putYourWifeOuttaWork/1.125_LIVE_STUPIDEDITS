@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { DeviceSnapshotData, SiteLayoutData } from '../../lib/types';
-import { getMGIColor } from './MGILegend';
+import { getMGIColor, formatMGI, formatVelocity, shouldShowVelocityPulse, getVelocityPulseRadius } from '../../utils/mgiUtils';
 import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import Button from '../common/Button';
 
@@ -158,6 +158,37 @@ export function SiteMapViewer({
       const cx = xScale(device.x_position);
       const cy = yScale(device.y_position);
       const isSelected = device.device_id === selectedDeviceId;
+      const showPulse = shouldShowVelocityPulse(device.mgi_velocity);
+      const pulseRadius = getVelocityPulseRadius(device.mgi_velocity, 10);
+      const deviceColor = getMGIColor(device.mgi_score);
+
+      // Velocity pulse animation (for high-growth devices)
+      if (showPulse && pulseRadius > 0) {
+        const pulse = deviceGroup
+          .append('circle')
+          .attr('cx', cx)
+          .attr('cy', cy)
+          .attr('r', 10)
+          .attr('fill', 'none')
+          .attr('stroke', deviceColor)
+          .attr('stroke-width', 3)
+          .attr('opacity', 0.8);
+
+        // Animate pulse
+        function animatePulse() {
+          pulse
+            .transition()
+            .duration(2000)
+            .ease(d3.easeQuadOut)
+            .attr('r', pulseRadius)
+            .attr('opacity', 0)
+            .on('end', () => {
+              pulse.attr('r', 10).attr('opacity', 0.8);
+              animatePulse();
+            });
+        }
+        animatePulse();
+      }
 
       // Device outer ring (for selection highlight)
       if (isSelected) {
@@ -177,7 +208,7 @@ export function SiteMapViewer({
         .attr('cx', cx)
         .attr('cy', cy)
         .attr('r', 10)
-        .attr('fill', getMGIColor(device.mgi_score))
+        .attr('fill', deviceColor)
         .attr('stroke', '#fff')
         .attr('stroke-width', 2)
         .style('transition', 'all 0.3s ease');
@@ -198,7 +229,8 @@ export function SiteMapViewer({
         .append('title')
         .text(
           `${device.device_name}\n` +
-            `MGI: ${device.mgi_score !== null ? device.mgi_score.toFixed(3) : 'N/A'}\n` +
+            `MGI: ${formatMGI(device.mgi_score)}\n` +
+            `Velocity: ${formatVelocity(device.mgi_velocity)}\n` +
             `Temp: ${device.temperature !== null ? device.temperature.toFixed(1) + '°F' : 'N/A'}\n` +
             `RH: ${device.humidity !== null ? device.humidity.toFixed(1) + '%' : 'N/A'}\n` +
             `Position: (${device.x_position}, ${device.y_position})`

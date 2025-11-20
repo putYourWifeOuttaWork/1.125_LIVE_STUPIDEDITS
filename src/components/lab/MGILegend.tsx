@@ -1,34 +1,32 @@
 import { useMemo } from 'react';
 import * as d3 from 'd3';
+import { getMGIColor as utilsGetMGIColor, getMGILevel } from '../../utils/mgiUtils';
 
 interface MGILegendProps {
   className?: string;
 }
 
-// MGI color scale: 0 (green) -> 1 (red)
-export function getMGIColor(mgiScore: number | null): string {
-  if (mgiScore === null || mgiScore === undefined) {
-    return '#9ca3af'; // gray-400 for no data
-  }
+// Re-export utilities for backward compatibility
+export { getMGIColor, formatMGI, formatVelocity, formatSpeed, getMGILevel, getMGILevelDescription, shouldShowVelocityPulse, getVelocityPulseRadius } from '../../utils/mgiUtils';
 
-  // Clamp between 0 and 1
-  const clamped = Math.max(0, Math.min(1, mgiScore));
-
-  // Create color scale: green -> yellow -> orange -> red
-  const colorScale = d3.scaleLinear<string>()
-    .domain([0, 0.3, 0.6, 0.85, 1.0])
-    .range(['#10b981', '#fbbf24', '#f97316', '#ef4444', '#991b1b']);
-
-  return colorScale(clamped);
+// Wrapper to use utils function
+function getMGIColor(mgiScore: number | null): string {
+  return utilsGetMGIColor(mgiScore);
 }
 
-// Get risk level text based on MGI score
+// Get risk level text based on MGI score (backward compatibility)
 export function getMGIRiskLevel(mgiScore: number | null): string {
   if (mgiScore === null || mgiScore === undefined) return 'Unknown';
-  if (mgiScore < 0.3) return 'Low';
-  if (mgiScore < 0.6) return 'Moderate';
-  if (mgiScore < 0.85) return 'High';
-  return 'Critical';
+  const level = getMGILevel(mgiScore);
+
+  const levelMap = {
+    healthy: 'Low',
+    warning: 'Moderate',
+    concerning: 'High',
+    critical: 'Critical',
+  };
+
+  return levelMap[level];
 }
 
 export function MGILegend({ className = '' }: MGILegendProps) {
@@ -43,10 +41,10 @@ export function MGILegend({ className = '' }: MGILegendProps) {
   }, []);
 
   const legendItems = [
-    { value: 0.0, label: 'Low (0.0)', color: getMGIColor(0.0) },
-    { value: 0.3, label: 'Moderate (0.3)', color: getMGIColor(0.3) },
-    { value: 0.6, label: 'High (0.6)', color: getMGIColor(0.6) },
-    { value: 0.85, label: 'Critical (0.85+)', color: getMGIColor(0.85) },
+    { value: 0.0, label: 'Healthy (0-30%)', color: getMGIColor(0.15) },
+    { value: 0.3, label: 'Warning (31-50%)', color: getMGIColor(0.40) },
+    { value: 0.5, label: 'Concerning (51-65%)', color: getMGIColor(0.58) },
+    { value: 0.65, label: 'Critical (65%+)', color: getMGIColor(0.80) },
   ];
 
   return (
