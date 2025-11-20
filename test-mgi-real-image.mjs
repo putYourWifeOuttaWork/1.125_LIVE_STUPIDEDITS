@@ -56,12 +56,12 @@ console.log('='.repeat(60));
 async function getTestDevice() {
   console.log('\n📱 Step 1: Getting test device...');
   
-  // Find existing test device
+  // Find existing test device (active, physical, with site + program)
   const { data: devices, error } = await supabase
     .from('devices')
     .select('device_id, device_mac, device_name, device_code, site_id, program_id, company_id')
     .eq('device_type', 'physical')
-    .eq('provisioning_status', 'active')
+    .eq('is_active', true)
     .not('site_id', 'is', null)
     .not('program_id', 'is', null)
     .limit(1)
