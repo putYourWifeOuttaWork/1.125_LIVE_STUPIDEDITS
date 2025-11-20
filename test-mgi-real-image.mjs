@@ -17,13 +17,24 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import https from 'https';
+import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Load environment variables
+dotenv.config();
+
 // Supabase config
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ Missing Supabase credentials in .env file!');
+  console.error('   Required: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+  process.exit(1);
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // HiveMQ config (from mqtt-service)
@@ -50,7 +61,9 @@ async function getTestDevice() {
     .from('devices')
     .select('device_id, device_mac, device_name, device_code, site_id, program_id, company_id')
     .eq('device_type', 'physical')
-    .eq('status', 'active')
+    .eq('provisioning_status', 'active')
+    .not('site_id', 'is', null)
+    .not('program_id', 'is', null)
     .limit(1)
     .maybeSingle();
   
