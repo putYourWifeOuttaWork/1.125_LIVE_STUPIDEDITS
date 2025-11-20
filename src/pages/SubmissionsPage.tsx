@@ -53,7 +53,7 @@ const SubmissionsPage = () => {
   const queryClient = useQueryClient();
   const [siteDevices, setSiteDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
-  const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
+  const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery' | 'mgi'>('mgi');
   
   // Use the useSubmissions hook to get access to submissions and related functions
   const {

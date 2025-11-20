@@ -230,7 +230,20 @@ export default function SiteMapAnalyticsViewer({
         ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
       } else {
         const color = colorScale(value);
-        ctx.fillStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
+        // Convert hex or rgb to rgba with 40% opacity
+        if (color.startsWith('#')) {
+          // Hex to rgba
+          const r = parseInt(color.slice(1, 3), 16);
+          const g = parseInt(color.slice(3, 5), 16);
+          const b = parseInt(color.slice(5, 7), 16);
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
+        } else if (color.startsWith('rgb')) {
+          // rgb to rgba
+          ctx.fillStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
+        } else {
+          // Fallback
+          ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
+        }
       }
 
       ctx.beginPath();
