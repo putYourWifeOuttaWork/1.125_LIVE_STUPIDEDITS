@@ -32,11 +32,17 @@ async function main() {
 
   console.log(`Found ${devices.length} devices\n`);
 
-  const mockMGIScores = [0.25, 0.65, 0.85];
+  // Test different MGI + velocity combinations
+  const mockData = [
+    { mgi: 0.25, velocity: 0.02, description: 'Low MGI, small pulse' },
+    { mgi: 0.45, velocity: 0.06, description: 'Medium MGI, medium pulse' },
+    { mgi: 0.70, velocity: 0.10, description: 'High MGI, large pulse' },
+    { mgi: 0.88, velocity: 0.15, description: 'Critical MGI, very large & fast pulse' },
+  ];
 
-  for (let i = 0; i < devices.length && i < mockMGIScores.length; i++) {
+  for (let i = 0; i < devices.length && i < mockData.length; i++) {
     const device = devices[i];
-    const mgiScore = mockMGIScores[i];
+    const { mgi: mgiScore, velocity, description } = mockData[i];
 
     const { data: submission } = await supabase
       .from('submissions')
@@ -64,9 +70,10 @@ async function main() {
           mgi_score: mgiScore,
           mgi_confidence: 0.92,
           mgi_scored_at: new Date().toISOString(),
+          growth_velocity: velocity,
         });
 
-      console.log(`${device.device_code}: MGI ${(mgiScore * 100).toFixed(0)}%`);
+      console.log(`${device.device_code}: ${description} - MGI ${(mgiScore * 100).toFixed(0)}%, velocity ${(velocity * 100).toFixed(1)}%`);
     }
   }
 

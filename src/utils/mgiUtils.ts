@@ -28,9 +28,10 @@ export const MGI_THRESHOLDS: MGIThresholds = {
 };
 
 export const VELOCITY_THRESHOLDS: VelocityThresholds = {
-  normal: 5,        // < 5% per session
-  elevated: 10,     // 5-10% per session
-  high: 15,         // > 15% per session = show pulse
+  normal: 3,        // 1-3% per session = small pulse
+  elevated: 7,      // 4-7% per session = medium pulse
+  high: 12,         // 8-12% per session = large pulse
+  // 12%+ = very large and fast pulse
 };
 
 export type MGILevel = 'healthy' | 'warning' | 'concerning' | 'critical';
@@ -106,41 +107,76 @@ export function formatSpeed(speed: number | null): string {
 }
 
 /**
- * Check if velocity is high enough to show pulse animation
+ * Check if velocity is present to show pulse animation (always show if velocity exists)
  */
 export function shouldShowVelocityPulse(velocity: number | null): boolean {
-  if (velocity === null) return false;
-  return Math.abs(velocity) >= VELOCITY_THRESHOLDS.high / 100; // Convert to 0-1 scale
+  if (velocity === null || velocity === undefined) return false;
+  // Always show pulse if there's any velocity (even 0 for minimal pulse)
+  return true;
 }
 
 /**
  * Get pulse radius based on velocity magnitude
  */
 export function getVelocityPulseRadius(velocity: number | null, baseRadius: number = 10): number {
-  if (velocity === null) return 0;
-  
+  if (velocity === null) return baseRadius * 1.5; // minimal pulse for no data
+
   const velocityPercent = Math.abs(velocity * 100);
-  
-  // Scale pulse size based on velocity
-  if (velocityPercent < VELOCITY_THRESHOLDS.normal) return 0;
-  if (velocityPercent < VELOCITY_THRESHOLDS.elevated) return baseRadius * 2;
-  if (velocityPercent < VELOCITY_THRESHOLDS.high) return baseRadius * 3;
-  return baseRadius * 4;
+
+  // Scale pulse size based on velocity levels
+  if (velocityPercent <= VELOCITY_THRESHOLDS.normal) {
+    // 0-3%: Small pulse
+    return baseRadius * 2;
+  } else if (velocityPercent <= VELOCITY_THRESHOLDS.elevated) {
+    // 4-7%: Medium pulse
+    return baseRadius * 3;
+  } else if (velocityPercent <= VELOCITY_THRESHOLDS.high) {
+    // 8-12%: Large pulse
+    return baseRadius * 4;
+  } else {
+    // 12%+: Very large pulse
+    return baseRadius * 5;
+  }
 }
 
 /**
  * Get velocity level
  */
-export type VelocityLevel = 'normal' | 'elevated' | 'high';
+export type VelocityLevel = 'small' | 'medium' | 'large' | 'very_large';
 
 export function getVelocityLevel(velocity: number | null): VelocityLevel {
-  if (velocity === null) return 'normal';
-  
+  if (velocity === null) return 'small';
+
   const velocityPercent = Math.abs(velocity * 100);
-  
-  if (velocityPercent < VELOCITY_THRESHOLDS.normal) return 'normal';
-  if (velocityPercent < VELOCITY_THRESHOLDS.high) return 'elevated';
-  return 'high';
+
+  if (velocityPercent <= VELOCITY_THRESHOLDS.normal) return 'small';
+  if (velocityPercent <= VELOCITY_THRESHOLDS.elevated) return 'medium';
+  if (velocityPercent <= VELOCITY_THRESHOLDS.high) return 'large';
+  return 'very_large';
+}
+
+/**
+ * Get pulse animation duration based on velocity (faster animation = higher velocity)
+ */
+export function getVelocityPulseDuration(velocity: number | null): number {
+  if (velocity === null) return 3000; // slow for no data
+
+  const velocityPercent = Math.abs(velocity * 100);
+
+  // Faster pulse = higher velocity
+  if (velocityPercent <= VELOCITY_THRESHOLDS.normal) {
+    // 0-3%: Slow pulse
+    return 3000; // 3 seconds
+  } else if (velocityPercent <= VELOCITY_THRESHOLDS.elevated) {
+    // 4-7%: Medium-speed pulse
+    return 2200; // 2.2 seconds
+  } else if (velocityPercent <= VELOCITY_THRESHOLDS.high) {
+    // 8-12%: Fast pulse
+    return 1500; // 1.5 seconds
+  } else {
+    // 12%+: Very fast pulse
+    return 1000; // 1 second
+  }
 }
 
 /**

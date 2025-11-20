@@ -7,7 +7,7 @@ interface MGILegendProps {
 }
 
 // Re-export utilities for backward compatibility
-export { getMGIColor, formatMGI, formatVelocity, formatSpeed, getMGILevel, getMGILevelDescription, shouldShowVelocityPulse, getVelocityPulseRadius } from '../../utils/mgiUtils';
+export { getMGIColor, formatMGI, formatVelocity, formatSpeed, getMGILevel, getMGILevelDescription, shouldShowVelocityPulse, getVelocityPulseRadius, getVelocityPulseDuration } from '../../utils/mgiUtils';
 
 // Wrapper to use utils function
 function getMGIColor(mgiScore: number | null): string {

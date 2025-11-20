@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { DeviceSnapshotData, SiteLayoutData } from '../../lib/types';
-import { getMGIColor, formatMGI, formatVelocity, shouldShowVelocityPulse, getVelocityPulseRadius } from '../../utils/mgiUtils';
+import { getMGIColor, formatMGI, formatVelocity, shouldShowVelocityPulse, getVelocityPulseRadius, getVelocityPulseDuration } from '../../utils/mgiUtils';
 import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import Button from '../common/Button';
 
@@ -160,9 +160,10 @@ export function SiteMapViewer({
       const isSelected = device.device_id === selectedDeviceId;
       const showPulse = shouldShowVelocityPulse(device.mgi_velocity);
       const pulseRadius = getVelocityPulseRadius(device.mgi_velocity, 10);
+      const pulseDuration = getVelocityPulseDuration(device.mgi_velocity);
       const deviceColor = getMGIColor(device.mgi_score);
 
-      // Velocity pulse animation (for high-growth devices)
+      // Always-on velocity pulse animation (gradient transparency)
       if (showPulse && pulseRadius > 0) {
         const pulse = deviceGroup
           .append('circle')
@@ -171,19 +172,23 @@ export function SiteMapViewer({
           .attr('r', 10)
           .attr('fill', 'none')
           .attr('stroke', deviceColor)
-          .attr('stroke-width', 3)
-          .attr('opacity', 0.8);
+          .attr('stroke-width', 2)
+          .attr('opacity', 0.6);
 
-        // Animate pulse
+        // Animate pulse continuously
         function animatePulse() {
           pulse
             .transition()
-            .duration(2000)
+            .duration(pulseDuration)
             .ease(d3.easeQuadOut)
             .attr('r', pulseRadius)
+            .attr('stroke-width', 1)
             .attr('opacity', 0)
             .on('end', () => {
-              pulse.attr('r', 10).attr('opacity', 0.8);
+              pulse
+                .attr('r', 10)
+                .attr('stroke-width', 2)
+                .attr('opacity', 0.6);
               animatePulse();
             });
         }
