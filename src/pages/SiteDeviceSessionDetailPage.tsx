@@ -609,7 +609,7 @@ const SiteDeviceSessionDetailPage = () => {
         <div className="flex gap-2">
           <Button
             variant="primary"
-            onClick={() => navigate(`/lab/sessions/${sessionId}/snapshots`)}
+            onClick={() => navigate(`/monitoring/sessions/${sessionId}/snapshots`)}
             icon={<MapIcon size={16} />}
           >
             View Snapshot Map

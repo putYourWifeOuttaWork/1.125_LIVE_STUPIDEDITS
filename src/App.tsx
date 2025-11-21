@@ -371,35 +371,45 @@ function App() {
                   <DeviceDetailPage />
                 </Suspense>
               } />
-              <Route path="/lab/sessions/:sessionId/snapshots" element={
+              {/* Monitoring Routes (formerly /lab/) */}
+              <Route path="/monitoring/sessions/:sessionId/snapshots" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <SessionSnapshotViewer />
                 </Suspense>
               } />
-              <Route path="/lab/ingest-feed" element={
+              <Route path="/monitoring/live-feed" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <IngestFeed />
                 </Suspense>
               } />
-              <Route path="/lab/site-sessions" element={
+              <Route path="/monitoring/site-sessions" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <SiteSessions />
                 </Suspense>
               } />
-              <Route path="/lab/admin/company-alert-thresholds" element={
+
+              {/* Admin Routes (formerly /lab/admin/) */}
+              <Route path="/admin/alert-thresholds" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <RequireCompanyAdmin>
                     <CompanyAlertThresholds />
                   </RequireCompanyAdmin>
                 </Suspense>
               } />
-              <Route path="/lab/admin/company-alert-prefs" element={
+              <Route path="/admin/alert-preferences" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <RequireCompanyAdmin>
                     <CompanyAlertPrefs />
                   </RequireCompanyAdmin>
                 </Suspense>
               } />
+
+              {/* Backward compatibility redirects */}
+              <Route path="/lab/sessions/:sessionId/snapshots" element={<Navigate to="/monitoring/sessions/:sessionId/snapshots" replace />} />
+              <Route path="/lab/ingest-feed" element={<Navigate to="/monitoring/live-feed" replace />} />
+              <Route path="/lab/site-sessions" element={<Navigate to="/monitoring/site-sessions" replace />} />
+              <Route path="/lab/admin/company-alert-thresholds" element={<Navigate to="/admin/alert-thresholds" replace />} />
+              <Route path="/lab/admin/company-alert-prefs" element={<Navigate to="/admin/alert-preferences" replace />} />
             </Route>
           </Route>
           

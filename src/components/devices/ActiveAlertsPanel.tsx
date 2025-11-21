@@ -219,7 +219,7 @@ const ActiveAlertsPanel = () => {
               <button
                 onClick={(e) => {
                   e.preventDefault();
-                  navigate('/lab/admin/company-alert-thresholds');
+                  navigate('/admin/alert-thresholds');
                 }}
                 className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 px-2 py-1 hover:bg-gray-100 rounded transition-colors"
                 title="Configure Alert Thresholds"

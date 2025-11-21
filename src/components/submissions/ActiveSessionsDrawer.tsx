@@ -491,7 +491,7 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                               variant="primary"
                               size="sm"
                               onClick={() => {
-                                navigate(`/lab/site-sessions/${session.site_id}?date=${session.session_date}`);
+                                navigate(`/monitoring/site-sessions/${session.site_id}?date=${session.session_date}`);
                                 onClose();
                               }}
                               className="!py-1 !px-2 text-xs"
