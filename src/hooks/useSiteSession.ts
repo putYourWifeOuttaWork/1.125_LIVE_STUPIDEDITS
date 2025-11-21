@@ -37,7 +37,7 @@ export function useSiteSession(siteId: string | null, programId: string | null) 
 
     try {
       const { data, error: fetchError } = await supabase
-        .from('device_wake_sessions')
+        .from('site_device_sessions')
         .select('*')
         .eq('site_id', siteId)
         .eq('program_id', programId)
