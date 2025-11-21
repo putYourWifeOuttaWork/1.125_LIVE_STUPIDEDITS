@@ -28,17 +28,15 @@ export function TimelineController({
     if (!isPlaying) return;
 
     const interval = setInterval(() => {
-      onWakeChange((prev) => {
-        if (prev >= totalWakes) {
-          setIsPlaying(false);
-          return prev;
-        }
-        return prev + 1;
-      });
+      if (currentWake >= totalWakes) {
+        setIsPlaying(false);
+        return;
+      }
+      onWakeChange(currentWake + 1);
     }, playbackSpeed);
 
     return () => clearInterval(interval);
-  }, [isPlaying, playbackSpeed, totalWakes, onWakeChange]);
+  }, [isPlaying, playbackSpeed, totalWakes, currentWake, onWakeChange]);
 
   const handlePlayPause = () => {
     if (currentWake >= totalWakes) {
@@ -74,8 +72,11 @@ export function TimelineController({
     setIsPlaying(false);
   };
 
+  // Ensure currentWake is a valid number
+  const validCurrentWake = Number.isFinite(currentWake) ? currentWake : 1;
+
   // Get timestamp for current wake
-  const currentTimestamp = wakeTimestamps[currentWake - 1];
+  const currentTimestamp = wakeTimestamps[validCurrentWake - 1];
 
   // Format the timestamp
   const formatWakeTime = (timestamp: string) => {
@@ -87,12 +88,12 @@ export function TimelineController({
   };
 
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 p-4 ${className}`}>
+    <div className={`bg-white rounded-lg border border-gray-200 p-3 ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <div>
           <h3 className="text-sm font-semibold text-gray-700">
-            Wake #{currentWake} of {totalWakes}
+            Wake #{validCurrentWake} of {totalWakes}
           </h3>
           {currentTimestamp && (
             <p className="text-xs text-gray-500 mt-1">
@@ -121,16 +122,16 @@ export function TimelineController({
       </div>
 
       {/* Timeline slider */}
-      <div className="mb-4">
+      <div className="mb-2">
         <input
           type="range"
           min="1"
           max={totalWakes}
-          value={currentWake}
+          value={validCurrentWake}
           onChange={handleSliderChange}
           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
           style={{
-            background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((currentWake - 1) / (totalWakes - 1)) * 100}%, #e5e7eb ${((currentWake - 1) / (totalWakes - 1)) * 100}%, #e5e7eb 100%)`,
+            background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((validCurrentWake - 1) / (totalWakes - 1)) * 100}%, #e5e7eb ${((validCurrentWake - 1) / (totalWakes - 1)) * 100}%, #e5e7eb 100%)`,
           }}
         />
 
@@ -209,7 +210,7 @@ export function TimelineController({
       </div>
 
       {/* Info text */}
-      <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
+      <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
         <p>
           Use the slider or playback controls to navigate through device wake
           cycles and observe spatial MGI progression over time.

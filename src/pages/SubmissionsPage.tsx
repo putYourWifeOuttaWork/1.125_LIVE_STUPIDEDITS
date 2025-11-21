@@ -561,19 +561,16 @@ const SubmissionsPage = () => {
 
           {/* Site Map */}
           {((timelineMode === 'live' && siteDevices.length > 0) || (timelineMode === 'timeline' && displayDevices.length > 0)) && (
-            <div className="transition-all duration-300 ease-in-out">
-              <SiteMapAnalyticsViewer
-                key={timelineMode === 'timeline' ? `snapshot-${currentSnapshotIndex}` : 'live'}
-                siteLength={selectedSite.length}
-                siteWidth={selectedSite.width}
-                siteName={selectedSite.name}
-                devices={timelineMode === 'live' ? siteDevices : displayDevices}
-                showControls={true}
-                height={375}
-                zoneMode={zoneMode}
-                onZoneModeChange={setZoneMode}
-              />
-            </div>
+            <SiteMapAnalyticsViewer
+              siteLength={selectedSite.length}
+              siteWidth={selectedSite.width}
+              siteName={selectedSite.name}
+              devices={timelineMode === 'live' ? siteDevices : displayDevices}
+              showControls={true}
+              height={375}
+              zoneMode={zoneMode}
+              onZoneModeChange={setZoneMode}
+            />
           )}
 
           {/* Zone Analytics */}
