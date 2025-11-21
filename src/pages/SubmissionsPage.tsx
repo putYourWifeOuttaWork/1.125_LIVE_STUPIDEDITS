@@ -86,16 +86,16 @@ const SubmissionsPage = () => {
         .map((d: any) => ({
           device_id: d.device_id,
           device_code: d.device_code,
-          device_name: d.device_name,
+          device_name: d.device_name || d.device_code,
           x: d.position.x,
           y: d.position.y,
-          battery_level: d.battery_health_percent,
+          battery_level: d.battery_health_percent ?? null,
           status: d.status || 'active',
-          last_seen: d.last_seen_at,
-          temperature: d.telemetry?.temperature || null,
-          humidity: d.telemetry?.humidity || null,
-          mgi_score: d.mgi_state?.mgi_score || null,
-          mgi_velocity: d.mgi_state?.mgi_velocity || null,
+          last_seen: d.last_seen_at || null,
+          temperature: d.telemetry?.temperature ?? null,
+          humidity: d.telemetry?.humidity ?? null,
+          mgi_score: d.mgi_state?.mgi_score ?? null,
+          mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
         }));
     } catch (error) {
       console.error('Error parsing snapshot data:', error);
@@ -516,21 +516,7 @@ const SubmissionsPage = () => {
             </Card>
           )}
 
-          {/* Site Map */}
-          {((timelineMode === 'live' && siteDevices.length > 0) || (timelineMode === 'timeline' && displayDevices.length > 0)) && (
-            <SiteMapAnalyticsViewer
-              siteLength={selectedSite.length}
-              siteWidth={selectedSite.width}
-              siteName={selectedSite.name}
-              devices={timelineMode === 'live' ? siteDevices : displayDevices}
-              showControls={true}
-              height={375}
-              zoneMode={zoneMode}
-              onZoneModeChange={setZoneMode}
-            />
-          )}
-
-          {/* Timeline Controller */}
+          {/* Timeline Controller - ABOVE the map */}
           {snapshots.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -564,12 +550,29 @@ const SubmissionsPage = () => {
                   <TimelineController
                     totalWakes={snapshots.length}
                     currentWake={currentSnapshotIndex + 1}
-                    onWakeChange={(index) => setCurrentSnapshotIndex(index - 1)}
+                    onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(snapshots.length - 1, wakeNum - 1)))}
                     wakeTimestamps={snapshots.map(s => s.wake_round_start)}
                     autoPlaySpeed={2000}
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Site Map */}
+          {((timelineMode === 'live' && siteDevices.length > 0) || (timelineMode === 'timeline' && displayDevices.length > 0)) && (
+            <div className="transition-all duration-300 ease-in-out">
+              <SiteMapAnalyticsViewer
+                key={timelineMode === 'timeline' ? `snapshot-${currentSnapshotIndex}` : 'live'}
+                siteLength={selectedSite.length}
+                siteWidth={selectedSite.width}
+                siteName={selectedSite.name}
+                devices={timelineMode === 'live' ? siteDevices : displayDevices}
+                showControls={true}
+                height={375}
+                zoneMode={zoneMode}
+                onZoneModeChange={setZoneMode}
+              />
             </div>
           )}
 
