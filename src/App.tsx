@@ -38,11 +38,7 @@ const UserAuditPage = lazy(() => import('./pages/UserAuditPage'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
-const SessionSnapshotViewer = lazy(() => import('./pages/lab/SessionSnapshotViewer'));
-const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
-const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
-const CompanyAlertThresholds = lazy(() => import('./pages/lab/admin/CompanyAlertThresholds'));
-const CompanyAlertPrefs = lazy(() => import('./pages/lab/admin/CompanyAlertPrefs'));
+// Monitoring pages removed - features not currently needed
 
 function App() {
   const navigate = useNavigate();
@@ -371,45 +367,7 @@ function App() {
                   <DeviceDetailPage />
                 </Suspense>
               } />
-              {/* Monitoring Routes (formerly /lab/) */}
-              <Route path="/monitoring/sessions/:sessionId/snapshots" element={
-                <Suspense fallback={<LoadingScreen />}>
-                  <SessionSnapshotViewer />
-                </Suspense>
-              } />
-              <Route path="/monitoring/live-feed" element={
-                <Suspense fallback={<LoadingScreen />}>
-                  <IngestFeed />
-                </Suspense>
-              } />
-              <Route path="/monitoring/site-sessions" element={
-                <Suspense fallback={<LoadingScreen />}>
-                  <SiteSessions />
-                </Suspense>
-              } />
-
-              {/* Admin Routes (formerly /lab/admin/) */}
-              <Route path="/admin/alert-thresholds" element={
-                <Suspense fallback={<LoadingScreen />}>
-                  <RequireCompanyAdmin>
-                    <CompanyAlertThresholds />
-                  </RequireCompanyAdmin>
-                </Suspense>
-              } />
-              <Route path="/admin/alert-preferences" element={
-                <Suspense fallback={<LoadingScreen />}>
-                  <RequireCompanyAdmin>
-                    <CompanyAlertPrefs />
-                  </RequireCompanyAdmin>
-                </Suspense>
-              } />
-
-              {/* Backward compatibility redirects */}
-              <Route path="/lab/sessions/:sessionId/snapshots" element={<Navigate to="/monitoring/sessions/:sessionId/snapshots" replace />} />
-              <Route path="/lab/ingest-feed" element={<Navigate to="/monitoring/live-feed" replace />} />
-              <Route path="/lab/site-sessions" element={<Navigate to="/monitoring/site-sessions" replace />} />
-              <Route path="/lab/admin/company-alert-thresholds" element={<Navigate to="/admin/alert-thresholds" replace />} />
-              <Route path="/lab/admin/company-alert-prefs" element={<Navigate to="/admin/alert-preferences" replace />} />
+              {/* Monitoring routes removed - features not currently needed */}
             </Route>
           </Route>
           

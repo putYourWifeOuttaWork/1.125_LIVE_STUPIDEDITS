@@ -607,13 +607,6 @@ const SiteDeviceSessionDetailPage = () => {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="primary"
-            onClick={() => navigate(`/monitoring/sessions/${sessionId}/snapshots`)}
-            icon={<MapIcon size={16} />}
-          >
-            View Snapshot Map
-          </Button>
           <Button variant="outline" onClick={handleRefresh} icon={<RefreshCw size={16} />}>
             Refresh
           </Button>

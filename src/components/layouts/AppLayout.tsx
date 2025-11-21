@@ -17,8 +17,7 @@ import {
   ClipboardList,
   Cpu,
   ChevronDown,
-  Shield,
-  Activity
+  Shield
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -293,18 +292,6 @@ const AppLayout = () => {
                     <Cpu size={18} />
                     <span className="hidden lg:inline">Devices</span>
                   </ReloadLink>
-                </>
-              )}
-              {isSuperAdmin && (
-                <>
-                  <Link
-                    to="/monitoring/live-feed"
-                    className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                    data-testid="monitoring-link"
-                  >
-                    <Activity size={18} />
-                    <span className="hidden lg:inline">Monitoring</span>
-                  </Link>
                 </>
               )}
               <Link
