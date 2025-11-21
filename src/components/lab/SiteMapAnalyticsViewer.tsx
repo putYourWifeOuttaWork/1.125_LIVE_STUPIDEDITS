@@ -152,6 +152,11 @@ export default function SiteMapAnalyticsViewer({
       // Get MGI color (always shown, regardless of zone mode)
       const mgiColor = getMGIColor(device.mgi_score);
 
+      // Debug logging (remove after testing)
+      if (device.device_code === 'MOCK-DEV-4484') {
+        console.log('Device:', device.device_code, 'MGI:', device.mgi_score, 'Velocity:', device.mgi_velocity, 'Color:', mgiColor);
+      }
+
       // Draw pulse animation if device has velocity data
       if (device.mgi_velocity !== null && device.mgi_velocity !== undefined) {
         const pulseRadius = getVelocityPulseRadius(device.mgi_velocity, baseRadius);
@@ -204,13 +209,11 @@ export default function SiteMapAnalyticsViewer({
         ctx.fillText('📷', pixelX, pixelY);
       }
 
-      // Device code label (only show on hover)
-      if (isHovered) {
-        ctx.fillStyle = '#1f2937';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(device.device_code, pixelX, pixelY + baseRadius + 12);
-      }
+      // Device code label (always visible)
+      ctx.fillStyle = isHovered ? '#1f2937' : '#6b7280';
+      ctx.font = isHovered ? 'bold 11px sans-serif' : '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(device.device_code, pixelX, pixelY + baseRadius + 14);
     });
 
   }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode, pulseFrame]);
@@ -500,14 +503,14 @@ export default function SiteMapAnalyticsViewer({
                     </div>
                   )}
 
-                  {hoveredDeviceData.mgi_score !== null && (
+                  {hoveredDeviceData.mgi_score !== null && hoveredDeviceData.mgi_score !== undefined && !isNaN(hoveredDeviceData.mgi_score) && (
                     <div className="flex items-center gap-2 text-gray-600">
                       <Camera size={14} />
                       <span>MGI: {(hoveredDeviceData.mgi_score * 100).toFixed(1)}%</span>
                     </div>
                   )}
 
-                  {hoveredDeviceData.mgi_velocity !== null && (
+                  {hoveredDeviceData.mgi_velocity !== null && hoveredDeviceData.mgi_velocity !== undefined && !isNaN(hoveredDeviceData.mgi_velocity) && (
                     <div className="flex items-center gap-2 text-gray-600">
                       <AlertTriangle size={14} />
                       <span>Velocity: {hoveredDeviceData.mgi_velocity >= 0 ? '+' : ''}{(hoveredDeviceData.mgi_velocity * 100).toFixed(1)}%</span>

@@ -53,7 +53,7 @@ const SubmissionsPage = () => {
   const queryClient = useQueryClient();
   const [siteDevices, setSiteDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
-  const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery' | 'mgi'>('mgi');
+  const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
   
   // Use the useSubmissions hook to get access to submissions and related functions
   const {
@@ -90,7 +90,9 @@ const SubmissionsPage = () => {
             y_position,
             battery_health_percent,
             is_active,
-            last_seen_at
+            last_seen_at,
+            latest_mgi_score,
+            latest_mgi_velocity
           `)
           .eq('site_id', siteId)
           .not('x_position', 'is', null)
@@ -121,6 +123,8 @@ const SubmissionsPage = () => {
               last_seen: device.last_seen_at,
               temperature: telemetryData?.temperature || null,
               humidity: telemetryData?.humidity || null,
+              mgi_score: device.latest_mgi_score,
+              mgi_velocity: device.latest_mgi_velocity,
             };
           })
         );
