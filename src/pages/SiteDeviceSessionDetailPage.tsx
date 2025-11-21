@@ -27,6 +27,7 @@ import Card, { CardHeader, CardContent } from '../components/common/Card';
 import Button from '../components/common/Button';
 import LoadingScreen from '../components/common/LoadingScreen';
 import DeviceSessionCard from '../components/devices/DeviceSessionCard';
+import DeviceStatusBadge from '../components/devices/DeviceStatusBadge';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
 import { supabase } from '../lib/supabaseClient';
