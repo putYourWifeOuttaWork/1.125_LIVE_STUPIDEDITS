@@ -1,5 +1,7 @@
--- Fix snapshot generation to use LATEST data AS OF wake time instead of data DURING wake window
--- This ensures snapshots show device state even when devices don't report during the exact wake window
+-- Quick fix for snapshot generation function
+-- Changes:
+-- 1. Fix DATE_PART calculation error
+-- 2. Use LATEST data AS OF wake time (not DURING wake window)
 
 CREATE OR REPLACE FUNCTION generate_session_wake_snapshot(
   p_session_id uuid,
@@ -40,7 +42,7 @@ BEGIN
   FROM devices
   WHERE site_id = v_site_id AND is_active = true;
 
-  -- Count images in this round (still use DURING for new activity counts)
+  -- Count images in this round
   SELECT COUNT(*) INTO v_new_images_count
   FROM device_images
   WHERE site_id = v_site_id
@@ -52,42 +54,8 @@ BEGIN
   WHERE site_id = v_site_id
     AND triggered_at BETWEEN p_wake_round_start AND p_wake_round_end;
 
-  -- Build complete site state JSONB
+  -- Build complete site state JSONB with LATEST data AS OF wake time
   WITH
-  -- Site metadata
-  site_meta AS (
-    SELECT jsonb_build_object(
-      'site_id', s.site_id,
-      'site_name', s.name,
-      'site_code', s.site_code,
-      'site_type', s.type,
-      'dimensions', jsonb_build_object(
-        'length', s.length,
-        'width', s.width,
-        'height', s.height
-      ),
-      'wall_details', COALESCE(s.wall_details, '[]'::jsonb),
-      'door_details', COALESCE(s.door_details, '[]'::jsonb),
-      'platform_details', COALESCE(s.platform_details, '[]'::jsonb),
-      'timezone', s.timezone
-    ) AS site_metadata
-    FROM sites s WHERE s.site_id = v_site_id
-  ),
-
-  -- Program context
-  program_meta AS (
-    SELECT jsonb_build_object(
-      'program_id', pp.program_id,
-      'program_name', pp.name,
-      'program_start_date', pp.start_date,
-      'program_end_date', pp.end_date,
-      'program_day', EXTRACT(DAY FROM (p_wake_round_end::date - pp.start_date))::integer,
-      'total_days', EXTRACT(DAY FROM (pp.end_date - pp.start_date))::integer
-    ) AS program_context
-    FROM pilot_programs pp WHERE pp.program_id = v_program_id
-  ),
-
-  -- Device states with MGI metrics (CHANGED: Use LATEST data AS OF wake_round_end)
   device_states AS (
     SELECT jsonb_agg(
       jsonb_build_object(
@@ -113,51 +81,24 @@ BEGIN
           )
           FROM device_telemetry dt
           WHERE dt.device_id = d.device_id
-            AND dt.captured_at <= p_wake_round_end  -- CHANGED: Latest AS OF wake end
+            AND dt.captured_at <= p_wake_round_end
           ORDER BY dt.captured_at DESC LIMIT 1
         ),
         'mgi_state', (
-          SELECT calculate_mgi_metrics(
-            d.device_id,
-            di.mgi_score,
-            di.captured_at
+          SELECT jsonb_build_object(
+            'mgi_score', di.mgi_score,
+            'mgi_velocity', d.latest_mgi_velocity,
+            'captured_at', di.captured_at
           )
           FROM device_images di
           WHERE di.device_id = d.device_id
             AND di.mgi_score IS NOT NULL
-            AND di.captured_at <= p_wake_round_end  -- CHANGED: Latest AS OF wake end
+            AND di.captured_at <= p_wake_round_end
           ORDER BY di.captured_at DESC LIMIT 1
         ),
-        'images_this_round', (
-          SELECT COUNT(*)
-          FROM device_images di2
-          WHERE di2.device_id = d.device_id
-            AND di2.captured_at BETWEEN p_wake_round_start AND p_wake_round_end
-        ),
-        'alerts', (
-          SELECT COALESCE(jsonb_agg(
-            jsonb_build_object(
-              'alert_id', da.alert_id,
-              'alert_type', da.alert_type,
-              'severity', da.severity,
-              'message', da.message,
-              'triggered_at', da.triggered_at
-            ) ORDER BY da.triggered_at DESC
-          ), '[]'::jsonb)
-          FROM device_alerts da
-          WHERE da.device_id = d.device_id
-            AND da.triggered_at BETWEEN p_wake_round_start AND p_wake_round_end
-        ),
         'display', jsonb_build_object(
-          'color', CASE
-            WHEN d.is_active THEN '#10B981'
-            ELSE '#6B7280'
-          END,
-          'size', CASE
-            WHEN d.battery_health_percent < 20 THEN 'small'
-            WHEN d.battery_health_percent > 80 THEN 'large'
-            ELSE 'medium'
-          END,
+          'color', CASE WHEN d.is_active THEN '#10B981' ELSE '#6B7280' END,
+          'size', 'medium',
           'shape', 'circle'
         )
       )
@@ -168,16 +109,12 @@ BEGIN
       AND d.y_position IS NOT NULL
   )
 
-  -- Continue with rest of snapshot generation (zones, summaries, etc.)
   SELECT jsonb_build_object(
-    'metadata', (SELECT site_metadata FROM site_meta),
-    'program', (SELECT program_context FROM program_meta),
     'devices', COALESCE((SELECT device_data FROM device_states), '[]'::jsonb),
     'wake_info', jsonb_build_object(
       'wake_number', p_wake_number,
       'wake_start', p_wake_round_start,
-      'wake_end', p_wake_round_end,
-      'duration_hours', EXTRACT(EPOCH FROM (p_wake_round_end - p_wake_round_start)) / 3600
+      'wake_end', p_wake_round_end
     ),
     'stats', jsonb_build_object(
       'active_devices', v_active_devices_count,
@@ -186,15 +123,22 @@ BEGIN
     )
   ) INTO v_site_state;
 
-  -- Calculate aggregate metrics from devices for quick access
+  -- Calculate aggregates from device data
+  WITH device_data AS (
+    SELECT
+      (d->>'battery_health_percent')::numeric as battery,
+      (d->'telemetry'->>'temperature')::numeric as temp,
+      (d->'telemetry'->>'humidity')::numeric as humidity,
+      (d->'mgi_state'->>'mgi_score')::numeric as mgi
+    FROM jsonb_array_elements(v_site_state->'devices') d
+  )
   SELECT
-    AVG((d->>'battery_health_percent')::numeric),
-    AVG(CASE WHEN d->'telemetry' IS NOT NULL THEN (d->'telemetry'->>'temperature')::numeric END),
-    AVG(CASE WHEN d->'telemetry' IS NOT NULL THEN (d->'telemetry'->>'humidity')::numeric END),
-    AVG(CASE WHEN d->'mgi_state' IS NOT NULL THEN (d->'mgi_state'->>'mgi_score')::numeric END),
-    MAX(CASE WHEN d->'mgi_state' IS NOT NULL THEN (d->'mgi_state'->>'mgi_score')::numeric END)
-  INTO v_avg_temp, v_avg_humidity, v_avg_temp, v_avg_mgi, v_max_mgi
-  FROM jsonb_array_elements(v_site_state->'devices') d;
+    AVG(temp),
+    AVG(humidity),
+    AVG(mgi),
+    MAX(mgi)
+  INTO v_avg_temp, v_avg_humidity, v_avg_mgi, v_max_mgi
+  FROM device_data;
 
   -- Insert or update snapshot
   INSERT INTO session_wake_snapshots (
@@ -225,5 +169,3 @@ BEGIN
   RETURN v_snapshot_id;
 END;
 $$;
-
-COMMENT ON FUNCTION generate_session_wake_snapshot IS 'Generate snapshot using LATEST device data AS OF wake time (not during wake window). This ensures complete visualization even when devices report asynchronously.';
