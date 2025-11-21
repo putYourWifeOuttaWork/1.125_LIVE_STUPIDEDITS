@@ -5,7 +5,7 @@ import SiteMapAnalyticsViewer from '../../components/lab/SiteMapAnalyticsViewer'
 import { TimelineController } from '../../components/lab/TimelineController';
 import { MGILegend } from '../../components/lab/MGILegend';
 import ZoneAnalytics from '../../components/lab/ZoneAnalytics';
-import { useSessionSnapshots } from '../../hooks/useSessionSnapshots';
+import { useSiteSnapshots } from '../../hooks/useSiteSnapshots';
 import { DeviceSnapshotData } from '../../lib/types';
 import LoadingScreen from '../../components/common/LoadingScreen';
 import { toast } from 'react-toastify';
@@ -17,13 +17,18 @@ import { format } from 'date-fns';
 export default function SessionSnapshotViewer() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { snapshots, loading, error, refetch, generateSnapshot } = useSessionSnapshots(sessionId || null);
 
-  const [currentWakeNumber, setCurrentWakeNumber] = useState(1);
-  const [selectedDevice, setSelectedDevice] = useState<DeviceSnapshotData | null>(null);
   const [sessionInfo, setSessionInfo] = useState<any>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [currentWakeNumber, setCurrentWakeNumber] = useState(1);
+  const [currentSnapshotId, setCurrentSnapshotId] = useState<string | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<DeviceSnapshotData | null>(null);
   const [zoneMode, setZoneMode] = useState<'temperature' | 'humidity' | 'battery' | 'none'>('temperature');
+
+  // Fetch ALL snapshots for the site (not just this session)
+  const { snapshots: allSiteSnapshots, loading, error, refetch } = useSiteSnapshots(
+    sessionInfo?.site_id || null,
+    sessionInfo?.program_id || null
+  );
 
   // Fetch session info
   useEffect(() => {
@@ -52,17 +57,20 @@ export default function SessionSnapshotViewer() {
     fetchSessionInfo();
   }, [sessionId]);
 
-  // Process snapshots with forward-fill for missing data (Last Observation Carried Forward)
+  // Filter snapshots to only those for the current session
+  const sessionSnapshots = useMemo(() => {
+    return allSiteSnapshots.filter(s => s.session_id === sessionId);
+  }, [allSiteSnapshots, sessionId]);
+
+  // Process ALL site snapshots with site-wide LOCF (session-agnostic, device-specific)
   const processedSnapshots = useMemo(() => {
-    if (snapshots.length === 0) return [];
+    if (allSiteSnapshots.length === 0) return [];
 
     const processed: any[] = [];
     const deviceStateCache = new Map<string, any>(); // device_id -> last known state
 
-    // Sort snapshots by wake_number to ensure chronological order
-    const sortedSnapshots = [...snapshots].sort((a, b) => a.wake_number - b.wake_number);
-
-    for (const snapshot of sortedSnapshots) {
+    // Already sorted by wake_round_start from the hook
+    for (const snapshot of allSiteSnapshots) {
       try {
         const siteState = snapshot.site_state;
         const currentDevices = siteState?.devices || [];
@@ -72,27 +80,50 @@ export default function SessionSnapshotViewer() {
           const deviceId = device.device_id;
           const cachedState = deviceStateCache.get(deviceId) || {};
 
-          // Merge new data with cached data (new data takes precedence, ?? preserves falsy values)
+          // Helper: Use new value if it's not null/0/undefined, otherwise keep cached
+          const carryForward = (newVal: any, cachedVal: any) => {
+            if (newVal !== null && newVal !== undefined && newVal !== 0) {
+              return newVal;
+            }
+            return cachedVal;
+          };
+
+          // Merge with LOCF rules: ignore null/0 from new data, keep old data
           deviceStateCache.set(deviceId, {
             device_id: device.device_id,
             device_code: device.device_code,
-            device_name: device.device_name || cachedState.device_name,
+            device_name: carryForward(device.device_name, cachedState.device_name),
             position: device.position || cachedState.position,
-            status: device.status || cachedState.status || 'active',
+            status: carryForward(device.status, cachedState.status) || 'active',
             last_seen_at: device.last_seen_at || cachedState.last_seen_at,
-            battery_health_percent: device.battery_health_percent ?? cachedState.battery_health_percent,
+            battery_health_percent: carryForward(
+              device.battery_health_percent,
+              cachedState.battery_health_percent
+            ),
             telemetry: {
-              latest_temperature: device.telemetry?.latest_temperature ?? cachedState.telemetry?.latest_temperature,
-              latest_humidity: device.telemetry?.latest_humidity ?? cachedState.telemetry?.latest_humidity,
+              latest_temperature: carryForward(
+                device.telemetry?.latest_temperature,
+                cachedState.telemetry?.latest_temperature
+              ),
+              latest_humidity: carryForward(
+                device.telemetry?.latest_humidity,
+                cachedState.telemetry?.latest_humidity
+              ),
             },
             mgi_state: {
-              latest_mgi_score: device.mgi_state?.latest_mgi_score ?? cachedState.mgi_state?.latest_mgi_score,
-              mgi_velocity: device.mgi_state?.mgi_velocity ?? cachedState.mgi_state?.mgi_velocity,
+              latest_mgi_score: carryForward(
+                device.mgi_state?.latest_mgi_score,
+                cachedState.mgi_state?.latest_mgi_score
+              ),
+              mgi_velocity: carryForward(
+                device.mgi_state?.mgi_velocity,
+                cachedState.mgi_state?.mgi_velocity
+              ),
             },
           });
         });
 
-        // Build complete device list from cache (all devices that have ever appeared)
+        // Build complete device list from cache
         const completeDevices = Array.from(deviceStateCache.values())
           .filter(d => d.position && d.position.x !== null && d.position.y !== null);
 
@@ -110,12 +141,17 @@ export default function SessionSnapshotViewer() {
     }
 
     return processed;
-  }, [snapshots]);
+  }, [allSiteSnapshots]);
 
-  // Get current snapshot from processed snapshots
+  // Get only processed snapshots for current session, indexed by wake_number
+  const currentSessionProcessedSnapshots = useMemo(() => {
+    return processedSnapshots.filter(s => s.session_id === sessionId);
+  }, [processedSnapshots, sessionId]);
+
+  // Get current snapshot from processed session snapshots
   const currentSnapshot = useMemo(() => {
-    return processedSnapshots.find((s) => s.wake_number === currentWakeNumber);
-  }, [processedSnapshots, currentWakeNumber]);
+    return currentSessionProcessedSnapshots.find((s) => s.wake_number === currentWakeNumber);
+  }, [currentSessionProcessedSnapshots, currentWakeNumber]);
 
   // Extract site layout from session info
   const siteLayout = useMemo(() => {
@@ -135,24 +171,10 @@ export default function SessionSnapshotViewer() {
   // Get devices from processed snapshot or empty array
   const devices = currentSnapshot?.site_state?.devices || [];
 
-  // Get wake timestamps from processed snapshots
+  // Get wake timestamps from current session's processed snapshots
   const wakeTimestamps = useMemo(() => {
-    return processedSnapshots.map((s) => s.wake_time);
-  }, [processedSnapshots]);
-
-  const handleGenerateSnapshot = async () => {
-    if (!sessionId) return;
-
-    setIsGenerating(true);
-    try {
-      const result = await generateSnapshot(currentWakeNumber);
-      if (result) {
-        toast.success(`Generated snapshot for wake #${currentWakeNumber}`);
-      }
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+    return currentSessionProcessedSnapshots.map((s) => s.wake_round_start);
+  }, [currentSessionProcessedSnapshots]);
 
   const handleDeviceClick = (device: DeviceSnapshotData) => {
     setSelectedDevice(device);
@@ -191,7 +213,7 @@ export default function SessionSnapshotViewer() {
     );
   }
 
-  const totalWakes = processedSnapshots.length || 24; // Default to 24 if no snapshots yet
+  const totalWakes = currentSessionProcessedSnapshots.length || 24; // Default to 24 if no snapshots yet
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -225,23 +247,12 @@ export default function SessionSnapshotViewer() {
               </div>
               <div className="flex items-center gap-1">
                 <Activity className="w-4 h-4" />
-                <span>{snapshots.length} snapshots loaded</span>
+                <span>{currentSessionProcessedSnapshots.length} snapshots loaded</span>
               </div>
             </div>
           </div>
 
           <div className="flex gap-2">
-            {snapshots.length === 0 && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleGenerateSnapshot}
-                disabled={isGenerating}
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
-                Generate Snapshot
-              </Button>
-            )}
             <Button variant="outline" size="sm" onClick={refetch}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
@@ -312,21 +323,11 @@ export default function SessionSnapshotViewer() {
           )}
 
           {/* No snapshot warning */}
-          {!currentSnapshot && snapshots.length > 0 && (
+          {!currentSnapshot && currentSessionProcessedSnapshots.length > 0 && (
             <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-yellow-800 text-sm">
                 No snapshot available for wake #{currentWakeNumber}.
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerateSnapshot}
-                disabled={isGenerating}
-                className="mt-2"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
-                Generate Now
-              </Button>
             </div>
           )}
         </div>

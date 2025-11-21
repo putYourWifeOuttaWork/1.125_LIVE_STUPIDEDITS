@@ -85,14 +85,16 @@ const SiteDeviceSessionDetailPage = () => {
   const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch snapshots for this specific session
-  const [snapshots, setSnapshots] = useState<SessionWakeSnapshot[]>([]);
+  // Fetch ALL snapshots for this site (site-wide, session-agnostic)
+  const { snapshots: allSiteSnapshots, loading: snapshotsLoading, refetch: refetchSnapshots } = useSiteSnapshots(
+    siteId || null,
+    session?.program_id || null
+  );
 
   useEffect(() => {
     if (sessionId) {
       fetchSessionData();
       fetchDevicesData();
-      fetchSnapshotsData();
     }
   }, [sessionId]);
 
@@ -150,38 +152,32 @@ const SiteDeviceSessionDetailPage = () => {
     }
   };
 
-  const fetchSnapshotsData = async () => {
-    try {
-      if (!sessionId || !siteId) return;
+  // Fetch site data for map dimensions
+  useEffect(() => {
+    const fetchSiteData = async () => {
+      if (!siteId) return;
 
-      // Fetch site data for map dimensions
-      const { data: site, error: siteError } = await supabase
-        .from('sites')
-        .select('length, width, name')
-        .eq('site_id', siteId)
-        .single();
+      try {
+        const { data: site, error: siteError } = await supabase
+          .from('sites')
+          .select('length, width, name')
+          .eq('site_id', siteId)
+          .single();
 
-      if (siteError) throw siteError;
-      setSiteData(site);
+        if (siteError) throw siteError;
+        setSiteData(site);
+      } catch (error: any) {
+        console.error('Error fetching site data:', error);
+      }
+    };
 
-      // Fetch snapshots for this session
-      const { data: snapshotData, error: snapshotError } = await supabase
-        .from('session_wake_snapshots')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('wake_round_start', { ascending: true });
-
-      if (snapshotError) throw snapshotError;
-      setSnapshots((snapshotData || []) as SessionWakeSnapshot[]);
-    } catch (error: any) {
-      console.error('Error fetching snapshots:', error);
-    }
-  };
+    fetchSiteData();
+  }, [siteId]);
 
   const handleRefresh = () => {
     fetchSessionData();
     fetchDevicesData();
-    fetchSnapshotsData();
+    refetchSnapshots();
   };
 
   // Easing function for smooth transitions
@@ -196,15 +192,24 @@ const SiteDeviceSessionDetailPage = () => {
     return start + (end - start) * easedProgress;
   };
 
-  // Process snapshots with forward-fill for missing data (Last Observation Carried Forward)
+  // Filter to only session's snapshots and process with site-wide LOCF
   const processedSnapshots = useMemo(() => {
-    if (snapshots.length === 0) return [];
+    if (allSiteSnapshots.length === 0) return [];
 
     const processed: any[] = [];
     const deviceStateCache = new Map<string, any>(); // device_id -> last known state
 
-    for (let i = 0; i < snapshots.length; i++) {
-      const snapshot = snapshots[i];
+    // Helper: Use new value if it's not null/0/undefined, otherwise keep cached
+    const carryForward = (newVal: any, cachedVal: any) => {
+      if (newVal !== null && newVal !== undefined && newVal !== 0) {
+        return newVal;
+      }
+      return cachedVal;
+    };
+
+    // Process ALL site snapshots (already sorted by wake_round_start)
+    for (let i = 0; i < allSiteSnapshots.length; i++) {
+      const snapshot = allSiteSnapshots[i];
 
       try {
         const siteState = typeof snapshot.site_state === 'string'
@@ -218,27 +223,42 @@ const SiteDeviceSessionDetailPage = () => {
           const deviceId = device.device_id;
           const cachedState = deviceStateCache.get(deviceId) || {};
 
-          // Merge new data with cached data (new data takes precedence)
+          // Merge with LOCF rules: ignore null/0 from new data
           deviceStateCache.set(deviceId, {
             device_id: device.device_id,
             device_code: device.device_code,
-            device_name: device.device_name || cachedState.device_name,
+            device_name: carryForward(device.device_name, cachedState.device_name),
             position: device.position || cachedState.position,
-            status: device.status || cachedState.status || 'active',
+            status: carryForward(device.status, cachedState.status) || 'active',
             last_seen_at: device.last_seen_at || cachedState.last_seen_at,
-            battery_health_percent: device.battery_health_percent ?? cachedState.battery_health_percent,
+            battery_health_percent: carryForward(
+              device.battery_health_percent,
+              cachedState.battery_health_percent
+            ),
             telemetry: {
-              latest_temperature: device.telemetry?.latest_temperature ?? cachedState.telemetry?.latest_temperature,
-              latest_humidity: device.telemetry?.latest_humidity ?? cachedState.telemetry?.latest_humidity,
+              latest_temperature: carryForward(
+                device.telemetry?.latest_temperature,
+                cachedState.telemetry?.latest_temperature
+              ),
+              latest_humidity: carryForward(
+                device.telemetry?.latest_humidity,
+                cachedState.telemetry?.latest_humidity
+              ),
             },
             mgi_state: {
-              latest_mgi_score: device.mgi_state?.latest_mgi_score ?? cachedState.mgi_state?.latest_mgi_score,
-              mgi_velocity: device.mgi_state?.mgi_velocity ?? cachedState.mgi_state?.mgi_velocity,
+              latest_mgi_score: carryForward(
+                device.mgi_state?.latest_mgi_score,
+                cachedState.mgi_state?.latest_mgi_score
+              ),
+              mgi_velocity: carryForward(
+                device.mgi_state?.mgi_velocity,
+                cachedState.mgi_state?.mgi_velocity
+              ),
             },
           });
         });
 
-        // Build complete device list from cache (all devices that have ever appeared)
+        // Build complete device list from cache
         const completeDevices = Array.from(deviceStateCache.values())
           .filter(d => d.position && d.position.x !== null && d.position.y !== null);
 
@@ -255,8 +275,9 @@ const SiteDeviceSessionDetailPage = () => {
       }
     }
 
-    return processed;
-  }, [snapshots]);
+    // Filter to only this session's snapshots
+    return processed.filter(s => s.session_id === sessionId);
+  }, [allSiteSnapshots, sessionId]);
 
   // Transform snapshot data with smooth transitions
   const displayDevices = useMemo(() => {
