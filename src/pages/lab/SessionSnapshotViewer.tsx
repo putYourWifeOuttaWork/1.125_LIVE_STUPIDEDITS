@@ -67,7 +67,7 @@ export default function SessionSnapshotViewer() {
     if (allSiteSnapshots.length === 0) return [];
 
     const processed: any[] = [];
-    const deviceStateCache = new Map<string, any>(); // device_id -> last known state
+    const deviceStateCache = new Map<string, any>(); // device_id -> last known state across ALL snapshots
 
     // Already sorted by wake_round_start from the hook
     for (const snapshot of allSiteSnapshots) {
@@ -75,7 +75,7 @@ export default function SessionSnapshotViewer() {
         const siteState = snapshot.site_state;
         const currentDevices = siteState?.devices || [];
 
-        // Update cache with new data from this snapshot
+        // First, update cache with any NEW data from current snapshot devices
         currentDevices.forEach((device: any) => {
           const deviceId = device.device_id;
           const cachedState = deviceStateCache.get(deviceId) || {};
@@ -131,15 +131,18 @@ export default function SessionSnapshotViewer() {
           });
         });
 
-        // Build complete device list from cache
+        // Build complete device list from cache (ALL devices that have ever appeared in this site)
+        // This ensures devices persist across snapshots even if they don't wake
         const completeDevices = Array.from(deviceStateCache.values())
           .filter(d => d.position && d.position.x !== null && d.position.y !== null);
+
+        console.log(`✅ Snapshot #${snapshot.wake_number}: ${currentDevices.length} raw → ${completeDevices.length} with LOCF`);
 
         processed.push({
           ...snapshot,
           site_state: {
             ...siteState,
-            devices: completeDevices,
+            devices: completeDevices, // Use complete device list from cache, not just current snapshot's devices
           },
         });
       } catch (error) {

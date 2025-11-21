@@ -263,15 +263,17 @@ const SiteDeviceSessionDetailPage = () => {
           });
         });
 
-        // Build complete device list from cache
+        // Build complete device list from cache (ALL devices ever seen)
         const completeDevices = Array.from(deviceStateCache.values())
           .filter(d => d.position && d.position.x !== null && d.position.y !== null);
+
+        console.log(`✅ Snapshot #${snapshot.wake_number}: ${currentDevices.length} raw → ${completeDevices.length} with LOCF`);
 
         processed.push({
           ...snapshot,
           site_state: {
             ...siteState,
-            devices: completeDevices,
+            devices: completeDevices, // All cached devices
           },
         });
       } catch (error) {
