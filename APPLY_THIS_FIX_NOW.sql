@@ -117,10 +117,10 @@ BEGIN
             LIMIT 1
           ),
           'mgi_velocity', (
-            SELECT mgi_velocity_per_day FROM device_images
+            SELECT mgi_velocity FROM device_images
             WHERE device_id = d.device_id
               AND captured_at <= p_wake_round_end
-              AND mgi_velocity_per_day IS NOT NULL
+              AND mgi_velocity IS NOT NULL
             ORDER BY captured_at DESC
             LIMIT 1
           )
