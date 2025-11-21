@@ -12,8 +12,16 @@ import {
   WifiOff,
   RefreshCw,
   AlertTriangle,
-  Map,
+  Map as MapIcon,
   MapPin,
+  Camera,
+  TrendingUp,
+  TrendingDown,
+  Thermometer,
+  Droplets,
+  Battery,
+  Image as ImageIcon,
+  AlertOctagon,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -344,10 +352,100 @@ const SiteDeviceSessionDetailPage = () => {
   const totalCompletedWakes = devices.reduce((sum, d) => sum + d.completed_wakes, 0);
   const totalFailedWakes = devices.reduce((sum, d) => sum + d.failed_wakes, 0);
   const totalExtraWakes = devices.reduce((sum, d) => sum + d.extra_wakes, 0);
+  const totalImages = devices.reduce((sum, d) => sum + (d.images?.length || 0), 0);
 
   const completionPercentage = totalExpectedWakes > 0
     ? Math.round((totalCompletedWakes / totalExpectedWakes) * 100)
     : 0;
+
+  // Calculate environmental aggregates from snapshots
+  const environmentalAggregates = useMemo(() => {
+    if (snapshots.length === 0) return null;
+
+    const allTemps: number[] = [];
+    const allHumidity: number[] = [];
+    const allBattery: number[] = [];
+    const allMGI: number[] = [];
+
+    snapshots.forEach(snapshot => {
+      if (!snapshot.site_state) return;
+
+      const state = typeof snapshot.site_state === 'string'
+        ? JSON.parse(snapshot.site_state)
+        : snapshot.site_state;
+
+      (state.devices || []).forEach((d: any) => {
+        if (d.telemetry?.latest_temperature != null) allTemps.push(d.telemetry.latest_temperature);
+        if (d.telemetry?.latest_humidity != null) allHumidity.push(d.telemetry.latest_humidity);
+        if (d.battery_health_percent != null) allBattery.push(d.battery_health_percent);
+        if (d.mgi_state?.latest_mgi_score != null) allMGI.push(d.mgi_state.latest_mgi_score);
+      });
+    });
+
+    const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    const stdDev = (arr: number[]) => {
+      if (arr.length < 2) return null;
+      const mean = avg(arr)!;
+      const variance = arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length;
+      return Math.sqrt(variance);
+    };
+
+    return {
+      temperature: {
+        avg: avg(allTemps),
+        min: allTemps.length ? Math.min(...allTemps) : null,
+        max: allTemps.length ? Math.max(...allTemps) : null,
+        stdDev: stdDev(allTemps),
+        samples: allTemps.length,
+      },
+      humidity: {
+        avg: avg(allHumidity),
+        min: allHumidity.length ? Math.min(...allHumidity) : null,
+        max: allHumidity.length ? Math.max(...allHumidity) : null,
+        stdDev: stdDev(allHumidity),
+        samples: allHumidity.length,
+      },
+      battery: {
+        avg: avg(allBattery),
+        min: allBattery.length ? Math.min(...allBattery) : null,
+        max: allBattery.length ? Math.max(...allBattery) : null,
+        samples: allBattery.length,
+      },
+      mgi: {
+        avg: avg(allMGI),
+        min: allMGI.length ? Math.min(...allMGI) : null,
+        max: allMGI.length ? Math.max(...allMGI) : null,
+        stdDev: stdDev(allMGI),
+        samples: allMGI.length,
+      },
+    };
+  }, [snapshots]);
+
+  // Calculate alert statistics
+  const alertStats = useMemo(() => {
+    // TODO: Fetch from device_alerts table filtered by session date range
+    return {
+      total: 0,
+      critical: 0,
+      warning: 0,
+      info: 0,
+    };
+  }, [sessionId]);
+
+  // Calculate issue statistics
+  const issueStats = useMemo(() => {
+    const missedWakes = totalExpectedWakes - totalCompletedWakes;
+    const reliability = totalExpectedWakes > 0
+      ? ((totalCompletedWakes / totalExpectedWakes) * 100).toFixed(1)
+      : '0.0';
+
+    return {
+      missedWakes,
+      failedWakes: totalFailedWakes,
+      reliability: parseFloat(reliability),
+      devicesWithIssues: devices.filter(d => d.failed_wakes > 0 || d.actual_wakes < d.expected_wakes_in_session).length,
+    };
+  }, [devices, totalExpectedWakes, totalCompletedWakes, totalFailedWakes]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -418,7 +516,7 @@ const SiteDeviceSessionDetailPage = () => {
           <Button
             variant="primary"
             onClick={() => navigate(`/lab/sessions/${sessionId}/snapshots`)}
-            icon={<Map size={16} />}
+            icon={<MapIcon size={16} />}
           >
             View Snapshot Map
           </Button>
@@ -512,46 +610,278 @@ const SiteDeviceSessionDetailPage = () => {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <h2 className="text-lg font-semibold">Session Statistics</h2>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="text-center">
-              <div className="flex justify-center mb-2">
-                <Wifi className="h-6 w-6 text-green-500" />
+      {/* Comprehensive Session Analytics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Wakes This Session */}
+        <Card>
+          <CardHeader>
+            <h3 className="text-md font-semibold flex items-center">
+              <Wifi className="w-5 h-5 mr-2 text-blue-500" />
+              Wakes This Session
+            </h3>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Completed</span>
+                <span className="text-lg font-bold text-green-600">{totalCompletedWakes}</span>
               </div>
-              <p className="text-2xl font-bold text-green-600">{totalCompletedWakes}</p>
-              <p className="text-sm text-gray-600 mt-1">Completed</p>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Failed</span>
+                <span className="text-lg font-bold text-red-600">{totalFailedWakes}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Extra</span>
+                <span className="text-lg font-bold text-yellow-600">{totalExtraWakes}</span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t">
+                <span className="text-sm font-medium text-gray-700">Expected</span>
+                <span className="text-lg font-bold text-gray-900">{totalExpectedWakes}</span>
+              </div>
+              <div className="pt-2">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Reliability</span>
+                  <span>{issueStats.reliability}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${issueStats.reliability}%` }}
+                  />
+                </div>
+              </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="text-center">
-              <div className="flex justify-center mb-2">
-                <WifiOff className="h-6 w-6 text-red-500" />
+        {/* Images This Session */}
+        <Card>
+          <CardHeader>
+            <h3 className="text-md font-semibold flex items-center">
+              <Camera className="w-5 h-5 mr-2 text-purple-500" />
+              Images This Session
+            </h3>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="text-center py-4">
+                <p className="text-4xl font-bold text-purple-600">{totalImages}</p>
+                <p className="text-sm text-gray-500 mt-1">Total Captured</p>
               </div>
-              <p className="text-2xl font-bold text-red-600">{totalFailedWakes}</p>
-              <p className="text-sm text-gray-600 mt-1">Failed</p>
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+                <div className="text-center">
+                  <p className="text-lg font-semibold text-gray-900">{devices.length}</p>
+                  <p className="text-xs text-gray-500">Devices</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-semibold text-gray-900">
+                    {devices.length > 0 ? (totalImages / devices.length).toFixed(1) : '0'}
+                  </p>
+                  <p className="text-xs text-gray-500">Avg/Device</p>
+                </div>
+              </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="text-center">
-              <div className="flex justify-center mb-2">
-                <AlertCircle className="h-6 w-6 text-yellow-500" />
+        {/* Issues This Session */}
+        <Card>
+          <CardHeader>
+            <h3 className="text-md font-semibold flex items-center">
+              <AlertOctagon className="w-5 h-5 mr-2 text-red-500" />
+              Issues This Session
+            </h3>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Missed Wakes</span>
+                <span className="text-lg font-bold text-orange-600">{issueStats.missedWakes}</span>
               </div>
-              <p className="text-2xl font-bold text-yellow-600">{totalExtraWakes}</p>
-              <p className="text-sm text-gray-600 mt-1">Extra</p>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Failed Wakes</span>
+                <span className="text-lg font-bold text-red-600">{issueStats.failedWakes}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Devices with Issues</span>
+                <span className="text-lg font-bold text-yellow-600">{issueStats.devicesWithIssues}</span>
+              </div>
+              <div className="pt-2 border-t">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-gray-900">{issueStats.reliability}%</p>
+                  <p className="text-xs text-gray-500">System Reliability</p>
+                </div>
+              </div>
             </div>
+          </CardContent>
+        </Card>
+      </div>
 
-            <div className="text-center">
-              <div className="flex justify-center mb-2">
-                <Activity className="h-6 w-6 text-blue-500" />
+      {/* Environmental & MGI Aggregates */}
+      {environmentalAggregates && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Environmental Aggregates */}
+          <Card>
+            <CardHeader>
+              <h3 className="text-md font-semibold flex items-center">
+                <Thermometer className="w-5 h-5 mr-2 text-orange-500" />
+                Environmental Aggregates
+              </h3>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Temperature */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Temperature</span>
+                    <span className="text-xs text-gray-500">{environmentalAggregates.temperature.samples} samples</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-blue-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Avg</p>
+                      <p className="text-sm font-bold text-blue-600">
+                        {environmentalAggregates.temperature.avg?.toFixed(1)}°F
+                      </p>
+                    </div>
+                    <div className="bg-red-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Max</p>
+                      <p className="text-sm font-bold text-red-600">
+                        {environmentalAggregates.temperature.max?.toFixed(1)}°F
+                      </p>
+                    </div>
+                    <div className="bg-cyan-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Min</p>
+                      <p className="text-sm font-bold text-cyan-600">
+                        {environmentalAggregates.temperature.min?.toFixed(1)}°F
+                      </p>
+                    </div>
+                  </div>
+                  {environmentalAggregates.temperature.stdDev && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Std Dev: ±{environmentalAggregates.temperature.stdDev.toFixed(2)}°F
+                    </p>
+                  )}
+                </div>
+
+                {/* Humidity */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700 flex items-center">
+                      <Droplets className="w-4 h-4 mr-1 text-blue-400" />
+                      Humidity
+                    </span>
+                    <span className="text-xs text-gray-500">{environmentalAggregates.humidity.samples} samples</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-blue-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Avg</p>
+                      <p className="text-sm font-bold text-blue-600">
+                        {environmentalAggregates.humidity.avg?.toFixed(1)}%
+                      </p>
+                    </div>
+                    <div className="bg-indigo-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Max</p>
+                      <p className="text-sm font-bold text-indigo-600">
+                        {environmentalAggregates.humidity.max?.toFixed(1)}%
+                      </p>
+                    </div>
+                    <div className="bg-sky-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Min</p>
+                      <p className="text-sm font-bold text-sky-600">
+                        {environmentalAggregates.humidity.min?.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Battery */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700 flex items-center">
+                      <Battery className="w-4 h-4 mr-1 text-green-500" />
+                      Battery Health
+                    </span>
+                    <span className="text-xs text-gray-500">{environmentalAggregates.battery.samples} samples</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-green-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Avg</p>
+                      <p className="text-sm font-bold text-green-600">
+                        {environmentalAggregates.battery.avg?.toFixed(1)}%
+                      </p>
+                    </div>
+                    <div className="bg-emerald-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Max</p>
+                      <p className="text-sm font-bold text-emerald-600">
+                        {environmentalAggregates.battery.max?.toFixed(1)}%
+                      </p>
+                    </div>
+                    <div className="bg-yellow-50 rounded p-2">
+                      <p className="text-xs text-gray-600">Min</p>
+                      <p className="text-sm font-bold text-yellow-600">
+                        {environmentalAggregates.battery.min?.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="text-2xl font-bold text-blue-600">{totalExpectedWakes}</p>
-              <p className="text-sm text-gray-600 mt-1">Expected</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+
+          {/* MGI Aggregates */}
+          <Card>
+            <CardHeader>
+              <h3 className="text-md font-semibold flex items-center">
+                <Activity className="w-5 h-5 mr-2 text-teal-500" />
+                MGI Aggregates
+              </h3>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="text-center py-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg">
+                  <p className="text-5xl font-bold text-teal-600">
+                    {environmentalAggregates.mgi.avg?.toFixed(1) || 'N/A'}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-2">Average MGI Score</p>
+                  <p className="text-xs text-gray-500 mt-1">{environmentalAggregates.mgi.samples} samples</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-red-50 rounded p-3 text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      <TrendingUp className="w-4 h-4 mr-1 text-red-500" />
+                      <p className="text-xs text-gray-600">Maximum</p>
+                    </div>
+                    <p className="text-2xl font-bold text-red-600">
+                      {environmentalAggregates.mgi.max?.toFixed(1) || '-'}
+                    </p>
+                  </div>
+
+                  <div className="bg-green-50 rounded p-3 text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      <TrendingDown className="w-4 h-4 mr-1 text-green-500" />
+                      <p className="text-xs text-gray-600">Minimum</p>
+                    </div>
+                    <p className="text-2xl font-bold text-green-600">
+                      {environmentalAggregates.mgi.min?.toFixed(1) || '-'}
+                    </p>
+                  </div>
+                </div>
+
+                {environmentalAggregates.mgi.stdDev && (
+                  <div className="bg-gray-50 rounded p-3">
+                    <p className="text-xs text-gray-600 text-center">Standard Deviation</p>
+                    <p className="text-lg font-bold text-gray-700 text-center mt-1">
+                      ±{environmentalAggregates.mgi.stdDev.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-gray-500 text-center mt-1">Variability across session</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
