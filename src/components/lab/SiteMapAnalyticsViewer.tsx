@@ -6,7 +6,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Delaunay } from 'd3-delaunay';
 import { scaleSequential } from 'd3-scale';
 import { interpolateRdYlBu, interpolateYlGnBu, interpolateRdYlGn } from 'd3-scale-chromatic';
-import { getMGIColor, getVelocityPulseRadius, isCriticalVelocity } from '../../utils/mgiUtils';
+import { getMGIColor, getVelocityColor, getVelocityPulseRadius, isCriticalVelocity } from '../../utils/mgiUtils';
 
 interface DevicePosition {
   device_id: string;
@@ -53,6 +53,7 @@ export default function SiteMapAnalyticsViewer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredDevice, setHoveredDevice] = useState<string | null>(null);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<DevicePosition | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: height || 400 });
   const [internalZoneMode, setInternalZoneMode] = useState<ZoneMode>('temperature');
@@ -149,13 +150,11 @@ export default function SiteMapAnalyticsViewer({
       const isHovered = hoveredDevice === device.device_id;
       const baseRadius = isHovered ? 18 : 14;
 
-      // Get MGI color (always shown, regardless of zone mode)
+      // Get MGI color for the node circle (always shown, regardless of zone mode)
       const mgiColor = getMGIColor(device.mgi_score);
 
-      // Debug logging (remove after testing)
-      if (device.device_code === 'MOCK-DEV-4484') {
-        console.log('Device:', device.device_code, 'MGI:', device.mgi_score, 'Velocity:', device.mgi_velocity, 'Color:', mgiColor);
-      }
+      // Get velocity color for the pulse ring (separate from node)
+      const velocityColor = getVelocityColor(device.mgi_velocity);
 
       // Draw pulse animation if device has velocity data
       if (device.mgi_velocity !== null && device.mgi_velocity !== undefined) {
@@ -164,7 +163,8 @@ export default function SiteMapAnalyticsViewer({
         const pulseAlpha = 1 - pulseProgress; // Fade out as it expands
         const currentPulseRadius = baseRadius + (pulseRadius - baseRadius) * pulseProgress;
 
-        ctx.strokeStyle = mgiColor.replace(')', `, ${pulseAlpha * 0.6})`).replace('rgb', 'rgba');
+        // Use velocity color for pulse, not MGI color
+        ctx.strokeStyle = velocityColor.replace(')', `, ${pulseAlpha * 0.6})`).replace('rgb', 'rgba');
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(pixelX, pixelY, currentPulseRadius, 0, Math.PI * 2);
@@ -369,6 +369,13 @@ export default function SiteMapAnalyticsViewer({
     const { x, y } = getCanvasCoords(e);
     const device = findDeviceAtPosition(x, y);
     setHoveredDevice(device?.device_id || null);
+
+    // Track mouse position relative to the canvas
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMousePosition({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -459,12 +466,22 @@ export default function SiteMapAnalyticsViewer({
               className="w-full border border-gray-200 rounded cursor-pointer"
               onMouseMove={handleMouseMove}
               onClick={handleClick}
-              onMouseLeave={() => setHoveredDevice(null)}
+              onMouseLeave={() => {
+                setHoveredDevice(null);
+                setMousePosition(null);
+              }}
             />
 
-            {/* Device Info Tooltip on Hover */}
-            {hoveredDeviceData && (
-              <div className="absolute top-2 right-2 bg-white rounded-lg shadow-lg border border-gray-200 p-3 min-w-[200px] z-10">
+            {/* Device Info Tooltip on Hover - Follows Cursor */}
+            {hoveredDeviceData && mousePosition && (
+              <div
+                className="absolute bg-white rounded-lg shadow-lg border border-gray-200 p-3 min-w-[200px] z-10 pointer-events-none"
+                style={{
+                  left: `${mousePosition.x + 20}px`,
+                  top: `${mousePosition.y + 20}px`,
+                  transform: mousePosition.x > canvasSize.width - 240 ? 'translateX(-100%) translateX(-40px)' : 'none',
+                }}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-semibold text-gray-900">{hoveredDeviceData.device_name}</p>
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${

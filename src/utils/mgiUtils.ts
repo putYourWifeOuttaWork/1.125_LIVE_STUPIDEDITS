@@ -35,6 +35,7 @@ export const VELOCITY_THRESHOLDS: VelocityThresholds = {
 };
 
 export type MGILevel = 'healthy' | 'warning' | 'concerning' | 'critical';
+export type VelocityColorLevel = 'green' | 'yellow' | 'orange' | 'red';
 
 /**
  * Get MGI severity level based on score
@@ -49,6 +50,42 @@ export function getMGILevel(mgiScore: number | null): MGILevel {
   if (mgiPercent <= MGI_THRESHOLDS.warning) return 'warning';
   if (mgiPercent <= MGI_THRESHOLDS.concerning) return 'concerning';
   return 'critical';
+}
+
+/**
+ * Get velocity color level based on velocity percentage
+ */
+export function getVelocityColorLevel(velocity: number | null): VelocityColorLevel {
+  if (velocity === null || velocity === undefined) return 'green';
+
+  const velocityPercent = Math.abs(velocity * 100);
+
+  // Color mapping for velocity ranges
+  if (velocityPercent <= VELOCITY_THRESHOLDS.normal) {
+    return 'green'; // 0-5%: Green
+  } else if (velocityPercent <= VELOCITY_THRESHOLDS.elevated) {
+    return 'yellow'; // 6-8%: Yellow
+  } else if (velocityPercent <= VELOCITY_THRESHOLDS.high) {
+    return 'orange'; // 9-16%: Orange
+  } else {
+    return 'red'; // 17%+: Red
+  }
+}
+
+/**
+ * Get velocity pulse color (separate from MGI color)
+ */
+export function getVelocityColor(velocity: number | null): string {
+  const level = getVelocityColorLevel(velocity);
+
+  const colors: Record<VelocityColorLevel, string> = {
+    green: '#10b981',    // Green
+    yellow: '#f59e0b',   // Yellow
+    orange: '#f97316',   // Orange
+    red: '#ef4444',      // Red
+  };
+
+  return colors[level];
 }
 
 /**
