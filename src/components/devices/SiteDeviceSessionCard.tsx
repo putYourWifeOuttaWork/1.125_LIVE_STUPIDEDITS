@@ -13,7 +13,6 @@ import {
   Activity,
   Battery,
   Thermometer,
-  Eye,
   Map,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
@@ -31,12 +30,7 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
   const [isExpanded, setIsExpanded] = useState(false);
 
   const handleViewSession = () => {
-    navigate(
-      `/programs/${session.program_id}/sites/${session.site_id}/device-sessions/${session.session_id}`
-    );
-  };
-
-  const handleViewMap = () => {
+    // Navigate to session detail page with map visualization
     navigate(
       `/programs/${session.program_id}/sites/${session.site_id}/sessions/${session.session_id}`
     );
@@ -125,9 +119,9 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
                 e.stopPropagation();
                 handleViewSession();
               }}
-              icon={<Eye size={16} />}
+              icon={<Map size={16} />}
             >
-              View
+              View Map
             </Button>
             {isExpanded ? (
               <ChevronUp className="h-5 w-5 text-gray-400" />
@@ -240,12 +234,9 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
             </div>
           </div>
 
-          <div className="pt-4 border-t flex justify-end space-x-3">
-            <Button variant="secondary" onClick={handleViewMap} icon={<Map size={16} />}>
-              View Session Map
-            </Button>
-            <Button variant="primary" onClick={handleViewSession} icon={<Eye size={16} />}>
-              View Device Details
+          <div className="pt-4 border-t flex justify-end">
+            <Button variant="primary" onClick={handleViewSession} icon={<Map size={16} />}>
+              View Session Details
             </Button>
           </div>
         </CardContent>

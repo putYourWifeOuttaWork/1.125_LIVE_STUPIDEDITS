@@ -29,6 +29,7 @@ import Card, { CardHeader, CardContent } from '../components/common/Card';
 import { TimelineController } from '../components/lab/TimelineController';
 import { useSiteSnapshots } from '../hooks/useSiteSnapshots';
 import { useMemo } from 'react';
+import SiteDeviceSessionCard from '../components/devices/SiteDeviceSessionCard';
 
 const SubmissionsPage = () => {
   const navigate = useNavigate();
@@ -661,6 +662,25 @@ const SubmissionsPage = () => {
           {zoneMode !== 'none' && ((timelineMode === 'live' && siteDevices.length >= 2) || (timelineMode === 'timeline' && displayDevices.length >= 2)) && (
             <ZoneAnalytics devices={timelineMode === 'live' ? siteDevices : displayDevices} zoneMode={zoneMode} />
           )}
+        </div>
+      )}
+
+      {/* Device Sessions List */}
+      {deviceSessions && deviceSessions.length > 0 && (
+        <div className="mb-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Device Session History</h2>
+            <span className="text-sm text-gray-500">{deviceSessions.length} sessions</span>
+          </div>
+          <div className="space-y-3">
+            {deviceSessions.map((session) => (
+              <SiteDeviceSessionCard
+                key={session.session_id}
+                session={session}
+                testId={`device-session-card-${session.session_id}`}
+              />
+            ))}
+          </div>
         </div>
       )}
 

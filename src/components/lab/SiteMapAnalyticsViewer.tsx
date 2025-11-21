@@ -379,15 +379,11 @@ export default function SiteMapAnalyticsViewer({
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { x, y } = getCanvasCoords(e);
+    const { x, y} = getCanvasCoords(e);
     const device = findDeviceAtPosition(x, y);
 
-    if (device) {
-      if (onDeviceClick) {
-        onDeviceClick(device.device_id);
-      } else {
-        navigate(`/devices/${device.device_id}`);
-      }
+    if (device && onDeviceClick) {
+      onDeviceClick(device.device_id);
     }
   };
 
