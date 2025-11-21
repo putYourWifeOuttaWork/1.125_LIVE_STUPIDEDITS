@@ -26,6 +26,10 @@ import { debounce } from '../utils/helpers';
 import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
 import ZoneAnalytics from '../components/lab/ZoneAnalytics';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
+import { TimelineController } from '../components/lab/TimelineController';
+import { useSiteSession } from '../hooks/useSiteSession';
+import { useSessionSnapshots } from '../hooks/useSessionSnapshots';
+import { useMemo } from 'react';
 
 const SubmissionsPage = () => {
   const navigate = useNavigate();
@@ -54,7 +58,55 @@ const SubmissionsPage = () => {
   const [siteDevices, setSiteDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
-  
+  const [currentWakeNumber, setCurrentWakeNumber] = useState(1);
+  const [timelineMode, setTimelineMode] = useState<'live' | 'timeline'>('live');
+
+  // Load session for this site + program
+  const { currentSession, allSessions, loading: sessionLoading, selectSession } = useSiteSession(siteId || null, programId || null);
+
+  // Load snapshots for current session
+  const { snapshots, loading: snapshotsLoading } = useSessionSnapshots(currentSession?.session_id || null);
+
+  // Transform snapshot data for timeline mode
+  const displayDevices = useMemo(() => {
+    if (timelineMode !== 'timeline' || snapshots.length === 0) {
+      return [];
+    }
+
+    const currentSnapshot = snapshots.find(s => s.wake_number === currentWakeNumber);
+    if (!currentSnapshot || !currentSnapshot.site_state) {
+      return [];
+    }
+
+    try {
+      const siteState = typeof currentSnapshot.site_state === 'string'
+        ? JSON.parse(currentSnapshot.site_state)
+        : currentSnapshot.site_state;
+
+      const devices = siteState.devices || [];
+
+      return devices
+        .filter((d: any) => d.position && d.position.x !== null && d.position.y !== null)
+        .map((d: any) => ({
+          device_id: d.device_id,
+          device_code: d.device_code,
+          device_name: d.device_name,
+          x: d.position.x,
+          y: d.position.y,
+          battery_level: d.battery_health_percent,
+          status: d.status || 'active',
+          last_seen: d.last_seen_at,
+          temperature: d.telemetry?.temperature || null,
+          humidity: d.telemetry?.humidity || null,
+          mgi_score: d.mgi_state?.mgi_score || null,
+          mgi_velocity: d.mgi_state?.mgi_velocity || null,
+        }));
+    } catch (error) {
+      console.error('Error parsing snapshot data:', error);
+      return [];
+    }
+  }, [snapshots, currentWakeNumber, timelineMode]);
+
   // Use the useSubmissions hook to get access to submissions and related functions
   const {
     submissions,
@@ -433,21 +485,111 @@ const SubmissionsPage = () => {
         </div>
       </div>
 
-      {/* Site Map with Zones */}
-      {selectedSite && selectedSite.length && selectedSite.width && siteDevices.length > 0 && (
-        <div className="mb-4 md:mb-6">
-          <SiteMapAnalyticsViewer
-            siteLength={selectedSite.length}
-            siteWidth={selectedSite.width}
-            siteName={selectedSite.name}
-            devices={siteDevices}
-            showControls={true}
-            height={375}
-            zoneMode={zoneMode}
-            onZoneModeChange={setZoneMode}
-          />
-          {zoneMode !== 'none' && siteDevices.length >= 2 && (
-            <ZoneAnalytics devices={siteDevices} zoneMode={zoneMode} />
+      {/* Site Map with Timeline */}
+      {selectedSite && selectedSite.length && selectedSite.width && (
+        <div className="mb-4 md:mb-6 space-y-4">
+          {/* Session Metadata Card */}
+          {currentSession && (
+            <Card>
+              <CardContent className="py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Session Date:</span>
+                      <span className="ml-2 font-semibold text-gray-900">
+                        {format(new Date(currentSession.session_date), 'MMM d, yyyy')}
+                      </span>
+                    </div>
+                    <div className="h-4 w-px bg-gray-300" />
+                    <div>
+                      <span className="text-gray-500">Wakes:</span>
+                      <span className="ml-2 font-semibold text-gray-900">
+                        {currentSession.wakes_completed} / {currentSession.total_wakes_expected}
+                      </span>
+                    </div>
+                    <div className="h-4 w-px bg-gray-300" />
+                    <div>
+                      <span className="text-gray-500">Status:</span>
+                      <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${
+                        currentSession.session_status === 'active' ? 'bg-green-100 text-green-800' :
+                        currentSession.session_status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {currentSession.session_status}
+                      </span>
+                    </div>
+                  </div>
+                  {allSessions.length > 1 && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-600">View Session:</label>
+                      <select
+                        value={currentSession.session_id}
+                        onChange={(e) => selectSession(e.target.value)}
+                        className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {allSessions.map((session) => (
+                          <option key={session.session_id} value={session.session_id}>
+                            {format(new Date(session.session_date), 'MMM d, yyyy')} - {session.session_status}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Site Map */}
+          {((timelineMode === 'live' && siteDevices.length > 0) || (timelineMode === 'timeline' && displayDevices.length > 0)) && (
+            <SiteMapAnalyticsViewer
+              siteLength={selectedSite.length}
+              siteWidth={selectedSite.width}
+              siteName={selectedSite.name}
+              devices={timelineMode === 'live' ? siteDevices : displayDevices}
+              showControls={true}
+              height={375}
+              zoneMode={zoneMode}
+              onZoneModeChange={setZoneMode}
+            />
+          )}
+
+          {/* Timeline Controller */}
+          {currentSession && snapshots.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Button
+                  variant={timelineMode === 'live' ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => setTimelineMode('live')}
+                >
+                  Live View
+                </Button>
+                <Button
+                  variant={timelineMode === 'timeline' ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => setTimelineMode('timeline')}
+                  disabled={snapshots.length === 0}
+                >
+                  Timeline Playback ({snapshots.length} snapshots)
+                </Button>
+              </div>
+
+              {timelineMode === 'timeline' && (
+                <TimelineController
+                  totalWakes={currentSession.total_wakes_expected}
+                  currentWake={currentWakeNumber}
+                  onWakeChange={setCurrentWakeNumber}
+                  wakeTimestamps={snapshots.map(s => s.wake_time || s.created_at)}
+                  autoPlaySpeed={2000}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Zone Analytics */}
+          {zoneMode !== 'none' && ((timelineMode === 'live' && siteDevices.length >= 2) || (timelineMode === 'timeline' && displayDevices.length >= 2)) && (
+            <ZoneAnalytics devices={timelineMode === 'live' ? siteDevices : displayDevices} zoneMode={zoneMode} />
           )}
         </div>
       )}
