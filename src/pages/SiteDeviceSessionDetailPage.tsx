@@ -195,11 +195,73 @@ const SiteDeviceSessionDetailPage = () => {
     return start + (end - start) * easedProgress;
   };
 
-  // Transform snapshot data with smooth transitions
-  const displayDevices = useMemo(() => {
+  // Process snapshots with forward-fill for missing data (Last Observation Carried Forward)
+  const processedSnapshots = useMemo(() => {
     if (snapshots.length === 0) return [];
 
-    const currentSnapshot = snapshots[currentSnapshotIndex];
+    const processed: any[] = [];
+    const deviceStateCache = new Map<string, any>(); // device_id -> last known state
+
+    for (let i = 0; i < snapshots.length; i++) {
+      const snapshot = snapshots[i];
+
+      try {
+        const siteState = typeof snapshot.site_state === 'string'
+          ? JSON.parse(snapshot.site_state)
+          : snapshot.site_state;
+
+        const currentDevices = siteState?.devices || [];
+
+        // Update cache with new data from this snapshot
+        currentDevices.forEach((device: any) => {
+          const deviceId = device.device_id;
+          const cachedState = deviceStateCache.get(deviceId) || {};
+
+          // Merge new data with cached data (new data takes precedence)
+          deviceStateCache.set(deviceId, {
+            device_id: device.device_id,
+            device_code: device.device_code,
+            device_name: device.device_name || cachedState.device_name,
+            position: device.position || cachedState.position,
+            status: device.status || cachedState.status || 'active',
+            last_seen_at: device.last_seen_at || cachedState.last_seen_at,
+            battery_health_percent: device.battery_health_percent ?? cachedState.battery_health_percent,
+            telemetry: {
+              latest_temperature: device.telemetry?.latest_temperature ?? cachedState.telemetry?.latest_temperature,
+              latest_humidity: device.telemetry?.latest_humidity ?? cachedState.telemetry?.latest_humidity,
+            },
+            mgi_state: {
+              latest_mgi_score: device.mgi_state?.latest_mgi_score ?? cachedState.mgi_state?.latest_mgi_score,
+              mgi_velocity: device.mgi_state?.mgi_velocity ?? cachedState.mgi_state?.mgi_velocity,
+            },
+          });
+        });
+
+        // Build complete device list from cache (all devices that have ever appeared)
+        const completeDevices = Array.from(deviceStateCache.values())
+          .filter(d => d.position && d.position.x !== null && d.position.y !== null);
+
+        processed.push({
+          ...snapshot,
+          site_state: {
+            ...siteState,
+            devices: completeDevices,
+          },
+        });
+      } catch (error) {
+        console.error('Error processing snapshot:', error);
+        processed.push(snapshot);
+      }
+    }
+
+    return processed;
+  }, [snapshots]);
+
+  // Transform snapshot data with smooth transitions
+  const displayDevices = useMemo(() => {
+    if (processedSnapshots.length === 0) return [];
+
+    const currentSnapshot = processedSnapshots[currentSnapshotIndex];
     if (!currentSnapshot || !currentSnapshot.site_state) return [];
 
     try {
@@ -210,7 +272,7 @@ const SiteDeviceSessionDetailPage = () => {
       const currentDevices = currentState.devices || [];
 
       // Get next snapshot for interpolation
-      const nextSnapshot = snapshots[currentSnapshotIndex + 1];
+      const nextSnapshot = processedSnapshots[currentSnapshotIndex + 1];
       const nextState = nextSnapshot?.site_state
         ? (typeof nextSnapshot.site_state === 'string'
             ? JSON.parse(nextSnapshot.site_state)
@@ -266,11 +328,11 @@ const SiteDeviceSessionDetailPage = () => {
       console.error('Error parsing snapshot data:', error);
       return [];
     }
-  }, [snapshots, currentSnapshotIndex, transitionProgress]);
+  }, [processedSnapshots, currentSnapshotIndex, transitionProgress]);
 
   // Animate transitions between snapshots
   useEffect(() => {
-    if (snapshots.length === 0) return;
+    if (processedSnapshots.length === 0) return;
 
     setTransitionProgress(0);
 
@@ -562,7 +624,7 @@ const SiteDeviceSessionDetailPage = () => {
       )}
 
       {/* Site Map with Timeline - MOVED TO TOP */}
-      {siteData && snapshots.length > 0 && displayDevices.length > 0 && (
+      {siteData && processedSnapshots.length > 0 && displayDevices.length > 0 && (
         <Card className="animate-fade-in">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -592,10 +654,10 @@ const SiteDeviceSessionDetailPage = () => {
             <div className="space-y-4">
               {/* Timeline Controller */}
               <TimelineController
-                totalWakes={snapshots.length}
+                totalWakes={processedSnapshots.length}
                 currentWake={currentSnapshotIndex + 1}
-                onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(snapshots.length - 1, wakeNum - 1)))}
-                wakeTimestamps={snapshots.map(s => s.wake_round_start)}
+                onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(processedSnapshots.length - 1, wakeNum - 1)))}
+                wakeTimestamps={processedSnapshots.map(s => s.wake_round_start)}
                 autoPlaySpeed={2000}
               />
 
