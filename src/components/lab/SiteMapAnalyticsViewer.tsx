@@ -472,84 +472,116 @@ export default function SiteMapAnalyticsViewer({
               }}
             />
 
-            {/* Device Info Tooltip on Hover - Follows Cursor */}
-            {hoveredDeviceData && mousePosition && (
-              <div
-                className="absolute bg-white rounded-lg shadow-lg border border-gray-200 p-3 min-w-[200px] z-10 pointer-events-none"
-                style={{
-                  left: `${mousePosition.x + 20}px`,
-                  top: `${mousePosition.y + 20}px`,
-                  transform: mousePosition.x > canvasSize.width - 240 ? 'translateX(-100%) translateX(-40px)' : 'none',
-                }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-semibold text-gray-900">{hoveredDeviceData.device_name}</p>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    hoveredDeviceData.status === 'active' ? 'bg-green-100 text-green-800' :
-                    hoveredDeviceData.status === 'offline' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {hoveredDeviceData.status}
-                  </span>
-                </div>
+            {/* Device Info Tooltip on Hover - Smart Positioning */}
+            {hoveredDeviceData && mousePosition && (() => {
+              // Smart positioning to avoid all edges
+              const tooltipWidth = 240;
+              const tooltipHeight = 200;
+              const offset = 20;
 
-                <div className="space-y-1 text-sm">
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Camera size={14} />
-                    <span>{hoveredDeviceData.device_code}</span>
+              // Calculate if tooltip would overflow any edge
+              const wouldOverflowRight = mousePosition.x + offset + tooltipWidth > canvasSize.width;
+              const wouldOverflowBottom = mousePosition.y + offset + tooltipHeight > canvasSize.height;
+              const wouldOverflowLeft = mousePosition.x - offset - tooltipWidth < 0;
+              const wouldOverflowTop = mousePosition.y - offset - tooltipHeight < 0;
+
+              // Determine best position
+              let left = mousePosition.x + offset;
+              let top = mousePosition.y + offset;
+
+              // Horizontal adjustment
+              if (wouldOverflowRight && !wouldOverflowLeft) {
+                left = mousePosition.x - offset - tooltipWidth;
+              } else if (wouldOverflowRight && wouldOverflowLeft) {
+                // Center horizontally if both sides overflow
+                left = canvasSize.width / 2 - tooltipWidth / 2;
+              }
+
+              // Vertical adjustment
+              if (wouldOverflowBottom && !wouldOverflowTop) {
+                top = mousePosition.y - offset - tooltipHeight;
+              } else if (wouldOverflowBottom && wouldOverflowTop) {
+                // Center vertically if both top/bottom overflow
+                top = canvasSize.height / 2 - tooltipHeight / 2;
+              }
+
+              return (
+                <div
+                  className="absolute bg-white rounded-lg shadow-lg border border-gray-200 p-3 min-w-[200px] max-w-[240px] z-10 pointer-events-none"
+                  style={{
+                    left: `${Math.max(0, Math.min(left, canvasSize.width - tooltipWidth))}px`,
+                    top: `${Math.max(0, Math.min(top, canvasSize.height - tooltipHeight))}px`,
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-semibold text-gray-900">{hoveredDeviceData.device_name}</p>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      hoveredDeviceData.status === 'active' ? 'bg-green-100 text-green-800' :
+                      hoveredDeviceData.status === 'offline' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {hoveredDeviceData.status}
+                    </span>
                   </div>
 
-                  {hoveredDeviceData.battery_level !== null && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Battery size={14} />
-                      <span>{hoveredDeviceData.battery_level}%</span>
-                    </div>
-                  )}
-
-                  {hoveredDeviceData.temperature !== null && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Thermometer size={14} />
-                      <span>{hoveredDeviceData.temperature}°F</span>
-                    </div>
-                  )}
-
-                  {hoveredDeviceData.humidity !== null && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Droplets size={14} />
-                      <span>{hoveredDeviceData.humidity}%</span>
-                    </div>
-                  )}
-
-                  {hoveredDeviceData.mgi_score !== null && hoveredDeviceData.mgi_score !== undefined && !isNaN(hoveredDeviceData.mgi_score) && (
+                  <div className="space-y-1 text-sm">
                     <div className="flex items-center gap-2 text-gray-600">
                       <Camera size={14} />
-                      <span>MGI: {(hoveredDeviceData.mgi_score * 100).toFixed(1)}%</span>
+                      <span>{hoveredDeviceData.device_code}</span>
                     </div>
-                  )}
 
-                  {hoveredDeviceData.mgi_velocity !== null && hoveredDeviceData.mgi_velocity !== undefined && !isNaN(hoveredDeviceData.mgi_velocity) && (
+                    {hoveredDeviceData.battery_level !== null && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Battery size={14} />
+                        <span>{hoveredDeviceData.battery_level}%</span>
+                      </div>
+                    )}
+
+                    {hoveredDeviceData.temperature !== null && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Thermometer size={14} />
+                        <span>{hoveredDeviceData.temperature}°F</span>
+                      </div>
+                    )}
+
+                    {hoveredDeviceData.humidity !== null && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Droplets size={14} />
+                        <span>{hoveredDeviceData.humidity}%</span>
+                      </div>
+                    )}
+
+                    {hoveredDeviceData.mgi_score !== null && hoveredDeviceData.mgi_score !== undefined && !isNaN(hoveredDeviceData.mgi_score) && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Camera size={14} />
+                        <span>MGI: {(hoveredDeviceData.mgi_score * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
+
+                    {hoveredDeviceData.mgi_velocity !== null && hoveredDeviceData.mgi_velocity !== undefined && !isNaN(hoveredDeviceData.mgi_velocity) && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <AlertTriangle size={14} />
+                        <span>Velocity: {hoveredDeviceData.mgi_velocity >= 0 ? '+' : ''}{(hoveredDeviceData.mgi_velocity * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
+
+                    {hoveredDeviceData.last_seen && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Clock size={14} />
+                        <span>{formatDistanceToNow(new Date(hoveredDeviceData.last_seen), { addSuffix: true })}</span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 text-gray-600">
-                      <AlertTriangle size={14} />
-                      <span>Velocity: {hoveredDeviceData.mgi_velocity >= 0 ? '+' : ''}{(hoveredDeviceData.mgi_velocity * 100).toFixed(1)}%</span>
+                      <MapPin size={14} />
+                      <span>({hoveredDeviceData.x}, {hoveredDeviceData.y})</span>
                     </div>
-                  )}
-
-                  {hoveredDeviceData.last_seen && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Clock size={14} />
-                      <span>{formatDistanceToNow(new Date(hoveredDeviceData.last_seen), { addSuffix: true })}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <MapPin size={14} />
-                    <span>({hoveredDeviceData.x}, {hoveredDeviceData.y})</span>
                   </div>
-                </div>
 
-                <p className="text-xs text-gray-500 mt-2">Click to view details</p>
-              </div>
-            )}
+                  <p className="text-xs text-gray-500 mt-2">Click to view details</p>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Legend */}

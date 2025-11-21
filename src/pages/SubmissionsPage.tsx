@@ -442,7 +442,7 @@ const SubmissionsPage = () => {
             siteName={selectedSite.name}
             devices={siteDevices}
             showControls={true}
-            height={300}
+            height={375}
             zoneMode={zoneMode}
             onZoneModeChange={setZoneMode}
           />

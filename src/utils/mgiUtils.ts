@@ -28,10 +28,10 @@ export const MGI_THRESHOLDS: MGIThresholds = {
 };
 
 export const VELOCITY_THRESHOLDS: VelocityThresholds = {
-  normal: 5,        // 1-5% per session = small pulse
-  elevated: 8,      // 6-8% per session = medium pulse
-  high: 16,         // 9-16% per session = large pulse
-  // 17%+ = very large and fast pulse (shows warning triangle)
+  normal: 4,        // 1-4% per session = green
+  elevated: 7,      // 5-7% per session = yellow
+  high: 12,         // 8-12% per session = orange
+  // 13-15% = red, 16%+ = red with critical warning triangle
 };
 
 export type MGILevel = 'healthy' | 'warning' | 'concerning' | 'critical';
@@ -62,13 +62,13 @@ export function getVelocityColorLevel(velocity: number | null): VelocityColorLev
 
   // Color mapping for velocity ranges
   if (velocityPercent <= VELOCITY_THRESHOLDS.normal) {
-    return 'green'; // 0-5%: Green
+    return 'green'; // 1-4%: Green
   } else if (velocityPercent <= VELOCITY_THRESHOLDS.elevated) {
-    return 'yellow'; // 6-8%: Yellow
+    return 'yellow'; // 5-7%: Yellow
   } else if (velocityPercent <= VELOCITY_THRESHOLDS.high) {
-    return 'orange'; // 9-16%: Orange
+    return 'orange'; // 8-12%: Orange
   } else {
-    return 'red'; // 17%+: Red
+    return 'red'; // 13%+: Red (16%+ shows critical triangle)
   }
 }
 
@@ -252,10 +252,10 @@ export function getMGILevelDescription(mgiScore: number | null): string {
 }
 
 /**
- * Check if velocity is at critical level (17%+) to show warning triangle
+ * Check if velocity is at critical level (16%+) to show warning triangle
  */
 export function isCriticalVelocity(velocity: number | null): boolean {
   if (velocity === null) return false;
   const velocityPercent = Math.abs(velocity * 100);
-  return velocityPercent > VELOCITY_THRESHOLDS.high; // > 16% = 17%+
+  return velocityPercent >= 16; // 16%+ shows critical warning triangle
 }
