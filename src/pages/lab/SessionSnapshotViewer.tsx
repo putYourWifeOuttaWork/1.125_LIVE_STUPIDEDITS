@@ -80,46 +80,54 @@ export default function SessionSnapshotViewer() {
           const deviceId = device.device_id;
           const cachedState = deviceStateCache.get(deviceId) || {};
 
-          // Helper: Use new value if it's not null/0/undefined, otherwise keep cached
+          // Helper: Use new value if it's not null/undefined, otherwise keep cached
+          // Special handling for 0 values: only carry forward if it's a meaningful 0 (not initial/empty)
           const carryForward = (newVal: any, cachedVal: any) => {
-            if (newVal !== null && newVal !== undefined && newVal !== 0) {
+            // If new value exists and is not null/undefined, use it
+            if (newVal !== null && newVal !== undefined) {
               return newVal;
             }
+            // Otherwise keep cached value
             return cachedVal;
           };
 
-          // Merge with LOCF rules: ignore null/0 from new data, keep old data
+          // For nested objects like telemetry and position, check if they have actual data
+          const hasValidPosition = (pos: any) => {
+            return pos && pos.x !== null && pos.x !== undefined && pos.y !== null && pos.y !== undefined;
+          };
+
+          const hasValidTelemetry = (tel: any) => {
+            return tel && (tel.latest_temperature !== null || tel.latest_humidity !== null);
+          };
+
+          const hasValidMGI = (mgi: any) => {
+            return mgi && (mgi.latest_mgi_score !== null || mgi.mgi_velocity !== null);
+          };
+
+          // Merge with LOCF rules: use new data if valid, otherwise carry forward
+          const newPosition = hasValidPosition(device.position) ? device.position : cachedState.position;
+          const newTelemetry = hasValidTelemetry(device.telemetry) ? {
+            latest_temperature: carryForward(device.telemetry.latest_temperature, cachedState.telemetry?.latest_temperature),
+            latest_humidity: carryForward(device.telemetry.latest_humidity, cachedState.telemetry?.latest_humidity),
+          } : cachedState.telemetry || {};
+          const newMGI = hasValidMGI(device.mgi_state) ? {
+            latest_mgi_score: carryForward(device.mgi_state.latest_mgi_score, cachedState.mgi_state?.latest_mgi_score),
+            mgi_velocity: carryForward(device.mgi_state.mgi_velocity, cachedState.mgi_state?.mgi_velocity),
+          } : cachedState.mgi_state || {};
+
           deviceStateCache.set(deviceId, {
             device_id: device.device_id,
             device_code: device.device_code,
             device_name: carryForward(device.device_name, cachedState.device_name),
-            position: device.position || cachedState.position,
+            position: newPosition,
             status: carryForward(device.status, cachedState.status) || 'active',
             last_seen_at: device.last_seen_at || cachedState.last_seen_at,
             battery_health_percent: carryForward(
               device.battery_health_percent,
               cachedState.battery_health_percent
             ),
-            telemetry: {
-              latest_temperature: carryForward(
-                device.telemetry?.latest_temperature,
-                cachedState.telemetry?.latest_temperature
-              ),
-              latest_humidity: carryForward(
-                device.telemetry?.latest_humidity,
-                cachedState.telemetry?.latest_humidity
-              ),
-            },
-            mgi_state: {
-              latest_mgi_score: carryForward(
-                device.mgi_state?.latest_mgi_score,
-                cachedState.mgi_state?.latest_mgi_score
-              ),
-              mgi_velocity: carryForward(
-                device.mgi_state?.mgi_velocity,
-                cachedState.mgi_state?.mgi_velocity
-              ),
-            },
+            telemetry: newTelemetry,
+            mgi_state: newMGI,
           });
         });
 
