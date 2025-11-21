@@ -59,11 +59,25 @@ const SubmissionsPage = () => {
   const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
   const [currentSnapshotIndex, setCurrentSnapshotIndex] = useState(0);
   const [timelineMode, setTimelineMode] = useState<'live' | 'timeline'>('live');
+  const [transitionProgress, setTransitionProgress] = useState(1); // 0 = start of transition, 1 = end
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Load all wake snapshots for this site + program (across all daily sessions)
   const { snapshots, loading: snapshotsLoading } = useSiteSnapshots(siteId || null, programId || null);
 
-  // Transform snapshot data for timeline mode
+  // Easing function for smooth transitions (ease-in-out)
+  const easeInOutCubic = (t: number): number => {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  };
+
+  // Interpolate between two values
+  const lerp = (start: number | null, end: number | null, progress: number): number | null => {
+    if (start === null || end === null) return end;
+    const easedProgress = easeInOutCubic(progress);
+    return start + (end - start) * easedProgress;
+  };
+
+  // Transform snapshot data for timeline mode with smooth transitions
   const displayDevices = useMemo(() => {
     if (timelineMode !== 'timeline' || snapshots.length === 0) {
       return [];
@@ -75,29 +89,63 @@ const SubmissionsPage = () => {
     }
 
     try {
-      const siteState = typeof currentSnapshot.site_state === 'string'
+      const currentState = typeof currentSnapshot.site_state === 'string'
         ? JSON.parse(currentSnapshot.site_state)
         : currentSnapshot.site_state;
 
-      const devices = siteState.devices || [];
+      const currentDevices = currentState.devices || [];
 
-      console.log('[SubmissionsPage] Snapshot device sample:', devices[0]);
+      // Get next snapshot for interpolation
+      const nextSnapshot = snapshots[currentSnapshotIndex + 1];
+      const nextState = nextSnapshot?.site_state
+        ? (typeof nextSnapshot.site_state === 'string'
+            ? JSON.parse(nextSnapshot.site_state)
+            : nextSnapshot.site_state)
+        : null;
+      const nextDevices = nextState?.devices || [];
 
-      const transformedDevices = devices
+      // Create a map of next device states by device_id
+      const nextDeviceMap = new Map(
+        nextDevices.map((d: any) => [d.device_id, d])
+      );
+
+      console.log('[SubmissionsPage] Snapshot device sample:', currentDevices[0]);
+      console.log('[SubmissionsPage] Transition progress:', transitionProgress);
+
+      const transformedDevices = currentDevices
         .filter((d: any) => d.position && d.position.x !== null && d.position.y !== null)
         .map((d: any) => {
+          const nextDevice = nextDeviceMap.get(d.device_id);
+
+          // Interpolate values if we're transitioning and next device exists
+          const temperature = transitionProgress < 1 && nextDevice
+            ? lerp(d.telemetry?.latest_temperature, nextDevice.telemetry?.latest_temperature, transitionProgress)
+            : d.telemetry?.latest_temperature ?? null;
+
+          const humidity = transitionProgress < 1 && nextDevice
+            ? lerp(d.telemetry?.latest_humidity, nextDevice.telemetry?.latest_humidity, transitionProgress)
+            : d.telemetry?.latest_humidity ?? null;
+
+          const mgi_score = transitionProgress < 1 && nextDevice
+            ? lerp(d.mgi_state?.latest_mgi_score, nextDevice.mgi_state?.latest_mgi_score, transitionProgress)
+            : d.mgi_state?.latest_mgi_score ?? null;
+
+          const battery_level = transitionProgress < 1 && nextDevice
+            ? lerp(d.battery_health_percent, nextDevice.battery_health_percent, transitionProgress)
+            : d.battery_health_percent ?? null;
+
           const transformed = {
             device_id: d.device_id,
             device_code: d.device_code,
             device_name: d.device_name || d.device_code,
             x: d.position.x,
             y: d.position.y,
-            battery_level: d.battery_health_percent ?? null,
+            battery_level,
             status: d.status || 'active',
             last_seen: d.last_seen_at || null,
-            temperature: d.telemetry?.latest_temperature ?? null,
-            humidity: d.telemetry?.latest_humidity ?? null,
-            mgi_score: d.mgi_state?.latest_mgi_score ?? null,
+            temperature,
+            humidity,
+            mgi_score,
             mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
           };
           return transformed;
@@ -109,7 +157,35 @@ const SubmissionsPage = () => {
       console.error('Error parsing snapshot data:', error);
       return [];
     }
-  }, [snapshots, currentSnapshotIndex, timelineMode]);
+  }, [snapshots, currentSnapshotIndex, timelineMode, transitionProgress]);
+
+  // Animate transitions between snapshots
+  useEffect(() => {
+    if (timelineMode !== 'timeline') return;
+
+    // Reset transition to start
+    setTransitionProgress(0);
+    setIsTransitioning(true);
+
+    const transitionDuration = 500; // 500ms smooth transition
+    const frameRate = 60; // 60fps
+    const totalFrames = (transitionDuration / 1000) * frameRate;
+    const increment = 1 / totalFrames;
+
+    let frame = 0;
+    const animationInterval = setInterval(() => {
+      frame++;
+      const progress = Math.min(frame * increment, 1);
+      setTransitionProgress(progress);
+
+      if (progress >= 1) {
+        clearInterval(animationInterval);
+        setIsTransitioning(false);
+      }
+    }, 1000 / frameRate);
+
+    return () => clearInterval(animationInterval);
+  }, [currentSnapshotIndex, timelineMode]);
 
   // Use the useSubmissions hook to get access to submissions and related functions
   const {
