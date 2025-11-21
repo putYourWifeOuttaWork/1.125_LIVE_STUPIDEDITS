@@ -105,7 +105,11 @@ export default function SessionSnapshotViewer() {
           };
 
           // Merge with LOCF rules: use new data if valid, otherwise carry forward
-          const newPosition = hasValidPosition(device.position) ? device.position : cachedState.position;
+          // CRITICAL: Position is LOCKED once set - devices don't move during visualization
+          const newPosition = cachedState.position
+            ? cachedState.position  // Keep existing position (frozen)
+            : (hasValidPosition(device.position) ? device.position : null); // Set initial position
+
           const newTelemetry = hasValidTelemetry(device.telemetry) ? {
             latest_temperature: carryForward(device.telemetry.latest_temperature, cachedState.telemetry?.latest_temperature),
             latest_humidity: carryForward(device.telemetry.latest_humidity, cachedState.telemetry?.latest_humidity),
