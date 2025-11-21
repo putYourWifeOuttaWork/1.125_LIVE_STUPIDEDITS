@@ -95,9 +95,9 @@ const SubmissionsPage = () => {
             battery_level: d.battery_health_percent ?? null,
             status: d.status || 'active',
             last_seen: d.last_seen_at || null,
-            temperature: d.telemetry?.temperature ?? null,
-            humidity: d.telemetry?.humidity ?? null,
-            mgi_score: d.mgi_state?.mgi_score ?? null,
+            temperature: d.telemetry?.latest_temperature ?? null,
+            humidity: d.telemetry?.latest_humidity ?? null,
+            mgi_score: d.mgi_state?.latest_mgi_score ?? null,
             mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
           };
           return transformed;
