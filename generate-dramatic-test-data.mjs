@@ -36,12 +36,54 @@ const { data: devices } = await supabase
 console.log(`📱 Found ${devices.length} active devices:\n`);
 devices.forEach(d => console.log(`   • ${d.device_code} (${d.device_name})`));
 
+// Get or create a session for this site
+const baseDate = new Date('2025-11-19T00:00:00Z');
+const sessionDate = baseDate.toISOString().split('T')[0];
+
+console.log('\n📅 Creating session for testing...');
+
+const { data: existingSession } = await supabase
+  .from('site_device_sessions')
+  .select('session_id')
+  .eq('site_id', site.site_id)
+  .eq('session_date', sessionDate)
+  .single();
+
+let sessionId;
+
+if (existingSession) {
+  sessionId = existingSession.session_id;
+  console.log(`✅ Found existing session: ${sessionId}\n`);
+} else {
+  // Create new session
+  const { data: newSession, error: sessionError } = await supabase
+    .from('site_device_sessions')
+    .insert({
+      site_id: site.site_id,
+      program_id: devices[0].program_id,
+      company_id: devices[0].company_id,
+      session_date: sessionDate,
+      session_start: baseDate.toISOString(),
+      session_end: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      status: 'active'
+    })
+    .select('session_id')
+    .single();
+
+  if (sessionError) {
+    console.error('❌ Error creating session:', sessionError.message);
+    process.exit(1);
+  }
+
+  sessionId = newSession.session_id;
+  console.log(`✅ Created new session: ${sessionId}\n`);
+}
+
 // Create dramatic scenario: 24 hours with 8 wake rounds (3-hour windows)
 // Each device will have different "story arcs"
-const baseDate = new Date('2025-11-19T00:00:00Z');
 const wakeRounds = 8; // 8 x 3 hours = 24 hours
 
-console.log('\n🎨 Creating dramatic data scenarios:\n');
+console.log('🎨 Creating dramatic data scenarios:\n');
 
 // Default scenario for all devices (we'll create 5 different arcs)
 const scenarioTemplates = [
@@ -146,6 +188,7 @@ for (let round = 0; round < wakeRounds; round++) {
           site_id: site.site_id,
           company_id: device.company_id,
           program_id: device.program_id,
+          site_device_session_id: sessionId,
           temperature: temp,
           humidity: humidity,
           pressure: 1013 + (Math.random() * 10 - 5),
