@@ -184,11 +184,25 @@ export async function handleHelloStatus(
 
       // Create historical telemetry record for battery & wifi tracking
       if (payload.battery_voltage !== undefined || payload.wifi_rssi !== undefined) {
+        // Get active session for context
+        let sessionId = null;
+        if (lineageData?.site_id) {
+          const { data: sessionData } = await supabase.rpc(
+            'fn_get_active_session_for_site',
+            { p_site_id: lineageData.site_id }
+          );
+          sessionId = sessionData;
+        }
+
         const { error: telemetryError } = await supabase
           .from('device_telemetry')
           .insert({
             device_id: existingDevice.device_id,
             company_id: existingDevice.company_id,
+            program_id: lineageData?.program_id || null,    // ✅ INHERIT FROM DEVICE
+            site_id: lineageData?.site_id || null,          // ✅ INHERIT FROM DEVICE
+            site_device_session_id: sessionId,              // ✅ ACTIVE SESSION
+            wake_payload_id: null,                          // HELLO has no wake payload
             captured_at: now,
             battery_voltage: payload.battery_voltage,
             wifi_rssi: payload.wifi_rssi,
@@ -311,11 +325,25 @@ export async function handleMetadata(
     if (payload.temperature !== undefined || payload.humidity !== undefined ||
         payload.pressure !== undefined || payload.gas_resistance !== undefined) {
 
+      // Get active session for context
+      let sessionId = null;
+      if (lineageData.site_id) {
+        const { data: sessionData } = await supabase.rpc(
+          'fn_get_active_session_for_site',
+          { p_site_id: lineageData.site_id }
+        );
+        sessionId = sessionData;
+      }
+
       const { error: telemetryError } = await supabase
         .from('device_telemetry')
         .insert({
           device_id: lineageData.device_id,
           company_id: lineageData.company_id,
+          program_id: lineageData.program_id,         // ✅ INHERIT FROM DEVICE
+          site_id: lineageData.site_id,               // ✅ INHERIT FROM DEVICE
+          site_device_session_id: sessionId,          // ✅ ACTIVE SESSION
+          wake_payload_id: result.payload_id,         // ✅ LINK TO WAKE PAYLOAD
           captured_at: payload.capture_timestamp,
           temperature: payload.temperature,
           humidity: payload.humidity,
@@ -469,7 +497,17 @@ export async function handleTelemetryOnly(
       }
     }
 
-    // Insert into device_telemetry table
+    // Get active session for the site (if exists)
+    let sessionId = null;
+    if (lineageData.site_id) {
+      const { data: sessionData } = await supabase.rpc(
+        'fn_get_active_session_for_site',
+        { p_site_id: lineageData.site_id }
+      );
+      sessionId = sessionData;
+    }
+
+    // Insert into device_telemetry table with FULL CONTEXT
     // DOES NOT create device_images or touch session counters
     const capturedAt = payload.captured_at || (payload as any).capture_timestamp || new Date().toISOString();
     const { error: insertError } = await supabase
@@ -477,6 +515,10 @@ export async function handleTelemetryOnly(
       .insert({
         device_id: lineageData.device_id,
         company_id: lineageData.company_id,
+        program_id: lineageData.program_id,           // ✅ INHERIT FROM DEVICE
+        site_id: lineageData.site_id,                 // ✅ INHERIT FROM DEVICE
+        site_device_session_id: sessionId,            // ✅ ACTIVE SESSION
+        wake_payload_id: null,                        // OK - telemetry-only has no wake payload
         captured_at: capturedAt,
         temperature: payload.temperature,
         humidity: payload.humidity,
