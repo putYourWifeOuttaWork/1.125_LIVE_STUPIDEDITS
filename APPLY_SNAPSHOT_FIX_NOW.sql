@@ -78,7 +78,7 @@ BEGIN
           WHEN di.mgi_score IS NOT NULL THEN
             jsonb_build_object('status', 'current_wake', 'captured_at', di.captured_at)
           WHEN last_di.mgi_score IS NOT NULL THEN
-            jsonb_build_object('status', 'locf', 'captured_at', last_di.captured_at, 'carried_forward_from_wake', last_di.wake_number)
+            jsonb_build_object('status', 'locf', 'captured_at', last_di.captured_at, 'carried_forward_from_wake', last_di.wake_index)
           ELSE
             jsonb_build_object('status', 'no_data')
         END,
@@ -87,9 +87,9 @@ BEGIN
             (SELECT calculate_mgi_metrics(d.device_id, di.mgi_score, di.captured_at))
           ELSE NULL
         END,
-        'latest_image_url', COALESCE(di.storage_path, last_di.storage_path),
+        'latest_image_url', COALESCE(di.image_url, last_di.image_url),
         'captured_at', COALESCE(di.captured_at, last_di.captured_at),
-        'wake_number', COALESCE(di.wake_number, last_di.wake_number),
+        'wake_number', COALESCE(dwp.wake_window_index, last_di.wake_index),
         'last_seen_at', d.last_seen_at,
         'battery_level', d.battery_voltage,
         'connectivity', calculate_device_wake_reliability(d.device_id, v_site_id, p_wake_round_end, 3)
@@ -100,16 +100,19 @@ BEGIN
     COUNT(*) FILTER (WHERE di.image_id IS NOT NULL) AS new_images_count
     FROM devices d
     LEFT JOIN device_images di ON di.device_id = d.device_id
-      AND di.session_id = p_session_id
-      AND di.wake_number = p_wake_number
+      AND di.site_device_session_id = p_session_id
+      AND di.captured_at BETWEEN p_wake_round_start AND p_wake_round_end
+    LEFT JOIN device_wake_payloads dwp ON dwp.payload_id = di.wake_payload_id
+      AND dwp.wake_window_index = p_wake_number
     LEFT JOIN LATERAL (
-      SELECT mgi_score, storage_path, captured_at, wake_number
-      FROM device_images
-      WHERE device_id = d.device_id
-        AND session_id = p_session_id
-        AND wake_number < p_wake_number
-        AND mgi_score IS NOT NULL
-      ORDER BY wake_number DESC
+      SELECT di2.mgi_score, di2.image_url, di2.captured_at, dwp2.wake_window_index as wake_index
+      FROM device_images di2
+      JOIN device_wake_payloads dwp2 ON dwp2.payload_id = di2.wake_payload_id
+      WHERE di2.device_id = d.device_id
+        AND di2.site_device_session_id = p_session_id
+        AND dwp2.wake_window_index < p_wake_number
+        AND di2.mgi_score IS NOT NULL
+      ORDER BY dwp2.wake_window_index DESC
       LIMIT 1
     ) last_di ON true
     WHERE d.site_id = v_site_id
@@ -192,4 +195,4 @@ $$;
 COMMENT ON FUNCTION generate_session_wake_snapshot IS 'Generate comprehensive wake snapshot with LOCF, MGI metrics, device connectivity, and zone analytics. Uses correct column name new_images_this_round.';
 
 -- Verify deployment
-SELECT 'SUCCESS: Snapshot function deployed with all fixes!' as status;
+SELECT 'SUCCESS: Snapshot function deployed with schema-corrected column names!' as status;
