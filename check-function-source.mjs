@@ -5,33 +5,50 @@ dotenv.config();
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
+  process.env.VITE_SUPABASE_SERVICE_ROLE_KEY
 );
 
-console.log('Checking fn_get_or_create_device_submission function source...\n');
+console.log('🔍 Checking function source code in database...\n');
 
-const { data, error } = await supabase.rpc('exec_sql', {
-  query: `
-    SELECT pg_get_functiondef(oid) as function_def
-    FROM pg_proc
-    WHERE proname = 'fn_get_or_create_device_submission'
-  `
-});
+const { data, error } = await supabase
+  .from('pg_proc')
+  .select('proname, prosrc')
+  .eq('proname', 'generate_session_wake_snapshot');
 
 if (error) {
-  console.log('Error:', error);
-
-  // Alternative approach
-  const { data: altData, error: altError } = await supabase
-    .from('pg_proc')
-    .select('*')
-    .eq('proname', 'fn_get_or_create_device_submission');
-
-  console.log('Alt approach:', altData, altError);
+  console.log('Using RPC instead...');
+  
+  // Try direct SQL query
+  const { data: result, error: sqlError } = await supabase.rpc('exec_sql', {
+    sql: `
+      SELECT 
+        p.proname,
+        pg_get_functiondef(p.oid) as definition
+      FROM pg_proc p
+      JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE p.proname = 'generate_session_wake_snapshot'
+        AND n.nspname = 'public'
+    `
+  });
+  
+  if (sqlError) {
+    console.log('Cannot query pg_proc. Trying alternative...\n');
+    
+    // Check what functions exist
+    const { data: funcs, error: e } = await supabase.rpc('exec_sql', {
+      sql: `
+        SELECT routine_name, routine_type
+        FROM information_schema.routines
+        WHERE routine_name LIKE '%snapshot%'
+          AND routine_schema = 'public'
+        ORDER BY routine_name
+      `
+    });
+    
+    console.log('Functions with "snapshot" in name:', funcs);
+  } else {
+    console.log('Function definition:', result);
+  }
 } else {
-  console.log('Function definition:');
-  console.log(data);
+  console.log('Found functions:', data);
 }
-
-process.exit(0);

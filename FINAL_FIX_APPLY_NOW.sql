@@ -1,239 +1,167 @@
-/*
-  FINAL FIX - Apply this in Supabase SQL Editor
+-- ================================================
+-- FINAL FIX: Use EXTRACT(EPOCH FROM ...) / 86400
+-- ================================================
+-- DATE_PART('day', interval) might not work correctly
+-- Use EXTRACT(EPOCH FROM interval) / 86400 instead
 
-  This corrects ALL schema issues:
-  - Enum values
-  - Device table columns (removed device_type, device_code)
-  - submission_sessions columns (opened_at → session_start_time)
-*/
-
--- ==========================================
--- 1. Add Missing Enum Values
--- ==========================================
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_enum
-    WHERE enumlabel = 'None' AND enumtypid = 'odor_distance_enum'::regtype
-  ) THEN
-    ALTER TYPE odor_distance_enum ADD VALUE 'None';
-  END IF;
-END $$;
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_enum
-    WHERE enumlabel = 'Moderate' AND enumtypid = 'airflow_enum'::regtype
-  ) THEN
-    ALTER TYPE airflow_enum ADD VALUE 'Moderate';
-  END IF;
-END $$;
-
--- ==========================================
--- 2. Create SYSTEM Device
--- ==========================================
-
-DO $$
-DECLARE
-  v_system_device_id UUID;
-BEGIN
-  SELECT device_id INTO v_system_device_id
-  FROM devices
-  WHERE device_mac = 'SYSTEM:AUTO:GENERATED';
-
-  IF v_system_device_id IS NULL THEN
-    INSERT INTO devices (
-      device_mac,
-      device_name,
-      is_active,
-      provisioning_status,
-      firmware_version,
-      hardware_version,
-      notes
-    ) VALUES (
-      'SYSTEM:AUTO:GENERATED',
-      'System Auto-Generated Submissions',
-      false,
-      'mapped',
-      '1.0.0',
-      'SYSTEM',
-      'Virtual device for system-generated device submission shells.'
-    );
-  END IF;
-END $$;
-
--- ==========================================
--- 3. Update Device Submission Function
--- ==========================================
-
-CREATE OR REPLACE FUNCTION fn_get_or_create_device_submission(
-  p_site_id UUID,
-  p_session_date DATE
+CREATE OR REPLACE FUNCTION generate_session_wake_snapshot(
+  p_session_id uuid,
+  p_wake_number integer,
+  p_wake_round_start timestamptz,
+  p_wake_round_end timestamptz
 )
-RETURNS UUID
+RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_submission_id UUID;
-  v_program_id UUID;
-  v_company_id UUID;
-  v_temperature NUMERIC;
-  v_humidity NUMERIC;
-  v_airflow TEXT;
-  v_odor_distance TEXT;
-  v_weather TEXT;
-  v_submission_timezone TEXT;
-  v_global_submission_id BIGINT;
-  v_submission_defaults JSONB;
-  v_system_device_id UUID;
+  v_snapshot_id uuid;
+  v_site_id uuid;
+  v_program_id uuid;
+  v_company_id uuid;
+  v_site_state jsonb;
+  v_active_devices_count integer;
+  v_new_images_count integer;
 BEGIN
-  -- Check for existing device submission
-  SELECT submission_id INTO v_submission_id
-  FROM submissions
-  WHERE site_id = p_site_id
-    AND DATE(created_at AT TIME ZONE COALESCE(
-      (SELECT timezone FROM sites WHERE site_id = p_site_id),
-      'UTC'
-    )) = p_session_date
-    AND is_device_generated = TRUE
-  LIMIT 1;
+  -- Get session context
+  SELECT site_id, program_id, company_id
+  INTO v_site_id, v_program_id, v_company_id
+  FROM site_device_sessions
+  WHERE session_id = p_session_id;
 
-  IF v_submission_id IS NOT NULL THEN
-    RETURN v_submission_id;
-  END IF;
+  -- Build complete site state snapshot with LOCF
+  WITH
+  -- Program context
+  program_meta AS (
+    SELECT jsonb_build_object(
+      'program_id', pp.program_id,
+      'program_name', pp.name,
+      'program_start_date', pp.start_date,
+      'program_end_date', pp.end_date,
+      'program_day', (EXTRACT(EPOCH FROM (p_wake_round_end - pp.start_date)) / 86400)::integer,
+      'total_days', (EXTRACT(EPOCH FROM (pp.end_date - pp.start_date)) / 86400)::integer
+    ) AS program_context
+    FROM pilot_programs pp WHERE pp.program_id = v_program_id
+  ),
 
-  -- Get SYSTEM device ID
-  SELECT device_id INTO v_system_device_id
-  FROM devices
-  WHERE device_mac = 'SYSTEM:AUTO:GENERATED';
+  -- Device states with MGI metrics
+  device_states AS (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'device_id', d.device_id,
+        'device_code', d.device_code,
+        'device_name', d.device_name,
+        'position', jsonb_build_object('x', d.x_position, 'y', d.y_position),
+        'mgi_score', COALESCE(di.mgi_score, last_di.mgi_score),
+        'mgi_metadata', CASE
+          WHEN di.mgi_score IS NOT NULL THEN
+            jsonb_build_object('status', 'current_wake', 'captured_at', di.captured_at)
+          WHEN last_di.mgi_score IS NOT NULL THEN
+            jsonb_build_object('status', 'locf', 'captured_at', last_di.captured_at, 'carried_forward_from_wake', last_di.wake_number)
+          ELSE
+            jsonb_build_object('status', 'no_data')
+        END,
+        'mgi_metrics', CASE
+          WHEN di.mgi_score IS NOT NULL THEN
+            (SELECT calculate_mgi_metrics(d.device_id, di.mgi_score, di.captured_at))
+          ELSE NULL
+        END,
+        'latest_image_url', COALESCE(di.storage_path, last_di.storage_path),
+        'captured_at', COALESCE(di.captured_at, last_di.captured_at),
+        'wake_number', COALESCE(di.wake_number, last_di.wake_number),
+        'last_seen_at', d.last_seen_at,
+        'battery_level', d.battery_level,
+        'connectivity', calculate_device_wake_reliability(d.device_id, v_site_id, p_wake_round_end, 3)
+      )
+      ORDER BY d.x_position NULLS LAST, d.y_position NULLS LAST
+    ) AS devices_array,
+    COUNT(*) FILTER (WHERE d.is_active = true) AS active_count,
+    COUNT(*) FILTER (WHERE di.image_id IS NOT NULL) AS new_images_count
+    FROM devices d
+    LEFT JOIN device_images di ON di.device_id = d.device_id
+      AND di.session_id = p_session_id
+      AND di.wake_number = p_wake_number
+    LEFT JOIN LATERAL (
+      SELECT mgi_score, storage_path, captured_at, wake_number
+      FROM device_images
+      WHERE device_id = d.device_id
+        AND session_id = p_session_id
+        AND wake_number < p_wake_number
+        AND mgi_score IS NOT NULL
+      ORDER BY wake_number DESC
+      LIMIT 1
+    ) last_di ON true
+    WHERE d.site_id = v_site_id
+      AND d.is_active = true
+  ),
 
-  IF v_system_device_id IS NULL THEN
-    RAISE EXCEPTION 'SYSTEM device not found';
-  END IF;
-
-  -- Fetch site lineage and defaults
-  SELECT
-    s.program_id,
-    p.company_id,
-    s.timezone,
-    s.submission_defaults,
-    COALESCE(s.default_indoor_temperature, s.default_temperature, 70),
-    COALESCE(s.default_indoor_humidity, s.default_humidity, 45),
-    s.default_weather
-  INTO
-    v_program_id,
-    v_company_id,
-    v_submission_timezone,
-    v_submission_defaults,
-    v_temperature,
-    v_humidity,
-    v_weather
-  FROM sites s
-  JOIN pilot_programs p ON s.program_id = p.program_id
-  WHERE s.site_id = p_site_id;
-
-  IF v_program_id IS NULL THEN
-    RAISE EXCEPTION 'Site % not found', p_site_id;
-  END IF;
-
-  -- Get device telemetry averages if available
-  SELECT AVG(temperature) INTO v_temperature
-  FROM device_wake_payloads dwp
-  WHERE dwp.site_id = p_site_id
-    AND DATE(dwp.captured_at AT TIME ZONE COALESCE(v_submission_timezone, 'UTC')) = p_session_date
-    AND dwp.temperature IS NOT NULL;
-
-  SELECT AVG(humidity) INTO v_humidity
-  FROM device_wake_payloads dwp
-  WHERE dwp.site_id = p_site_id
-    AND DATE(dwp.captured_at AT TIME ZONE COALESCE(v_submission_timezone, 'UTC')) = p_session_date
-    AND dwp.humidity IS NOT NULL;
-
-  -- Ensure we ALWAYS have valid temperature and humidity (never NULL)
-  v_temperature := COALESCE(v_temperature, 70);
-  v_humidity := COALESCE(v_humidity, 45);
-
-  -- Parse enum values with SAFE defaults
-  IF v_submission_defaults IS NOT NULL THEN
-    v_airflow := COALESCE(v_submission_defaults->>'airflow', 'Moderate');
-    v_odor_distance := COALESCE(v_submission_defaults->>'odor_distance', 'None');
-    v_weather := COALESCE(v_submission_defaults->>'weather', v_weather::TEXT, 'Clear');
-  ELSE
-    v_airflow := 'Moderate';
-    v_odor_distance := 'None';
-    v_weather := COALESCE(v_weather::TEXT, 'Clear');
-  END IF;
-
-  v_submission_timezone := COALESCE(v_submission_timezone, 'UTC');
-  v_global_submission_id := nextval('global_submission_id_seq');
-
-  -- Create device submission shell
-  INSERT INTO submissions (
-    site_id,
-    program_id,
-    company_id,
-    temperature,
-    humidity,
-    airflow,
-    odor_distance,
-    weather,
-    submission_timezone,
-    global_submission_id,
-    is_device_generated,
-    created_by_device_id,
-    created_by,
-    notes,
-    created_at
-  ) VALUES (
-    p_site_id,
-    v_program_id,
-    v_company_id,
-    v_temperature,
-    v_humidity,
-    v_airflow::airflow_enum,
-    v_odor_distance::odor_distance_enum,
-    v_weather::weather_enum,
-    v_submission_timezone,
-    v_global_submission_id,
-    TRUE,
-    v_system_device_id,
-    NULL,
-    'Automated device submission shell created for site daily session',
-    (p_session_date || ' 00:00:00')::TIMESTAMP AT TIME ZONE v_submission_timezone
+  -- Zone analytics
+  zone_analytics AS (
+    SELECT generate_device_centered_zones(v_site_id) AS zones
   )
-  RETURNING submission_id INTO v_submission_id;
 
-  -- Create paired submission_sessions row
-  INSERT INTO submission_sessions (
-    submission_id,
-    site_id,
-    program_id,
-    opened_by_user_id,
-    session_status,
-    session_start_time,
-    completion_time
+  -- Build final snapshot structure
+  SELECT
+    jsonb_build_object(
+      'snapshot_id', gen_random_uuid(),
+      'session_id', p_session_id,
+      'wake_number', p_wake_number,
+      'wake_window', jsonb_build_object(
+        'start', p_wake_round_start,
+        'end', p_wake_round_end
+      ),
+      'program', (SELECT program_context FROM program_meta),
+      'site', jsonb_build_object(
+        'site_id', v_site_id,
+        'zones', (SELECT zones FROM zone_analytics)
+      ),
+      'devices', (SELECT devices_array FROM device_states),
+      'summary', jsonb_build_object(
+        'active_devices', (SELECT active_count FROM device_states),
+        'new_images', (SELECT new_images_count FROM device_states),
+        'avg_mgi', (
+          SELECT ROUND(AVG((value->>'mgi_score')::numeric), 2)
+          FROM device_states, jsonb_array_elements(devices_array)
+          WHERE value->>'mgi_score' IS NOT NULL
+        )
+      ),
+      'metadata', jsonb_build_object(
+        'generated_at', NOW(),
+        'company_id', v_company_id
+      )
+    )
+  INTO v_site_state;
+
+  -- Extract generated UUID
+  v_snapshot_id := (v_site_state->>'snapshot_id')::uuid;
+  v_active_devices_count := (v_site_state->'summary'->>'active_devices')::integer;
+  v_new_images_count := (v_site_state->'summary'->>'new_images')::integer;
+
+  -- Insert snapshot
+  INSERT INTO session_wake_snapshots (
+    snapshot_id,
+    session_id,
+    wake_number,
+    wake_round_start,
+    wake_round_end,
+    site_state,
+    active_devices_count,
+    new_images_count,
+    company_id
   ) VALUES (
-    v_submission_id,
-    p_site_id,
-    v_program_id,
-    NULL,
-    'Opened',
-    (p_session_date || ' 00:00:00')::TIMESTAMP AT TIME ZONE v_submission_timezone,
-    NULL
+    v_snapshot_id,
+    p_session_id,
+    p_wake_number,
+    p_wake_round_start,
+    p_wake_round_end,
+    v_site_state,
+    v_active_devices_count,
+    v_new_images_count,
+    v_company_id
   );
 
-  RETURN v_submission_id;
+  RETURN v_snapshot_id;
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION fn_get_or_create_device_submission(UUID, DATE) TO authenticated, service_role;
-
--- ==========================================
--- 4. Test It
--- ==========================================
-
--- Run this immediately after:
-SELECT auto_create_daily_sessions();
+COMMENT ON FUNCTION generate_session_wake_snapshot IS 'Generate comprehensive wake snapshot with LOCF, MGI metrics, device connectivity, and zone analytics.';
