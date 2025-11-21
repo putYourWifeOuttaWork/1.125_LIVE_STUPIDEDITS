@@ -1,24 +1,17 @@
 import 'dotenv/config';
-import { createClient } from '@supabase/supabase-js';
+import pkg from 'pg';
+const { Client } = pkg;
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-const { data, error } = await supabase.rpc('get_function_source', {
-  p_function_name: 'generate_session_wake_snapshot'
+const client = new Client({
+  connectionString: process.env.SUPABASE_DB_URL
 });
 
-if (error) {
-  console.error('Error:', error);
-} else {
-  // Show the part with EXTRACT
-  const source = data || '';
-  const lines = source.split('\n');
-  lines.forEach((line, i) => {
-    if (line.includes('EXTRACT') || line.includes('program_day')) {
-      console.log(`${i}: ${line}`);
-    }
-  });
-}
+await client.connect();
+
+const result = await client.query(`
+  SELECT pg_get_functiondef('generate_session_wake_snapshot'::regproc);
+`);
+
+console.log(result.rows[0].pg_get_functiondef);
+
+await client.end();
