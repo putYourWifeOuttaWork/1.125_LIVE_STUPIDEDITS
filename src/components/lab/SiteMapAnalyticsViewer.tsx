@@ -23,7 +23,7 @@ interface DevicePosition {
   mgi_velocity: number | null;
 }
 
-type ZoneMode = 'none' | 'temperature' | 'humidity' | 'battery' | 'mgi';
+type ZoneMode = 'none' | 'temperature' | 'humidity' | 'battery';
 
 interface SiteMapAnalyticsViewerProps {
   siteLength: number;
@@ -204,17 +204,12 @@ export default function SiteMapAnalyticsViewer({
         ctx.fillText('📷', pixelX, pixelY);
       }
 
-      // Device code label
-      ctx.fillStyle = '#1f2937';
-      ctx.font = isHovered ? 'bold 11px sans-serif' : '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(device.device_code, pixelX, pixelY + baseRadius + 12);
-
-      // Battery level
-      if (device.battery_level !== null) {
-        ctx.font = '9px sans-serif';
-        ctx.fillStyle = device.battery_level < 20 ? '#ef4444' : '#6b7280';
-        ctx.fillText(`${device.battery_level}%`, pixelX, pixelY + baseRadius + 23);
+      // Device code label (only show on hover)
+      if (isHovered) {
+        ctx.fillStyle = '#1f2937';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(device.device_code, pixelX, pixelY + baseRadius + 12);
       }
     });
 
@@ -242,7 +237,6 @@ export default function SiteMapAnalyticsViewer({
       if (mode === 'temperature') value = device.temperature;
       else if (mode === 'humidity') value = device.humidity;
       else if (mode === 'battery') value = device.battery_level;
-      else if (mode === 'mgi') value = device.mgi_score;
 
       if (value !== null) {
         minValue = Math.min(minValue, value);
@@ -254,9 +248,6 @@ export default function SiteMapAnalyticsViewer({
     let colorScale;
     if (mode === 'humidity') {
       colorScale = scaleSequential(interpolateYlGnBu).domain([minValue, maxValue]);
-    } else if (mode === 'mgi') {
-      // MGI: Green (low/good) to Red (high/bad)
-      colorScale = scaleSequential(interpolateRdYlGn).domain([maxValue, minValue]); // Inverted: 0=green, 1=red
     } else {
       // Temperature and battery: Red (hot/low) to Blue (cold/high)
       colorScale = scaleSequential(interpolateRdYlBu).domain([maxValue, minValue]);
@@ -271,7 +262,6 @@ export default function SiteMapAnalyticsViewer({
       if (mode === 'temperature') value = device.temperature;
       else if (mode === 'humidity') value = device.humidity;
       else if (mode === 'battery') value = device.battery_level;
-      else if (mode === 'mgi') value = device.mgi_score;
 
       if (value === null) {
         ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
@@ -423,11 +413,9 @@ export default function SiteMapAnalyticsViewer({
                     onChange={(e) => setZoneMode(e.target.value as ZoneMode)}
                     className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
                   >
-                    <option value="none">None</option>
                     <option value="temperature">Temperature</option>
                     <option value="humidity">Humidity</option>
                     <option value="battery">Battery</option>
-                    <option value="mgi">Mold Growth (MGI)</option>
                   </select>
                 </div>
               )}
@@ -454,12 +442,6 @@ export default function SiteMapAnalyticsViewer({
                 <div className="flex items-center gap-1">
                   <Battery size={14} />
                   <span>Avg: {zoneStats.avgBattery.toFixed(0)}%</span>
-                </div>
-              )}
-              {zoneMode === 'mgi' && (
-                <div className="flex items-center gap-1">
-                  <Camera size={14} />
-                  <span>Avg MGI: {(zoneStats.avgMGI * 100).toFixed(0)}%</span>
                 </div>
               )}
             </div>
@@ -508,6 +490,27 @@ export default function SiteMapAnalyticsViewer({
                     <div className="flex items-center gap-2 text-gray-600">
                       <Thermometer size={14} />
                       <span>{hoveredDeviceData.temperature}°F</span>
+                    </div>
+                  )}
+
+                  {hoveredDeviceData.humidity !== null && (
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Droplets size={14} />
+                      <span>{hoveredDeviceData.humidity}%</span>
+                    </div>
+                  )}
+
+                  {hoveredDeviceData.mgi_score !== null && (
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Camera size={14} />
+                      <span>MGI: {(hoveredDeviceData.mgi_score * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+
+                  {hoveredDeviceData.mgi_velocity !== null && (
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <AlertTriangle size={14} />
+                      <span>Velocity: {hoveredDeviceData.mgi_velocity >= 0 ? '+' : ''}{(hoveredDeviceData.mgi_velocity * 100).toFixed(1)}%</span>
                     </div>
                   )}
 
