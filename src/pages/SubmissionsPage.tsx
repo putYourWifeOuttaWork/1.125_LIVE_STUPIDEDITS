@@ -27,8 +27,7 @@ import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
 import ZoneAnalytics from '../components/lab/ZoneAnalytics';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import { TimelineController } from '../components/lab/TimelineController';
-import { useSiteSession } from '../hooks/useSiteSession';
-import { useSessionSnapshots } from '../hooks/useSessionSnapshots';
+import { useSiteSnapshots } from '../hooks/useSiteSnapshots';
 import { useMemo } from 'react';
 
 const SubmissionsPage = () => {
@@ -58,14 +57,11 @@ const SubmissionsPage = () => {
   const [siteDevices, setSiteDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
-  const [currentWakeNumber, setCurrentWakeNumber] = useState(1);
+  const [currentSnapshotIndex, setCurrentSnapshotIndex] = useState(0);
   const [timelineMode, setTimelineMode] = useState<'live' | 'timeline'>('live');
 
-  // Load session for this site + program
-  const { currentSession, allSessions, loading: sessionLoading, selectSession } = useSiteSession(siteId || null, programId || null);
-
-  // Load snapshots for current session
-  const { snapshots, loading: snapshotsLoading } = useSessionSnapshots(currentSession?.session_id || null);
+  // Load all wake snapshots for this site + program (across all daily sessions)
+  const { snapshots, loading: snapshotsLoading } = useSiteSnapshots(siteId || null, programId || null);
 
   // Transform snapshot data for timeline mode
   const displayDevices = useMemo(() => {
@@ -73,7 +69,7 @@ const SubmissionsPage = () => {
       return [];
     }
 
-    const currentSnapshot = snapshots.find(s => s.wake_number === currentWakeNumber);
+    const currentSnapshot = snapshots[currentSnapshotIndex];
     if (!currentSnapshot || !currentSnapshot.site_state) {
       return [];
     }
@@ -105,7 +101,7 @@ const SubmissionsPage = () => {
       console.error('Error parsing snapshot data:', error);
       return [];
     }
-  }, [snapshots, currentWakeNumber, timelineMode]);
+  }, [snapshots, currentSnapshotIndex, timelineMode]);
 
   // Use the useSubmissions hook to get access to submissions and related functions
   const {
@@ -555,7 +551,7 @@ const SubmissionsPage = () => {
           )}
 
           {/* Timeline Controller */}
-          {currentSession && snapshots.length > 0 && (
+          {snapshots.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Button
@@ -576,13 +572,23 @@ const SubmissionsPage = () => {
               </div>
 
               {timelineMode === 'timeline' && (
-                <TimelineController
-                  totalWakes={currentSession.total_wakes_expected}
-                  currentWake={currentWakeNumber}
-                  onWakeChange={setCurrentWakeNumber}
-                  wakeTimestamps={snapshots.map(s => s.wake_time || s.created_at)}
-                  autoPlaySpeed={2000}
-                />
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-600">
+                    Snapshot {currentSnapshotIndex + 1} of {snapshots.length}
+                    {snapshots[currentSnapshotIndex] && (
+                      <span className="ml-2">
+                        ({format(new Date(snapshots[currentSnapshotIndex].wake_round_start), 'MMM d, yyyy h:mm a')})
+                      </span>
+                    )}
+                  </div>
+                  <TimelineController
+                    totalWakes={snapshots.length}
+                    currentWake={currentSnapshotIndex + 1}
+                    onWakeChange={(index) => setCurrentSnapshotIndex(index - 1)}
+                    wakeTimestamps={snapshots.map(s => s.wake_round_start)}
+                    autoPlaySpeed={2000}
+                  />
+                </div>
               )}
             </div>
           )}
