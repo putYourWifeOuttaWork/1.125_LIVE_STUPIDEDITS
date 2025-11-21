@@ -1,11 +1,12 @@
 import { useRef, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Camera, Battery, Clock, Thermometer, Droplets } from 'lucide-react';
+import { MapPin, Camera, Battery, Clock, Thermometer, Droplets, AlertTriangle } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import { formatDistanceToNow } from 'date-fns';
 import { Delaunay } from 'd3-delaunay';
 import { scaleSequential } from 'd3-scale';
 import { interpolateRdYlBu, interpolateYlGnBu, interpolateRdYlGn } from 'd3-scale-chromatic';
+import { getMGIColor, getVelocityPulseRadius, isCriticalVelocity } from '../../utils/mgiUtils';
 
 interface DevicePosition {
   device_id: string;
@@ -19,6 +20,7 @@ interface DevicePosition {
   temperature: number | null;
   humidity: number | null;
   mgi_score: number | null;
+  mgi_velocity: number | null;
 }
 
 type ZoneMode = 'none' | 'temperature' | 'humidity' | 'battery' | 'mgi';
@@ -54,10 +56,22 @@ export default function SiteMapAnalyticsViewer({
   const [selectedDevice, setSelectedDevice] = useState<DevicePosition | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: height || 400 });
   const [internalZoneMode, setInternalZoneMode] = useState<ZoneMode>('temperature');
+  const [pulseFrame, setPulseFrame] = useState(0);
   const navigate = useNavigate();
 
   const zoneMode = externalZoneMode !== undefined ? externalZoneMode : internalZoneMode;
   const setZoneMode = onZoneModeChange || setInternalZoneMode;
+
+  // Animation loop for pulse effect
+  useEffect(() => {
+    let animationId: number;
+    const animate = () => {
+      setPulseFrame(prev => (prev + 1) % 60); // 60 frames cycle
+      animationId = requestAnimationFrame(animate);
+    };
+    animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -127,51 +141,84 @@ export default function SiteMapAnalyticsViewer({
     ctx.fillText(`0,${siteWidth}ft`, 10, canvas.height - 8);
     ctx.fillText(`${siteLength}ft,${siteWidth}ft`, canvas.width - 80, canvas.height - 8);
 
-    // Draw devices
+    // Draw devices with MGI colors and pulse animations
     devices.forEach(device => {
       const pixelX = (device.x / siteLength) * canvas.width;
       const pixelY = (device.y / siteWidth) * canvas.height;
 
       const isHovered = hoveredDevice === device.device_id;
-      const radius = isHovered ? 18 : 14;
+      const baseRadius = isHovered ? 18 : 14;
+
+      // Get MGI color (always shown, regardless of zone mode)
+      const mgiColor = getMGIColor(device.mgi_score);
+
+      // Draw pulse animation if device has velocity data
+      if (device.mgi_velocity !== null && device.mgi_velocity !== undefined) {
+        const pulseRadius = getVelocityPulseRadius(device.mgi_velocity, baseRadius);
+        const pulseProgress = (pulseFrame % 60) / 60; // 0 to 1
+        const pulseAlpha = 1 - pulseProgress; // Fade out as it expands
+        const currentPulseRadius = baseRadius + (pulseRadius - baseRadius) * pulseProgress;
+
+        ctx.strokeStyle = mgiColor.replace(')', `, ${pulseAlpha * 0.6})`).replace('rgb', 'rgba');
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(pixelX, pixelY, currentPulseRadius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       // Shadow
       ctx.shadowBlur = isHovered ? 8 : 4;
       ctx.shadowColor = 'rgba(0,0,0,0.3)';
 
-      // Device marker color based on status
-      ctx.fillStyle = device.status === 'active' ? '#10b981' :
-                      device.status === 'offline' ? '#ef4444' :
-                      device.status === 'deactivated' ? '#9ca3af' : '#6b7280';
-
+      // Device marker with MGI color
+      ctx.fillStyle = mgiColor;
       ctx.beginPath();
-      ctx.arc(pixelX, pixelY, radius, 0, Math.PI * 2);
+      ctx.arc(pixelX, pixelY, baseRadius, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.shadowBlur = 0;
 
-      // Camera icon
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('📷', pixelX, pixelY);
+      // Critical velocity warning triangle
+      if (isCriticalVelocity(device.mgi_velocity)) {
+        const triangleSize = baseRadius * 0.6;
+        ctx.fillStyle = '#dc2626'; // Red warning
+        ctx.beginPath();
+        ctx.moveTo(pixelX, pixelY - triangleSize);
+        ctx.lineTo(pixelX - triangleSize * 0.866, pixelY + triangleSize * 0.5);
+        ctx.lineTo(pixelX + triangleSize * 0.866, pixelY + triangleSize * 0.5);
+        ctx.closePath();
+        ctx.fill();
+
+        // White exclamation mark
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', pixelX, pixelY);
+      } else {
+        // Camera icon (only if not showing warning)
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('📷', pixelX, pixelY);
+      }
 
       // Device code label
       ctx.fillStyle = '#1f2937';
       ctx.font = isHovered ? 'bold 11px sans-serif' : '10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(device.device_code, pixelX, pixelY + radius + 12);
+      ctx.fillText(device.device_code, pixelX, pixelY + baseRadius + 12);
 
       // Battery level
       if (device.battery_level !== null) {
         ctx.font = '9px sans-serif';
         ctx.fillStyle = device.battery_level < 20 ? '#ef4444' : '#6b7280';
-        ctx.fillText(`${device.battery_level}%`, pixelX, pixelY + radius + 23);
+        ctx.fillText(`${device.battery_level}%`, pixelX, pixelY + baseRadius + 23);
       }
     });
 
-  }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode]);
+  }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode, pulseFrame]);
 
   const drawVoronoiZones = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, mode: ZoneMode) => {
     if (devices.length < 2) return;

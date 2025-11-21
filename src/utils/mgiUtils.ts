@@ -21,17 +21,17 @@ export interface VelocityThresholds {
 }
 
 export const MGI_THRESHOLDS: MGIThresholds = {
-  healthy: 30,      // 0-30%: Green
-  warning: 50,      // 31-50%: Yellow
-  concerning: 65,   // 51-65%: Orange
-  critical: 65,     // 65%+: Red
+  healthy: 10,      // 0-10%: Green
+  warning: 25,      // 11-25%: Yellow
+  concerning: 40,   // 26-40%: Orange
+  critical: 40,     // 41%+: Red
 };
 
 export const VELOCITY_THRESHOLDS: VelocityThresholds = {
-  normal: 3,        // 1-3% per session = small pulse
-  elevated: 7,      // 4-7% per session = medium pulse
-  high: 12,         // 8-12% per session = large pulse
-  // 12%+ = very large and fast pulse
+  normal: 5,        // 1-5% per session = small pulse
+  elevated: 8,      // 6-8% per session = medium pulse
+  high: 16,         // 9-16% per session = large pulse
+  // 17%+ = very large and fast pulse (shows warning triangle)
 };
 
 export type MGILevel = 'healthy' | 'warning' | 'concerning' | 'critical';
@@ -200,13 +200,22 @@ export function getMGIBadgeClass(mgiScore: number | null): string {
  */
 export function getMGILevelDescription(mgiScore: number | null): string {
   const level = getMGILevel(mgiScore);
-  
+
   const descriptions: Record<MGILevel, string> = {
     healthy: 'Healthy - Low mold growth',
     warning: 'Warning - Moderate growth',
     concerning: 'Concerning - High growth',
     critical: 'Critical - Very high growth',
   };
-  
+
   return descriptions[level];
+}
+
+/**
+ * Check if velocity is at critical level (17%+) to show warning triangle
+ */
+export function isCriticalVelocity(velocity: number | null): boolean {
+  if (velocity === null) return false;
+  const velocityPercent = Math.abs(velocity * 100);
+  return velocityPercent > VELOCITY_THRESHOLDS.high; // > 16% = 17%+
 }
