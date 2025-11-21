@@ -41,10 +41,13 @@ export type MGILevel = 'healthy' | 'warning' | 'concerning' | 'critical';
  */
 export function getMGILevel(mgiScore: number | null): MGILevel {
   if (mgiScore === null || mgiScore < 0) return 'healthy';
-  
-  if (mgiScore <= MGI_THRESHOLDS.healthy) return 'healthy';
-  if (mgiScore <= MGI_THRESHOLDS.warning) return 'warning';
-  if (mgiScore <= MGI_THRESHOLDS.concerning) return 'concerning';
+
+  // Convert decimal (0-1) to percentage (0-100)
+  const mgiPercent = mgiScore * 100;
+
+  if (mgiPercent <= MGI_THRESHOLDS.healthy) return 'healthy';
+  if (mgiPercent <= MGI_THRESHOLDS.warning) return 'warning';
+  if (mgiPercent <= MGI_THRESHOLDS.concerning) return 'concerning';
   return 'critical';
 }
 
