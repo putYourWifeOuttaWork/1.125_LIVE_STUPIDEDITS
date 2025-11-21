@@ -152,7 +152,7 @@ BEGIN
     p_wake_number, p_wake_round_start, p_wake_round_end,
     v_site_state,
     v_active_devices_count, v_new_images_count, v_new_alerts_count,
-    v_avg_temperature, v_avg_humidity, v_avg_mgi, v_max_mgi
+    v_avg_temp, v_avg_humidity, v_avg_mgi, v_max_mgi
   )
   ON CONFLICT (session_id, wake_number)
   DO UPDATE SET
