@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { DeviceSnapshotData, SiteLayoutData } from '../../lib/types';
 import { getMGIColor, formatMGI, formatVelocity, shouldShowVelocityPulse, getVelocityPulseRadius, getVelocityPulseDuration } from '../../utils/mgiUtils';
-import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Wifi, WifiOff } from 'lucide-react';
 import Button from '../common/Button';
 
 interface SiteMapViewerProps {
@@ -218,6 +218,93 @@ export function SiteMapViewer({
         .attr('stroke-width', 2)
         .style('transition', 'all 0.3s ease');
 
+      // Connectivity indicator (WiFi icon above device)
+      if (device.connectivity) {
+        const { status, color, trailing_wakes_actual, trailing_wakes_expected } = device.connectivity;
+        const iconY = cy - 18;
+        const iconSize = 12;
+
+        // Determine icon opacity based on status
+        const iconOpacity = status === 'excellent' ? 1 :
+                           status === 'good' ? 0.7 :
+                           status === 'poor' ? 0.4 : 0.2;
+
+        // WiFi icon as SVG path
+        const wifiPath = status === 'offline' || status === 'poor'
+          ? 'M1 9l2-2m5 2l-2-2m-5-2l4-4m5 4l-4-4M3 13h.01M12 13h-.01' // WifiOff
+          : 'M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01'; // Wifi
+
+        // Draw WiFi icon as group
+        const iconGroup = deviceGroup
+          .append('g')
+          .attr('transform', `translate(${cx}, ${iconY})`)
+          .style('opacity', iconOpacity);
+
+        // Simple WiFi bars representation
+        if (status !== 'offline' && status !== 'poor') {
+          // Arc 1 (outermost - full signal)
+          if (trailing_wakes_actual >= 3) {
+            iconGroup.append('path')
+              .attr('d', 'M -6,-2 A 8 8 0 0 1 6,-2')
+              .attr('fill', 'none')
+              .attr('stroke', color)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-linecap', 'round');
+          }
+          // Arc 2 (middle)
+          if (trailing_wakes_actual >= 2) {
+            iconGroup.append('path')
+              .attr('d', 'M -4,-1 A 5 5 0 0 1 4,-1')
+              .attr('fill', 'none')
+              .attr('stroke', color)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-linecap', 'round');
+          }
+          // Arc 3 (innermost)
+          if (trailing_wakes_actual >= 1) {
+            iconGroup.append('path')
+              .attr('d', 'M -2,0 A 2.5 2.5 0 0 1 2,0')
+              .attr('fill', 'none')
+              .attr('stroke', color)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-linecap', 'round');
+          }
+          // Center dot
+          iconGroup.append('circle')
+            .attr('cx', 0)
+            .attr('cy', 2)
+            .attr('r', 1.5)
+            .attr('fill', color);
+        } else {
+          // Offline icon (X over WiFi)
+          iconGroup.append('line')
+            .attr('x1', -4)
+            .attr('y1', -4)
+            .attr('x2', 4)
+            .attr('y2', 4)
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('stroke-linecap', 'round');
+          iconGroup.append('line')
+            .attr('x1', 4)
+            .attr('y1', -4)
+            .attr('x2', -4)
+            .attr('y2', 4)
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('stroke-linecap', 'round');
+        }
+
+        // Add small status dot
+        iconGroup.append('circle')
+          .attr('cx', 5)
+          .attr('cy', -3)
+          .attr('r', 2)
+          .attr('fill', color)
+          .attr('stroke', '#fff')
+          .attr('stroke-width', 0.5);
+      }
+
       // Device label
       deviceGroup
         .append('text')
@@ -230,16 +317,26 @@ export function SiteMapViewer({
         .text(device.device_name);
 
       // Tooltip on hover
+      const tooltipLines = [
+        `${device.device_name}`,
+        `MGI: ${formatMGI(device.mgi_score)}`,
+        `Velocity: ${formatVelocity(device.mgi_velocity)}`,
+        `Temp: ${device.temperature !== null ? device.temperature.toFixed(1) + '°F' : 'N/A'}`,
+        `RH: ${device.humidity !== null ? device.humidity.toFixed(1) + '%' : 'N/A'}`,
+      ];
+
+      if (device.connectivity && device.connectivity.status !== 'unknown') {
+        const { trailing_wakes_actual, trailing_wakes_expected, reliability_percent } = device.connectivity;
+        tooltipLines.push(
+          `Reliability: ${trailing_wakes_actual}/${trailing_wakes_expected} wakes (${reliability_percent?.toFixed(0) ?? 0}%)`
+        );
+      }
+
+      tooltipLines.push(`Position: (${device.x_position}, ${device.y_position})`);
+
       deviceGroup
         .append('title')
-        .text(
-          `${device.device_name}\n` +
-            `MGI: ${formatMGI(device.mgi_score)}\n` +
-            `Velocity: ${formatVelocity(device.mgi_velocity)}\n` +
-            `Temp: ${device.temperature !== null ? device.temperature.toFixed(1) + '°F' : 'N/A'}\n` +
-            `RH: ${device.humidity !== null ? device.humidity.toFixed(1) + '%' : 'N/A'}\n` +
-            `Position: (${device.x_position}, ${device.y_position})`
-        );
+        .text(tooltipLines.join('\n'));
     });
 
     // Add scale reference

@@ -678,6 +678,15 @@ export type UnifiedAuditEntry = {
 };
 
 // Session Wake Snapshot types for visualization
+export type DeviceConnectivity = {
+  status: 'excellent' | 'good' | 'poor' | 'offline' | 'unknown';
+  color: string;
+  trailing_wakes_expected: number;
+  trailing_wakes_actual: number;
+  reliability_percent: number | null;
+  last_expected_wakes?: string[];
+};
+
 export type DeviceSnapshotData = {
   device_id: string;
   device_name: string;
@@ -694,6 +703,7 @@ export type DeviceSnapshotData = {
   last_wake: string | null;
   status: string;
   placement_notes: string | null;
+  connectivity?: DeviceConnectivity;
 };
 
 export type ZoneSnapshotData = {
