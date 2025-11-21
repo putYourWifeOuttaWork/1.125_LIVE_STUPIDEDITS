@@ -10,11 +10,14 @@ const supabase = createClient(
 
 console.log('🔄 Regenerating snapshots with LOCF logic...\n');
 
-// Get the session ID for "Iot Test Site 2"
+// Get the ACTIVE or most recent session for "Iot Test Site 2"
 const { data: session, error: sessionError } = await supabase
   .from('site_device_sessions')
-  .select('session_id, site_id, sites(name)')
+  .select('session_id, site_id, status, sites(name)')
   .eq('sites.name', 'Iot Test Site 2')
+  .in('status', ['active', 'in_progress'])
+  .order('session_start_time', { ascending: false })
+  .limit(1)
   .single();
 
 if (sessionError || !session) {
@@ -24,7 +27,7 @@ if (sessionError || !session) {
 }
 
 console.log(`✅ Found session: ${session.session_id}`);
-console.log(`   Site: ${session.sites.name}\n`);
+console.log(`   Status: ${session.status}\n`);
 
 // Get existing snapshots to regenerate
 const { data: snapshots, error: snapshotsError } = await supabase
