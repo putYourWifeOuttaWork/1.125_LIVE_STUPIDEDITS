@@ -14,6 +14,7 @@ import {
   Battery,
   Thermometer,
   Eye,
+  Map,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
@@ -32,6 +33,12 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
   const handleViewSession = () => {
     navigate(
       `/programs/${session.program_id}/sites/${session.site_id}/device-sessions/${session.session_id}`
+    );
+  };
+
+  const handleViewMap = () => {
+    navigate(
+      `/programs/${session.program_id}/sites/${session.site_id}/sessions/${session.session_id}`
     );
   };
 
@@ -233,9 +240,12 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
             </div>
           </div>
 
-          <div className="pt-4 border-t flex justify-end">
+          <div className="pt-4 border-t flex justify-end space-x-3">
+            <Button variant="secondary" onClick={handleViewMap} icon={<Map size={16} />}>
+              View Session Map
+            </Button>
             <Button variant="primary" onClick={handleViewSession} icon={<Eye size={16} />}>
-              View Full Session Details
+              View Device Details
             </Button>
           </div>
         </CardContent>
