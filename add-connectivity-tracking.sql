@@ -278,8 +278,8 @@ BEGIN
       'program_name', pp.name,
       'program_start_date', pp.start_date,
       'program_end_date', pp.end_date,
-      'program_day', EXTRACT(DAY FROM (p_wake_round_end - pp.start_date))::integer,
-      'total_days', EXTRACT(DAY FROM (pp.end_date - pp.start_date))::integer
+      'program_day', (EXTRACT(EPOCH FROM (p_wake_round_end - pp.start_date)) / 86400)::integer,
+      'total_days', (EXTRACT(EPOCH FROM (pp.end_date - pp.start_date)) / 86400)::integer
     ) AS program_context
     FROM pilot_programs pp WHERE pp.program_id = v_program_id
   ),
