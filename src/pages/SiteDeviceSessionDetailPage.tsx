@@ -562,8 +562,67 @@ const SiteDeviceSessionDetailPage = () => {
         </div>
       )}
 
+      {/* Site Map with Timeline - MOVED TO TOP */}
+      {siteData && snapshots.length > 0 && displayDevices.length > 0 && (
+        <Card className="animate-fade-in">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <MapPin className="w-5 h-5 text-gray-600" />
+                <h2 className="text-lg font-semibold">Session Timeline & Site Map</h2>
+                <span className="text-sm text-gray-600">
+                  {siteData.name} • {siteData.length}ft × {siteData.width}ft
+                </span>
+              </div>
+              <div className="text-sm text-gray-600">
+                Zones:
+                <select
+                  value={zoneMode}
+                  onChange={(e) => setZoneMode(e.target.value as any)}
+                  className="ml-2 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="temperature">Temperature</option>
+                  <option value="humidity">Humidity</option>
+                  <option value="battery">Battery</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Timeline Controller */}
+              <TimelineController
+                totalWakes={snapshots.length}
+                currentWake={currentSnapshotIndex + 1}
+                onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(snapshots.length - 1, wakeNum - 1)))}
+                wakeTimestamps={snapshots.map(s => s.wake_round_start)}
+                autoPlaySpeed={2000}
+              />
+
+              {/* Site Map */}
+              <SiteMapAnalyticsViewer
+                siteLength={siteData.length}
+                siteWidth={siteData.width}
+                siteName={siteData.name}
+                devices={displayDevices}
+                showControls={false}
+                height={500}
+                zoneMode={zoneMode}
+              />
+
+              {/* Zone Analytics */}
+              {zoneMode !== 'none' && displayDevices.length >= 2 && (
+                <ZoneAnalytics devices={displayDevices} zoneMode={zoneMode} />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
+        <Card className="animate-fade-in hover:shadow-lg transition-shadow duration-300">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -577,7 +636,7 @@ const SiteDeviceSessionDetailPage = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="animate-fade-in hover:shadow-lg transition-shadow duration-300" style={{ animationDelay: '0.1s' }}>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -588,14 +647,14 @@ const SiteDeviceSessionDetailPage = () => {
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
               <div
-                className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                className="bg-green-600 h-2 rounded-full transition-all duration-500"
                 style={{ width: `${completionPercentage}%` }}
               />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="animate-fade-in hover:shadow-lg transition-shadow duration-300" style={{ animationDelay: '0.2s' }}>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -613,7 +672,7 @@ const SiteDeviceSessionDetailPage = () => {
       {/* Comprehensive Session Analytics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Wakes This Session */}
-        <Card>
+        <Card className="animate-fade-in hover:shadow-lg transition-all duration-300 hover:scale-[1.02]" style={{ animationDelay: '0.1s' }}>
           <CardHeader>
             <h3 className="text-md font-semibold flex items-center">
               <Wifi className="w-5 h-5 mr-2 text-blue-500" />
@@ -655,7 +714,7 @@ const SiteDeviceSessionDetailPage = () => {
         </Card>
 
         {/* Images This Session */}
-        <Card>
+        <Card className="animate-fade-in hover:shadow-lg transition-all duration-300 hover:scale-[1.02]" style={{ animationDelay: '0.2s' }}>
           <CardHeader>
             <h3 className="text-md font-semibold flex items-center">
               <Camera className="w-5 h-5 mr-2 text-purple-500" />
@@ -685,7 +744,7 @@ const SiteDeviceSessionDetailPage = () => {
         </Card>
 
         {/* Issues This Session */}
-        <Card>
+        <Card className="animate-fade-in hover:shadow-lg transition-all duration-300 hover:scale-[1.02]" style={{ animationDelay: '0.3s' }}>
           <CardHeader>
             <h3 className="text-md font-semibold flex items-center">
               <AlertOctagon className="w-5 h-5 mr-2 text-red-500" />
@@ -721,7 +780,7 @@ const SiteDeviceSessionDetailPage = () => {
       {environmentalAggregates && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Environmental Aggregates */}
-          <Card>
+          <Card className="animate-fade-in hover:shadow-lg transition-all duration-300" style={{ animationDelay: '0.4s' }}>
             <CardHeader>
               <h3 className="text-md font-semibold flex items-center">
                 <Thermometer className="w-5 h-5 mr-2 text-orange-500" />
@@ -829,7 +888,7 @@ const SiteDeviceSessionDetailPage = () => {
           </Card>
 
           {/* MGI Aggregates */}
-          <Card>
+          <Card className="animate-fade-in hover:shadow-lg transition-all duration-300" style={{ animationDelay: '0.5s' }}>
             <CardHeader>
               <h3 className="text-md font-semibold flex items-center">
                 <Activity className="w-5 h-5 mr-2 text-teal-500" />
@@ -950,64 +1009,6 @@ const SiteDeviceSessionDetailPage = () => {
           </div>
         </CardContent>
       </Card>
-
-      {/* Site Map with Timeline */}
-      {siteData && snapshots.length > 0 && displayDevices.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <MapPin className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg font-semibold">Session Timeline & Site Map</h2>
-                <span className="text-sm text-gray-600">
-                  {siteData.name} • {siteData.length}ft × {siteData.width}ft
-                </span>
-              </div>
-              <div className="text-sm text-gray-600">
-                Zones:
-                <select
-                  value={zoneMode}
-                  onChange={(e) => setZoneMode(e.target.value as any)}
-                  className="ml-2 px-2 py-1 border border-gray-300 rounded"
-                >
-                  <option value="temperature">Temperature</option>
-                  <option value="humidity">Humidity</option>
-                  <option value="battery">Battery</option>
-                  <option value="none">None</option>
-                </select>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Timeline Controller */}
-              <TimelineController
-                totalWakes={snapshots.length}
-                currentWake={currentSnapshotIndex + 1}
-                onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(snapshots.length - 1, wakeNum - 1)))}
-                wakeTimestamps={snapshots.map(s => s.wake_round_start)}
-                autoPlaySpeed={2000}
-              />
-
-              {/* Site Map */}
-              <SiteMapAnalyticsViewer
-                siteLength={siteData.length}
-                siteWidth={siteData.width}
-                siteName={siteData.name}
-                devices={displayDevices}
-                showControls={false}
-                height={450}
-                zoneMode={zoneMode}
-              />
-
-              {/* Zone Analytics */}
-              {zoneMode !== 'none' && displayDevices.length >= 2 && (
-                <ZoneAnalytics devices={displayDevices} zoneMode={zoneMode} />
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <div>
         <div className="flex items-center justify-between mb-4">

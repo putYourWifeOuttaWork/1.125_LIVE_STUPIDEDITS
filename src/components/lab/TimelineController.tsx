@@ -137,14 +137,16 @@ export function TimelineController({
 
         {/* Wake markers */}
         <div className="flex justify-between mt-1 px-1">
-          {[1, Math.floor(totalWakes / 2), totalWakes].map((wake, idx) => (
-            <span
-              key={wake}
-              className={`text-xs ${idx === 1 ? 'text-gray-500' : 'text-gray-400'}`}
-            >
-              #{wake}
-            </span>
-          ))}
+          {[1, Math.floor(totalWakes / 2), totalWakes]
+            .filter((wake, idx, arr) => arr.indexOf(wake) === idx)
+            .map((wake, idx) => (
+              <span
+                key={`wake-${wake}-${idx}`}
+                className={`text-xs ${idx === 1 ? 'text-gray-500' : 'text-gray-400'}`}
+              >
+                #{wake}
+              </span>
+            ))}
         </div>
       </div>
 
