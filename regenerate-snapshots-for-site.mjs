@@ -49,7 +49,7 @@ const { data: existingSnapshots, count: existingCount } = await supabase
   .from('session_wake_snapshots')
   .select('*', { count: 'exact' })
   .eq('session_id', session.session_id)
-  .order('snapshot_timestamp');
+  .order('wake_number');
 
 console.log(`📊 Existing snapshots: ${existingCount}\n`);
 
@@ -82,8 +82,9 @@ for (let round = 0; round < 8; round++) {
   const { data: snapshotResult, error: snapshotError } = await supabase
     .rpc('generate_session_wake_snapshot', {
       p_session_id: session.session_id,
-      p_window_start: windowStart.toISOString(),
-      p_window_end: windowEnd.toISOString()
+      p_wake_number: round + 1,
+      p_wake_round_start: windowStart.toISOString(),
+      p_wake_round_end: windowEnd.toISOString()
     });
 
   if (snapshotError) {
@@ -96,16 +97,16 @@ for (let round = 0; round < 8; round++) {
   // Fetch the generated snapshot to verify
   const { data: generatedSnapshot } = await supabase
     .from('session_wake_snapshots')
-    .select('snapshot_id, snapshot_data')
+    .select('snapshot_id, site_state')
     .eq('session_id', session.session_id)
-    .eq('snapshot_timestamp', windowStart.toISOString())
+    .eq('wake_number', round + 1)
     .single();
 
   if (generatedSnapshot) {
-    const devicesWithData = generatedSnapshot.snapshot_data.devices.filter(d => d.telemetry !== null);
-    const devicesWithMgi = generatedSnapshot.snapshot_data.devices.filter(d => d.mgi_state !== null);
+    const devicesWithData = generatedSnapshot.site_state.devices.filter(d => d.telemetry !== null);
+    const devicesWithMgi = generatedSnapshot.site_state.devices.filter(d => d.mgi_state !== null);
 
-    console.log(`   📊 Devices: ${generatedSnapshot.snapshot_data.devices.length} total`);
+    console.log(`   📊 Devices: ${generatedSnapshot.site_state.devices.length} total`);
     console.log(`      • ${devicesWithData.length} with telemetry data`);
     console.log(`      • ${devicesWithMgi.length} with MGI data`);
 
