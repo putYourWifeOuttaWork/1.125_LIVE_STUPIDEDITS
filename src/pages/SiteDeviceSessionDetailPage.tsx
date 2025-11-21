@@ -358,27 +358,26 @@ const SiteDeviceSessionDetailPage = () => {
     ? Math.round((totalCompletedWakes / totalExpectedWakes) * 100)
     : 0;
 
-  // Calculate environmental aggregates from snapshots
+  // Calculate environmental aggregates from ALL devices across ALL snapshots
   const environmentalAggregates = useMemo(() => {
-    if (snapshots.length === 0) return null;
+    if (devices.length === 0) return null;
 
     const allTemps: number[] = [];
     const allHumidity: number[] = [];
     const allBattery: number[] = [];
     const allMGI: number[] = [];
 
-    snapshots.forEach(snapshot => {
-      if (!snapshot.site_state) return;
+    // Collect data from all wake payloads across all devices
+    devices.forEach(device => {
+      device.wake_payloads?.forEach((wake: any) => {
+        if (wake.temperature != null) allTemps.push(wake.temperature);
+        if (wake.humidity != null) allHumidity.push(wake.humidity);
+        if (device.battery_health_percent != null) allBattery.push(device.battery_health_percent);
+      });
 
-      const state = typeof snapshot.site_state === 'string'
-        ? JSON.parse(snapshot.site_state)
-        : snapshot.site_state;
-
-      (state.devices || []).forEach((d: any) => {
-        if (d.telemetry?.latest_temperature != null) allTemps.push(d.telemetry.latest_temperature);
-        if (d.telemetry?.latest_humidity != null) allHumidity.push(d.telemetry.latest_humidity);
-        if (d.battery_health_percent != null) allBattery.push(d.battery_health_percent);
-        if (d.mgi_state?.latest_mgi_score != null) allMGI.push(d.mgi_state.latest_mgi_score);
+      // Also collect MGI from images
+      device.images?.forEach((img: any) => {
+        if (img.mgi_score != null) allMGI.push(img.mgi_score);
       });
     });
 
@@ -419,7 +418,7 @@ const SiteDeviceSessionDetailPage = () => {
         samples: allMGI.length,
       },
     };
-  }, [snapshots]);
+  }, [devices]);
 
   // Calculate alert statistics
   const alertStats = useMemo(() => {
@@ -609,6 +608,7 @@ const SiteDeviceSessionDetailPage = () => {
                 showControls={false}
                 height={500}
                 zoneMode={zoneMode}
+                onDeviceClick={(deviceId) => navigate(`/programs/${programId}/devices/${deviceId}`)}
               />
 
               {/* Zone Analytics */}
@@ -1010,40 +1010,172 @@ const SiteDeviceSessionDetailPage = () => {
         </CardContent>
       </Card>
 
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-900">Devices in This Session ({devices.length})</h2>
-          {devicesLoading && (
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-          )}
-        </div>
+      {/* Compact Device Performance Table */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Device Performance Summary ({devices.length} devices)</h2>
+            {devicesLoading && (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {devicesLoading ? (
+            <div className="flex justify-center p-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+            </div>
+          ) : devices.length === 0 ? (
+            <div className="text-center py-12">
+              <Activity className="mx-auto h-16 w-16 text-gray-300" />
+              <p className="text-gray-600 mt-4 text-lg">No devices found in this session</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b-2 border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-700">Device</th>
+                    <th className="text-center px-4 py-3 font-semibold text-gray-700">Wakes</th>
+                    <th className="text-center px-4 py-3 font-semibold text-gray-700">Success Rate</th>
+                    <th className="text-center px-4 py-3 font-semibold text-gray-700">Images</th>
+                    <th className="text-center px-4 py-3 font-semibold text-gray-700">Battery</th>
+                    <th className="text-center px-4 py-3 font-semibold text-gray-700">Env Avg</th>
+                    <th className="text-center px-4 py-3 font-semibold text-gray-700">Status</th>
+                    <th className="text-right px-4 py-3 font-semibold text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {devices.map((device, idx) => {
+                    const successRate = device.expected_wakes_in_session > 0
+                      ? Math.round((device.completed_wakes / device.expected_wakes_in_session) * 100)
+                      : 0;
 
-        {devicesLoading ? (
-          <div className="flex justify-center p-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-          </div>
-        ) : devices.length === 0 ? (
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center">
-                <Activity className="mx-auto h-16 w-16 text-gray-300" />
-                <p className="text-gray-600 mt-4 text-lg">No devices found in this session</p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {devices.map((device) => (
-              <DeviceSessionCard
-                key={device.device_id}
-                device={device}
-                canEdit={canEdit}
-                onEdit={handleEditDevice}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+                    const avgTemp = device.wake_payloads
+                      ?.filter((w: any) => w.temperature != null)
+                      .reduce((sum: number, w: any, _: number, arr: any[]) => sum + w.temperature / arr.length, 0);
+
+                    const avgHumidity = device.wake_payloads
+                      ?.filter((w: any) => w.humidity != null)
+                      .reduce((sum: number, w: any, _: number, arr: any[]) => sum + w.humidity / arr.length, 0);
+
+                    return (
+                      <tr
+                        key={device.device_id}
+                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        onClick={() => navigate(`/programs/${programId}/devices/${device.device_id}`)}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center space-x-2">
+                            <div>
+                              <p className="font-medium text-gray-900">{device.device_name || device.device_code}</p>
+                              <p className="text-xs text-gray-500">{device.device_code}</p>
+                            </div>
+                            {device.is_primary && (
+                              <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded">
+                                Primary
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="text-sm">
+                            <span className="font-bold text-gray-900">{device.actual_wakes}</span>
+                            <span className="text-gray-500"> / {device.expected_wakes_in_session}</span>
+                          </div>
+                          <div className="flex justify-center space-x-2 mt-1 text-xs">
+                            <span className="text-green-600">✓ {device.completed_wakes}</span>
+                            {device.failed_wakes > 0 && (
+                              <span className="text-red-600">✗ {device.failed_wakes}</span>
+                            )}
+                            {device.extra_wakes > 0 && (
+                              <span className="text-yellow-600">+ {device.extra_wakes}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex flex-col items-center">
+                            <span className={`text-lg font-bold ${
+                              successRate >= 90 ? 'text-green-600' :
+                              successRate >= 70 ? 'text-yellow-600' :
+                              'text-red-600'
+                            }`}>
+                              {successRate}%
+                            </span>
+                            <div className="w-16 bg-gray-200 rounded-full h-1.5 mt-1">
+                              <div
+                                className={`h-1.5 rounded-full ${
+                                  successRate >= 90 ? 'bg-green-500' :
+                                  successRate >= 70 ? 'bg-yellow-500' :
+                                  'bg-red-500'
+                                }`}
+                                style={{ width: `${successRate}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center space-x-1">
+                            <ImageIcon className="w-4 h-4 text-purple-500" />
+                            <span className="font-medium text-gray-900">{device.images?.length || 0}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex flex-col items-center">
+                            <Battery className={`w-5 h-5 mb-1 ${
+                              (device.battery_health_percent || 0) >= 80 ? 'text-green-500' :
+                              (device.battery_health_percent || 0) >= 50 ? 'text-yellow-500' :
+                              'text-red-500'
+                            }`} />
+                            <span className="text-sm font-medium text-gray-900">
+                              {device.battery_health_percent?.toFixed(0) || 'N/A'}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="space-y-1">
+                            {avgTemp != null && (
+                              <div className="flex items-center justify-center space-x-1 text-xs">
+                                <Thermometer className="w-3 h-3 text-orange-500" />
+                                <span>{avgTemp.toFixed(1)}°F</span>
+                              </div>
+                            )}
+                            {avgHumidity != null && (
+                              <div className="flex items-center justify-center space-x-1 text-xs">
+                                <Droplets className="w-3 h-3 text-blue-500" />
+                                <span>{avgHumidity.toFixed(1)}%</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <DeviceStatusBadge
+                            status={device.failed_wakes > 0 ? 'offline' : 'active'}
+                            size="sm"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/programs/${programId}/devices/${device.device_id}`);
+                            }}
+                            className="text-blue-600 hover:text-blue-700"
+                          >
+                            View Details →
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
