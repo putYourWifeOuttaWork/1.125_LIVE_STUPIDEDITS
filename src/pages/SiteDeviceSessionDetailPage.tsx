@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Map,
+  MapPin,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -23,6 +24,11 @@ import { toast } from 'react-toastify';
 import { supabase } from '../lib/supabaseClient';
 import { SiteDeviceSession } from '../hooks/useSiteDeviceSessions';
 import { useUserRole } from '../hooks/useUserRole';
+import { useSiteSnapshots } from '../hooks/useSiteSnapshots';
+import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
+import { TimelineController } from '../components/lab/TimelineController';
+import ZoneAnalytics from '../components/lab/ZoneAnalytics';
+import { SessionWakeSnapshot } from '../lib/types';
 
 interface DeviceSessionData {
   device_id: string;
@@ -61,15 +67,23 @@ const SiteDeviceSessionDetailPage = () => {
   const [isSessionExpiring, setIsSessionExpiring] = useState(false);
   const [isSessionExpired, setIsSessionExpired] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [siteData, setSiteData] = useState<any>(null);
+  const [currentSnapshotIndex, setCurrentSnapshotIndex] = useState(0);
+  const [transitionProgress, setTransitionProgress] = useState(1);
+  const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
 
   const { role } = useUserRole();
   const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Fetch snapshots for this specific session
+  const [snapshots, setSnapshots] = useState<SessionWakeSnapshot[]>([]);
+
   useEffect(() => {
     if (sessionId) {
       fetchSessionData();
       fetchDevicesData();
+      fetchSnapshotsData();
     }
   }, [sessionId]);
 
@@ -127,10 +141,149 @@ const SiteDeviceSessionDetailPage = () => {
     }
   };
 
+  const fetchSnapshotsData = async () => {
+    try {
+      if (!sessionId || !siteId) return;
+
+      // Fetch site data for map dimensions
+      const { data: site, error: siteError } = await supabase
+        .from('sites')
+        .select('length, width, name')
+        .eq('site_id', siteId)
+        .single();
+
+      if (siteError) throw siteError;
+      setSiteData(site);
+
+      // Fetch snapshots for this session
+      const { data: snapshotData, error: snapshotError } = await supabase
+        .from('session_wake_snapshots')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('wake_round_start', { ascending: true });
+
+      if (snapshotError) throw snapshotError;
+      setSnapshots((snapshotData || []) as SessionWakeSnapshot[]);
+    } catch (error: any) {
+      console.error('Error fetching snapshots:', error);
+    }
+  };
+
   const handleRefresh = () => {
     fetchSessionData();
     fetchDevicesData();
+    fetchSnapshotsData();
   };
+
+  // Easing function for smooth transitions
+  const easeInOutCubic = (t: number): number => {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  };
+
+  // Interpolate between two values
+  const lerp = (start: number | null, end: number | null, progress: number): number | null => {
+    if (start === null || end === null) return end;
+    const easedProgress = easeInOutCubic(progress);
+    return start + (end - start) * easedProgress;
+  };
+
+  // Transform snapshot data with smooth transitions
+  const displayDevices = useMemo(() => {
+    if (snapshots.length === 0) return [];
+
+    const currentSnapshot = snapshots[currentSnapshotIndex];
+    if (!currentSnapshot || !currentSnapshot.site_state) return [];
+
+    try {
+      const currentState = typeof currentSnapshot.site_state === 'string'
+        ? JSON.parse(currentSnapshot.site_state)
+        : currentSnapshot.site_state;
+
+      const currentDevices = currentState.devices || [];
+
+      // Get next snapshot for interpolation
+      const nextSnapshot = snapshots[currentSnapshotIndex + 1];
+      const nextState = nextSnapshot?.site_state
+        ? (typeof nextSnapshot.site_state === 'string'
+            ? JSON.parse(nextSnapshot.site_state)
+            : nextSnapshot.site_state)
+        : null;
+      const nextDevices = nextState?.devices || [];
+
+      // Create a map of next device states by device_id
+      const nextDeviceMap = new Map(
+        nextDevices.map((d: any) => [d.device_id, d])
+      );
+
+      const transformedDevices = currentDevices
+        .filter((d: any) => d.position && d.position.x !== null && d.position.y !== null)
+        .map((d: any) => {
+          const nextDevice = nextDeviceMap.get(d.device_id);
+
+          // Interpolate values if we're transitioning and next device exists
+          const temperature = transitionProgress < 1 && nextDevice
+            ? lerp(d.telemetry?.latest_temperature, nextDevice.telemetry?.latest_temperature, transitionProgress)
+            : d.telemetry?.latest_temperature ?? null;
+
+          const humidity = transitionProgress < 1 && nextDevice
+            ? lerp(d.telemetry?.latest_humidity, nextDevice.telemetry?.latest_humidity, transitionProgress)
+            : d.telemetry?.latest_humidity ?? null;
+
+          const mgi_score = transitionProgress < 1 && nextDevice
+            ? lerp(d.mgi_state?.latest_mgi_score, nextDevice.mgi_state?.latest_mgi_score, transitionProgress)
+            : d.mgi_state?.latest_mgi_score ?? null;
+
+          const battery_level = transitionProgress < 1 && nextDevice
+            ? lerp(d.battery_health_percent, nextDevice.battery_health_percent, transitionProgress)
+            : d.battery_health_percent ?? null;
+
+          return {
+            device_id: d.device_id,
+            device_code: d.device_code,
+            device_name: d.device_name || d.device_code,
+            x: d.position.x,
+            y: d.position.y,
+            battery_level,
+            status: d.status || 'active',
+            last_seen: d.last_seen_at || null,
+            temperature,
+            humidity,
+            mgi_score,
+            mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
+          };
+        });
+
+      return transformedDevices;
+    } catch (error) {
+      console.error('Error parsing snapshot data:', error);
+      return [];
+    }
+  }, [snapshots, currentSnapshotIndex, transitionProgress]);
+
+  // Animate transitions between snapshots
+  useEffect(() => {
+    if (snapshots.length === 0) return;
+
+    setTransitionProgress(0);
+
+    const transitionDuration = 500;
+    const frameRate = 60;
+    const totalFrames = (transitionDuration / 1000) * frameRate;
+    const increment = 1 / totalFrames;
+
+    let frame = 0;
+    const animationInterval = setInterval(() => {
+      frame++;
+      const progress = Math.min(frame * increment, 1);
+      setTransitionProgress(progress);
+
+      if (progress >= 1) {
+        clearInterval(animationInterval);
+      }
+    }, 1000 / frameRate);
+
+    return () => clearInterval(animationInterval);
+  }, [currentSnapshotIndex]);
 
   const handleEditDevice = (deviceId: string) => {
     // Navigate to device edit or show modal
@@ -467,6 +620,64 @@ const SiteDeviceSessionDetailPage = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Site Map with Timeline */}
+      {siteData && snapshots.length > 0 && displayDevices.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <MapPin className="w-5 h-5 text-gray-600" />
+                <h2 className="text-lg font-semibold">Session Timeline & Site Map</h2>
+                <span className="text-sm text-gray-600">
+                  {siteData.name} • {siteData.length}ft × {siteData.width}ft
+                </span>
+              </div>
+              <div className="text-sm text-gray-600">
+                Zones:
+                <select
+                  value={zoneMode}
+                  onChange={(e) => setZoneMode(e.target.value as any)}
+                  className="ml-2 px-2 py-1 border border-gray-300 rounded"
+                >
+                  <option value="temperature">Temperature</option>
+                  <option value="humidity">Humidity</option>
+                  <option value="battery">Battery</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Timeline Controller */}
+              <TimelineController
+                totalWakes={snapshots.length}
+                currentWake={currentSnapshotIndex + 1}
+                onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(snapshots.length - 1, wakeNum - 1)))}
+                wakeTimestamps={snapshots.map(s => s.wake_round_start)}
+                autoPlaySpeed={2000}
+              />
+
+              {/* Site Map */}
+              <SiteMapAnalyticsViewer
+                siteLength={siteData.length}
+                siteWidth={siteData.width}
+                siteName={siteData.name}
+                devices={displayDevices}
+                showControls={false}
+                height={450}
+                zoneMode={zoneMode}
+              />
+
+              {/* Zone Analytics */}
+              {zoneMode !== 'none' && displayDevices.length >= 2 && (
+                <ZoneAnalytics devices={displayDevices} zoneMode={zoneMode} />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-4">

@@ -38,7 +38,6 @@ const UserAuditPage = lazy(() => import('./pages/UserAuditPage'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
-const SiteSessionDetailPage = lazy(() => import('./pages/SiteSessionDetailPage'));
 const SessionSnapshotViewer = lazy(() => import('./pages/lab/SessionSnapshotViewer'));
 const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
 const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
@@ -330,11 +329,6 @@ function App() {
               <Route path="/programs/:programId/sites/:siteId/device-sessions/:sessionId" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <SiteDeviceSessionDetailPage />
-                </Suspense>
-              } />
-              <Route path="/programs/:programId/sites/:siteId/sessions/:sessionId" element={
-                <Suspense fallback={<LoadingScreen />}>
-                  <SiteSessionDetailPage />
                 </Suspense>
               } />
               <Route path="/programs/:programId/sites/:siteId/template" element={

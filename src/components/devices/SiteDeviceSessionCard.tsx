@@ -30,9 +30,9 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
   const [isExpanded, setIsExpanded] = useState(false);
 
   const handleViewSession = () => {
-    // Navigate to session detail page with map visualization
+    // Navigate to device session detail page
     navigate(
-      `/programs/${session.program_id}/sites/${session.site_id}/sessions/${session.session_id}`
+      `/programs/${session.program_id}/sites/${session.site_id}/device-sessions/${session.session_id}`
     );
   };
 
