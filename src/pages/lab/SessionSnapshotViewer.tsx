@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
-import { SiteMapViewer } from '../../components/lab/SiteMapViewer';
+import SiteMapAnalyticsViewer from '../../components/lab/SiteMapAnalyticsViewer';
 import { TimelineController } from '../../components/lab/TimelineController';
 import { MGILegend } from '../../components/lab/MGILegend';
+import ZoneAnalytics from '../../components/lab/ZoneAnalytics';
 import { useSessionSnapshots } from '../../hooks/useSessionSnapshots';
 import { DeviceSnapshotData } from '../../lib/types';
 import LoadingScreen from '../../components/common/LoadingScreen';
@@ -22,6 +23,7 @@ export default function SessionSnapshotViewer() {
   const [selectedDevice, setSelectedDevice] = useState<DeviceSnapshotData | null>(null);
   const [sessionInfo, setSessionInfo] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [zoneMode, setZoneMode] = useState<'temperature' | 'humidity' | 'battery' | 'none'>('temperature');
 
   // Fetch session info
   useEffect(() => {
@@ -50,10 +52,70 @@ export default function SessionSnapshotViewer() {
     fetchSessionInfo();
   }, [sessionId]);
 
-  // Get current snapshot
+  // Process snapshots with forward-fill for missing data (Last Observation Carried Forward)
+  const processedSnapshots = useMemo(() => {
+    if (snapshots.length === 0) return [];
+
+    const processed: any[] = [];
+    const deviceStateCache = new Map<string, any>(); // device_id -> last known state
+
+    // Sort snapshots by wake_number to ensure chronological order
+    const sortedSnapshots = [...snapshots].sort((a, b) => a.wake_number - b.wake_number);
+
+    for (const snapshot of sortedSnapshots) {
+      try {
+        const siteState = snapshot.site_state;
+        const currentDevices = siteState?.devices || [];
+
+        // Update cache with new data from this snapshot
+        currentDevices.forEach((device: any) => {
+          const deviceId = device.device_id;
+          const cachedState = deviceStateCache.get(deviceId) || {};
+
+          // Merge new data with cached data (new data takes precedence, ?? preserves falsy values)
+          deviceStateCache.set(deviceId, {
+            device_id: device.device_id,
+            device_code: device.device_code,
+            device_name: device.device_name || cachedState.device_name,
+            position: device.position || cachedState.position,
+            status: device.status || cachedState.status || 'active',
+            last_seen_at: device.last_seen_at || cachedState.last_seen_at,
+            battery_health_percent: device.battery_health_percent ?? cachedState.battery_health_percent,
+            telemetry: {
+              latest_temperature: device.telemetry?.latest_temperature ?? cachedState.telemetry?.latest_temperature,
+              latest_humidity: device.telemetry?.latest_humidity ?? cachedState.telemetry?.latest_humidity,
+            },
+            mgi_state: {
+              latest_mgi_score: device.mgi_state?.latest_mgi_score ?? cachedState.mgi_state?.latest_mgi_score,
+              mgi_velocity: device.mgi_state?.mgi_velocity ?? cachedState.mgi_state?.mgi_velocity,
+            },
+          });
+        });
+
+        // Build complete device list from cache (all devices that have ever appeared)
+        const completeDevices = Array.from(deviceStateCache.values())
+          .filter(d => d.position && d.position.x !== null && d.position.y !== null);
+
+        processed.push({
+          ...snapshot,
+          site_state: {
+            ...siteState,
+            devices: completeDevices,
+          },
+        });
+      } catch (error) {
+        console.error('Error processing snapshot:', error);
+        processed.push(snapshot);
+      }
+    }
+
+    return processed;
+  }, [snapshots]);
+
+  // Get current snapshot from processed snapshots
   const currentSnapshot = useMemo(() => {
-    return snapshots.find((s) => s.wake_number === currentWakeNumber);
-  }, [snapshots, currentWakeNumber]);
+    return processedSnapshots.find((s) => s.wake_number === currentWakeNumber);
+  }, [processedSnapshots, currentWakeNumber]);
 
   // Extract site layout from session info
   const siteLayout = useMemo(() => {
@@ -70,13 +132,13 @@ export default function SessionSnapshotViewer() {
     };
   }, [sessionInfo]);
 
-  // Get devices from snapshot or empty array
+  // Get devices from processed snapshot or empty array
   const devices = currentSnapshot?.site_state?.devices || [];
 
-  // Get wake timestamps
+  // Get wake timestamps from processed snapshots
   const wakeTimestamps = useMemo(() => {
-    return snapshots.map((s) => s.wake_time);
-  }, [snapshots]);
+    return processedSnapshots.map((s) => s.wake_time);
+  }, [processedSnapshots]);
 
   const handleGenerateSnapshot = async () => {
     if (!sessionId) return;
@@ -129,7 +191,7 @@ export default function SessionSnapshotViewer() {
     );
   }
 
-  const totalWakes = snapshots.length || 24; // Default to 24 if no snapshots yet
+  const totalWakes = processedSnapshots.length || 24; // Default to 24 if no snapshots yet
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -197,13 +259,37 @@ export default function SessionSnapshotViewer() {
 
         {/* Center - Site Map */}
         <div className="col-span-12 lg:col-span-6">
+          {/* Zone Mode Selector */}
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Site Map</h2>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">Zones:</span>
+              <select
+                value={zoneMode}
+                onChange={(e) => setZoneMode(e.target.value as any)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="temperature">Temperature</option>
+                <option value="humidity">Humidity</option>
+                <option value="battery">Battery</option>
+                <option value="none">None</option>
+              </select>
+            </div>
+          </div>
+
           {siteLayout && (
-            <SiteMapViewer
-              siteLayout={siteLayout}
+            <SiteMapAnalyticsViewer
+              siteLength={siteLayout.length}
+              siteWidth={siteLayout.width}
+              siteName={sessionInfo?.sites?.name || 'Site'}
               devices={devices}
-              onDeviceClick={handleDeviceClick}
-              selectedDeviceId={selectedDevice?.device_id}
-              className="shadow-sm"
+              showControls={false}
+              height={500}
+              zoneMode={zoneMode}
+              onDeviceClick={(deviceId) => {
+                const device = devices.find(d => d.device_id === deviceId);
+                if (device) handleDeviceClick(device);
+              }}
             />
           )}
 
@@ -217,6 +303,13 @@ export default function SessionSnapshotViewer() {
               autoPlaySpeed={2000}
             />
           </div>
+
+          {/* Zone Analytics */}
+          {zoneMode !== 'none' && devices.length >= 2 && (
+            <div className="mt-4">
+              <ZoneAnalytics devices={devices} zoneMode={zoneMode as any} />
+            </div>
+          )}
 
           {/* No snapshot warning */}
           {!currentSnapshot && snapshots.length > 0 && (
