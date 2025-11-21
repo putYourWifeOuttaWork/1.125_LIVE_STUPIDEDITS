@@ -81,22 +81,30 @@ const SubmissionsPage = () => {
 
       const devices = siteState.devices || [];
 
-      return devices
+      console.log('[SubmissionsPage] Snapshot device sample:', devices[0]);
+
+      const transformedDevices = devices
         .filter((d: any) => d.position && d.position.x !== null && d.position.y !== null)
-        .map((d: any) => ({
-          device_id: d.device_id,
-          device_code: d.device_code,
-          device_name: d.device_name || d.device_code,
-          x: d.position.x,
-          y: d.position.y,
-          battery_level: d.battery_health_percent ?? null,
-          status: d.status || 'active',
-          last_seen: d.last_seen_at || null,
-          temperature: d.telemetry?.temperature ?? null,
-          humidity: d.telemetry?.humidity ?? null,
-          mgi_score: d.mgi_state?.mgi_score ?? null,
-          mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
-        }));
+        .map((d: any) => {
+          const transformed = {
+            device_id: d.device_id,
+            device_code: d.device_code,
+            device_name: d.device_name || d.device_code,
+            x: d.position.x,
+            y: d.position.y,
+            battery_level: d.battery_health_percent ?? null,
+            status: d.status || 'active',
+            last_seen: d.last_seen_at || null,
+            temperature: d.telemetry?.temperature ?? null,
+            humidity: d.telemetry?.humidity ?? null,
+            mgi_score: d.mgi_state?.mgi_score ?? null,
+            mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
+          };
+          return transformed;
+        });
+
+      console.log('[SubmissionsPage] Transformed device sample:', transformedDevices[0]);
+      return transformedDevices;
     } catch (error) {
       console.error('Error parsing snapshot data:', error);
       return [];
