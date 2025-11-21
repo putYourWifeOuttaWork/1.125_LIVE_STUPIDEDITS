@@ -484,53 +484,33 @@ const SubmissionsPage = () => {
       {/* Site Map with Timeline */}
       {selectedSite && selectedSite.length && selectedSite.width && (
         <div className="mb-4 md:mb-6 space-y-4">
-          {/* Session Metadata Card */}
-          {currentSession && (
+          {/* Site Timeline Summary */}
+          {snapshots.length > 0 && (
             <Card>
               <CardContent className="py-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4 text-sm">
                     <div>
-                      <span className="text-gray-500">Session Date:</span>
+                      <span className="text-gray-500">Total Snapshots:</span>
                       <span className="ml-2 font-semibold text-gray-900">
-                        {format(new Date(currentSession.session_date), 'MMM d, yyyy')}
+                        {snapshots.length}
                       </span>
                     </div>
                     <div className="h-4 w-px bg-gray-300" />
                     <div>
-                      <span className="text-gray-500">Wakes:</span>
+                      <span className="text-gray-500">Date Range:</span>
                       <span className="ml-2 font-semibold text-gray-900">
-                        {currentSession.wakes_completed} / {currentSession.total_wakes_expected}
+                        {format(new Date(snapshots[0].wake_round_start), 'MMM d, yyyy')} - {format(new Date(snapshots[snapshots.length - 1].wake_round_start), 'MMM d, yyyy')}
                       </span>
                     </div>
                     <div className="h-4 w-px bg-gray-300" />
                     <div>
-                      <span className="text-gray-500">Status:</span>
-                      <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${
-                        currentSession.session_status === 'active' ? 'bg-green-100 text-green-800' :
-                        currentSession.session_status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {currentSession.session_status}
+                      <span className="text-gray-500">Active Devices:</span>
+                      <span className="ml-2 font-semibold text-gray-900">
+                        {snapshots[currentSnapshotIndex]?.active_devices_count || 0}
                       </span>
                     </div>
                   </div>
-                  {allSessions.length > 1 && (
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-600">View Session:</label>
-                      <select
-                        value={currentSession.session_id}
-                        onChange={(e) => selectSession(e.target.value)}
-                        className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {allSessions.map((session) => (
-                          <option key={session.session_id} value={session.session_id}>
-                            {format(new Date(session.session_date), 'MMM d, yyyy')} - {session.session_status}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                 </div>
               </CardContent>
             </Card>
