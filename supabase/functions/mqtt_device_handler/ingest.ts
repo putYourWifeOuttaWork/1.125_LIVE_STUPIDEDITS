@@ -290,6 +290,8 @@ export async function handleMetadata(
       humidity: payload.humidity,
       pressure: payload.pressure,
       gas_resistance: payload.gas_resistance,
+      battery_voltage: (payload as any).battery_voltage, // Include if present (telemetry payloads)
+      wifi_rssi: (payload as any).wifi_rssi,             // Include if present (telemetry payloads)
       location: payload.location,
       error_code: payload.error,
       slot_index: payload.slot_index,
