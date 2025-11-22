@@ -56,14 +56,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   hasUnclaimedSessions: false,
   isSessionsDrawerOpen: false,
   
-  setActiveSessions: (sessions) => set({ 
-    // Filter out cancelled and expired sessions
-    activeSessions: sessions.filter(s => 
-      s.session_status !== 'Cancelled' && 
-      !s.session_status.startsWith('Expired')
-    ),
-    // Check if there are any unclaimed sessions
-    hasUnclaimedSessions: sessions.some(s => s.is_unclaimed === true)
+  setActiveSessions: (sessions) => set({
+    // Device sessions only - no filtering needed (they're already 'in_progress')
+    // Device sessions don't have 'Cancelled' or 'Expired' statuses
+    activeSessions: sessions,
+    // Device sessions are never unclaimed
+    hasUnclaimedSessions: false
   }),
   
   setIsLoading: (isLoading) => set({ isLoading }),
