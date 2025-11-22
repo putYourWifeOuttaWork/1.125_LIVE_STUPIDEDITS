@@ -60,22 +60,37 @@ if (hasPlacement) {
 
 ---
 
-### 1.2 Fix Assignment Card Source of Truth
+### 1.2 Verify Assignment Card Architecture
 
-**Problem:** Overview tab shows different site/program than Programs tab
+**Requirement:** Assignment card MUST show CURRENT assignment (devices table), Programs tab MUST show HISTORY (junction tables)
 
 **Decision Made:** `devices.site_id` and `devices.program_id` = SOURCE OF TRUTH
 - Junction tables = history only
-- UI always shows current device columns
+- Overview tab = Current assignment from device record
+- Programs tab = Full history from junction tables
 
-**Solution:**
-- Keep current implementation (already correct at line 67-68)
-- Junction tables used only in Programs tab for history
-- Verify all queries use `devices.site_id/program_id` not junction tables
+**Implementation Status:** ✅ ALREADY CORRECTLY IMPLEMENTED
 
-**Files to verify:**
-- `src/pages/DeviceDetailPage.tsx` (line 67-68) ✓ Already correct
-- `src/hooks/useDevice.ts` (line 176-189) ✓ Already correct
+**Overview Tab - Assignment Card:**
+- Fetches `devices.site_id` and `devices.program_id` via JOINs in `useDevice` hook
+- Displays `device.sites?.name` and `device.pilot_programs?.name` from those JOINs
+- Source: `src/pages/DeviceDetailPage.tsx` lines 67-68, 461-507
+- Query: `src/hooks/useDevice.ts` lines 176-189
+
+**Programs Tab - Assignment History:**
+- Fetches from `device_program_assignments` junction table
+- Enriches with `device_site_assignments` for site info
+- Shows active vs historical assignments with timeline
+- Source: `src/components/devices/DeviceProgramHistoryPanel.tsx`
+- Hook: `src/hooks/useDeviceProgramHistory.ts` lines 54-106
+
+**Verified Files:**
+- ✅ `src/pages/DeviceDetailPage.tsx` (line 67-68)
+- ✅ `src/hooks/useDevice.ts` (line 176-189)
+- ✅ `src/components/devices/DeviceProgramHistoryPanel.tsx`
+- ✅ `src/hooks/useDeviceProgramHistory.ts`
+
+**Status:** No changes needed - architecture is correct!
 
 ---
 
