@@ -1,6 +1,14 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.app_secrets (
+  key text NOT NULL,
+  value text NOT NULL,
+  description text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT app_secrets_pkey PRIMARY KEY (key)
+);
 CREATE TABLE public.async_error_logs (
   log_id bigint NOT NULL DEFAULT nextval('async_error_logs_log_id_seq'::regclass),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -249,6 +257,8 @@ CREATE TABLE public.device_images (
   mgi_speed numeric,
   roboflow_response jsonb,
   scored_at timestamp with time zone,
+  mgi_scoring_status text DEFAULT 'pending'::text CHECK (mgi_scoring_status = ANY (ARRAY['pending'::text, 'in_progress'::text, 'complete'::text, 'failed'::text, 'skipped'::text])),
+  mgi_scoring_started_at timestamp with time zone,
   CONSTRAINT device_images_pkey PRIMARY KEY (image_id),
   CONSTRAINT device_images_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT device_images_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
@@ -460,6 +470,7 @@ CREATE TABLE public.devices (
   latest_mgi_score numeric,
   latest_mgi_velocity numeric,
   latest_mgi_at timestamp with time zone,
+  fall_back_wake_time time without time zone DEFAULT '00:00:00'::time without time zone,
   CONSTRAINT devices_pkey PRIMARY KEY (device_id),
   CONSTRAINT devices_mapped_by_user_id_fkey FOREIGN KEY (mapped_by_user_id) REFERENCES public.users(id),
   CONSTRAINT devices_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
