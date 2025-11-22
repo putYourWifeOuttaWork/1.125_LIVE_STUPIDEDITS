@@ -1,51 +1,33 @@
 /**
- * Score MGI Image via Roboflow
+ * Score MGI Image via Roboflow - Device-Centric Version
  *
- * Accepts image URL, calls Roboflow workflow, stores MGI score
- * Used by device_images completion trigger
+ * Accepts image_id and image_url, calls Roboflow workflow, stores MGI score in device_images
+ * Triggers automatic cascade: velocity → speed → rollup → snapshots → alerts
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.39.8';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
 const ROBOFLOW_API_URL = 'https://serverless.roboflow.com/invivo/workflows/custom-workflow';
 const ROBOFLOW_API_KEY = 'VD3fJI17y2IgnbOhYmvu';
 
-interface RoboflowRequest {
-  api_key: string;
-  inputs: {
-    image: {
-      type: string;
-      value: string;
-    };
-    param: string;
-  };
-}
-
-interface RoboflowResponse {
-  outputs?: {
-    mgi_score?: number;
-    confidence?: number;
-  }[];
-  error?: string;
-}
-
 interface ScoreRequest {
   image_id: string;
   image_url: string;
 }
 
+interface RoboflowResult {
+  MGI: string;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -61,27 +43,29 @@ Deno.serve(async (req: Request) => {
       throw new Error('Missing required fields: image_id, image_url');
     }
 
-    console.log('[MGI Scoring] Processing image:', image_id, 'URL:', image_url);
+    console.log('[MGI Scoring] Processing image:', image_id);
+    console.log('[MGI Scoring] Image URL:', image_url);
 
-    // Call Roboflow API
-    const roboflowPayload: RoboflowRequest = {
+    // Mark scoring as in-progress
+    await supabaseClient
+      .from('device_images')
+      .update({ mgi_scoring_status: 'in_progress' })
+      .eq('image_id', image_id);
+
+    // Call Roboflow API with CORRECT parameters
+    const roboflowPayload = {
       api_key: ROBOFLOW_API_KEY,
       inputs: {
-        image: {
-          type: 'url',
-          value: image_url,
-        },
-        param: '1-100% only',
-      },
+        image: { type: 'url', value: image_url },
+        param2: 'MGI'  // Correct parameter name and value
+      }
     };
 
     console.log('[MGI Scoring] Calling Roboflow API...');
 
     const roboflowResponse = await fetch(ROBOFLOW_API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(roboflowPayload),
     });
 
@@ -90,104 +74,99 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Roboflow API error: ${roboflowResponse.status} - ${errorText}`);
     }
 
-    const roboflowData: RoboflowResponse = await roboflowResponse.json();
-
+    const roboflowData = await roboflowResponse.json();
     console.log('[MGI Scoring] Roboflow response:', JSON.stringify(roboflowData));
 
-    // Extract MGI score from response
-    // Adjust parsing based on actual Roboflow response structure
+    // Parse response: [{ "MGI": "0.05" }]
     let mgiScore: number | null = null;
-    let confidence: number | null = null;
 
-    if (roboflowData.outputs && roboflowData.outputs.length > 0) {
-      const output = roboflowData.outputs[0];
-      mgiScore = output.mgi_score ?? null;
-      confidence = output.confidence ?? null;
-    } else if (roboflowData.error) {
-      throw new Error(`Roboflow error: ${roboflowData.error}`);
+    if (Array.isArray(roboflowData) && roboflowData.length > 0) {
+      const firstResult = roboflowData[0] as RoboflowResult;
+      if (firstResult.MGI !== undefined) {
+        mgiScore = parseFloat(firstResult.MGI);
+      }
     }
 
-    if (mgiScore === null) {
-      console.warn('[MGI Scoring] No MGI score returned from Roboflow');
+    if (mgiScore === null || isNaN(mgiScore) || mgiScore < 0 || mgiScore > 1) {
+      console.error('[MGI Scoring] Invalid MGI score:', mgiScore);
 
-      // Log to async_error_logs for monitoring
+      // Log error for monitoring
       await supabaseClient.from('async_error_logs').insert({
         table_name: 'device_images',
         trigger_name: 'score_mgi_image',
         function_name: 'roboflow_score',
         payload: { image_id, image_url, roboflow_response: roboflowData },
-        error_message: 'No MGI score in Roboflow response',
+        error_message: `Invalid MGI score: ${mgiScore}`,
         error_details: {},
       });
 
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'No MGI score returned from Roboflow',
-          image_id,
-        }),
-        {
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      // Mark as failed
+      await supabaseClient
+        .from('device_images')
+        .update({
+          mgi_scoring_status: 'failed',
+          roboflow_response: roboflowData
+        })
+        .eq('image_id', image_id);
+
+      throw new Error(`Invalid MGI score: ${mgiScore}`);
     }
 
-    // Normalize score to 0.0-1.0 if needed
-    // Assuming Roboflow returns 1-100 based on "param": "1-100% only"
-    const normalizedScore = mgiScore / 100;
+    console.log('[MGI Scoring] Parsed MGI score:', mgiScore);
 
-    console.log('[MGI Scoring] Normalized MGI score:', normalizedScore, 'Confidence:', confidence);
-
-    // Get observation_id from device_images
-    const { data: imageData, error: imageError } = await supabaseClient
-      .from('device_images')
-      .select('observation_id')
-      .eq('image_id', image_id)
-      .single();
-
-    if (imageError || !imageData?.observation_id) {
-      throw new Error(`No observation found for image_id: ${image_id}`);
-    }
-
-    const observationId = imageData.observation_id;
-
-    // Update petri_observations with MGI score
+    // Update device_images - cascade triggers automatically!
+    // This will trigger:
+    // 1. calculate_and_rollup_mgi() - calculates velocity, speed, rolls up to devices
+    // 2. Snapshot regeneration (if trigger exists)
+    // 3. Alert threshold checks (if trigger exists)
     const { error: updateError } = await supabaseClient
-      .from('petri_observations')
+      .from('device_images')
       .update({
-        mgi_score: normalizedScore,
-        mgi_confidence: confidence,
+        mgi_score: mgiScore,
         mgi_scored_at: new Date().toISOString(),
+        mgi_scoring_status: 'complete',
+        roboflow_response: roboflowData
       })
-      .eq('observation_id', observationId);
+      .eq('image_id', image_id);
 
     if (updateError) {
       throw updateError;
     }
 
-    console.log('[MGI Scoring] Successfully updated observation:', observationId, 'with score:', normalizedScore);
+    console.log('[MGI Scoring] Successfully scored image:', image_id, 'Score:', mgiScore);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'MGI score saved successfully',
         image_id,
-        observation_id: observationId,
-        mgi_score: normalizedScore,
-        confidence,
+        mgi_score: mgiScore
       }),
       {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+
   } catch (error) {
     console.error('[MGI Scoring] Error:', error);
+
+    // Mark as failed
+    try {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
+      const body = await req.json();
+      await supabaseClient
+        .from('device_images')
+        .update({
+          mgi_scoring_status: 'failed',
+          roboflow_response: { error: error instanceof Error ? error.message : 'Unknown error' }
+        })
+        .eq('image_id', body.image_id);
+    } catch (e) {
+      console.error('[MGI Scoring] Failed to update error status:', e);
+    }
 
     return new Response(
       JSON.stringify({
@@ -196,10 +175,7 @@ Deno.serve(async (req: Request) => {
       }),
       {
         status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }
