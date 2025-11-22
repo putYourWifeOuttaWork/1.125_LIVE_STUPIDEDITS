@@ -38,7 +38,11 @@ const UserAuditPage = lazy(() => import('./pages/UserAuditPage'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
-// Monitoring pages removed - features not currently needed
+const SessionSnapshotViewer = lazy(() => import('./pages/lab/SessionSnapshotViewer'));
+const IngestFeed = lazy(() => import('./pages/lab/IngestFeed'));
+const SiteSessions = lazy(() => import('./pages/lab/SiteSessions'));
+const CompanyAlertThresholds = lazy(() => import('./pages/lab/admin/CompanyAlertThresholds'));
+const CompanyAlertPrefs = lazy(() => import('./pages/lab/admin/CompanyAlertPrefs'));
 
 function App() {
   const navigate = useNavigate();
@@ -367,7 +371,35 @@ function App() {
                   <DeviceDetailPage />
                 </Suspense>
               } />
-              {/* Monitoring routes removed - features not currently needed */}
+              <Route path="/lab/sessions/:sessionId/snapshots" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <SessionSnapshotViewer />
+                </Suspense>
+              } />
+              <Route path="/lab/ingest-feed" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <IngestFeed />
+                </Suspense>
+              } />
+              <Route path="/lab/site-sessions" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <SiteSessions />
+                </Suspense>
+              } />
+              <Route path="/lab/admin/company-alert-thresholds" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <RequireCompanyAdmin>
+                    <CompanyAlertThresholds />
+                  </RequireCompanyAdmin>
+                </Suspense>
+              } />
+              <Route path="/lab/admin/company-alert-prefs" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <RequireCompanyAdmin>
+                    <CompanyAlertPrefs />
+                  </RequireCompanyAdmin>
+                </Suspense>
+              } />
             </Route>
           </Route>
           

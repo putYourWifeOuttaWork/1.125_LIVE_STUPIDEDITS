@@ -487,7 +487,17 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                               Claim
                             </Button>
                           ) : session.session_type === 'device' ? (
-                            <span className="text-xs text-gray-500 italic">Device Session</span>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => {
+                                navigate(`/lab/site-sessions/${session.site_id}?date=${session.session_date}`);
+                                onClose();
+                              }}
+                              className="!py-1 !px-2 text-xs"
+                            >
+                              View
+                            </Button>
                           ) : (
                             <Button
                               variant="primary"

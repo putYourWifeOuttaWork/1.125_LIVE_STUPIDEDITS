@@ -215,6 +215,19 @@ const ActiveAlertsPanel = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/lab/admin/company-alert-thresholds');
+                }}
+                className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 px-2 py-1 hover:bg-gray-100 rounded transition-colors"
+                title="Configure Alert Thresholds"
+              >
+                <Settings className="w-3 h-3" />
+                Configure
+              </button>
+            )}
             <button
               onClick={() => setShowResolved(!showResolved)}
               className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1"
