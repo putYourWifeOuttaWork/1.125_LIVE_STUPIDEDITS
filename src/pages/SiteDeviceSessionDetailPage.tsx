@@ -454,26 +454,39 @@ const SiteDeviceSessionDetailPage = () => {
     : 0;
 
   // Calculate environmental aggregates from ALL devices across ALL snapshots
+  // Use processedSnapshots which has LOCF applied and matches what the map displays
   const environmentalAggregates = useMemo(() => {
-    if (!allSiteSnapshots || allSiteSnapshots.length === 0) return null;
+    if (!processedSnapshots || processedSnapshots.length === 0) return null;
 
     const allTemps: number[] = [];
     const allHumidity: number[] = [];
     const allBattery: number[] = [];
     const allMGI: number[] = [];
 
-    // Collect data from all devices in all snapshots
-    allSiteSnapshots.forEach(snapshot => {
-      snapshot.site_state?.devices?.forEach((device) => {
-        if (device.temperature != null) allTemps.push(device.temperature);
-        if (device.humidity != null) allHumidity.push(device.humidity);
-        if (device.battery_voltage != null) {
-          // Convert voltage to percentage (assuming 3.0V = 0%, 4.2V = 100%)
-          const batteryPercent = Math.max(0, Math.min(100, ((device.battery_voltage - 3.0) / 1.2) * 100));
-          allBattery.push(batteryPercent);
-        }
-        if (device.mgi_score != null) allMGI.push(device.mgi_score);
-      });
+    // Collect data from all devices in all processed snapshots (same data the map uses)
+    processedSnapshots.forEach(snapshot => {
+      try {
+        const siteState = typeof snapshot.site_state === 'string'
+          ? JSON.parse(snapshot.site_state)
+          : snapshot.site_state;
+
+        const devices = siteState?.devices || [];
+
+        devices.forEach((device: any) => {
+          // Use the same nested structure as displayDevices
+          const temp = device.telemetry?.latest_temperature;
+          const humidity = device.telemetry?.latest_humidity;
+          const mgiScore = device.mgi_state?.latest_mgi_score;
+          const batteryHealth = device.battery_health_percent;
+
+          if (temp != null) allTemps.push(temp);
+          if (humidity != null) allHumidity.push(humidity);
+          if (batteryHealth != null) allBattery.push(batteryHealth);
+          if (mgiScore != null) allMGI.push(mgiScore);
+        });
+      } catch (error) {
+        console.error('Error processing snapshot for aggregates:', error);
+      }
     });
 
     const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
@@ -513,7 +526,7 @@ const SiteDeviceSessionDetailPage = () => {
         samples: allMGI.length,
       },
     };
-  }, [allSiteSnapshots]);
+  }, [processedSnapshots]);
 
   // Calculate alert statistics
   const alertStats = useMemo(() => {
