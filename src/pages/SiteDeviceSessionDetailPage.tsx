@@ -455,24 +455,24 @@ const SiteDeviceSessionDetailPage = () => {
 
   // Calculate environmental aggregates from ALL devices across ALL snapshots
   const environmentalAggregates = useMemo(() => {
-    if (devices.length === 0) return null;
+    if (!allSiteSnapshots || allSiteSnapshots.length === 0) return null;
 
     const allTemps: number[] = [];
     const allHumidity: number[] = [];
     const allBattery: number[] = [];
     const allMGI: number[] = [];
 
-    // Collect data from all wake payloads across all devices
-    devices.forEach(device => {
-      device.wake_payloads?.forEach((wake: any) => {
-        if (wake.temperature != null) allTemps.push(wake.temperature);
-        if (wake.humidity != null) allHumidity.push(wake.humidity);
-        if (device.battery_health_percent != null) allBattery.push(device.battery_health_percent);
-      });
-
-      // Also collect MGI from images
-      device.images?.forEach((img: any) => {
-        if (img.mgi_score != null) allMGI.push(img.mgi_score);
+    // Collect data from all devices in all snapshots
+    allSiteSnapshots.forEach(snapshot => {
+      snapshot.site_state?.devices?.forEach((device) => {
+        if (device.temperature != null) allTemps.push(device.temperature);
+        if (device.humidity != null) allHumidity.push(device.humidity);
+        if (device.battery_voltage != null) {
+          // Convert voltage to percentage (assuming 3.0V = 0%, 4.2V = 100%)
+          const batteryPercent = Math.max(0, Math.min(100, ((device.battery_voltage - 3.0) / 1.2) * 100));
+          allBattery.push(batteryPercent);
+        }
+        if (device.mgi_score != null) allMGI.push(device.mgi_score);
       });
     });
 
@@ -513,7 +513,7 @@ const SiteDeviceSessionDetailPage = () => {
         samples: allMGI.length,
       },
     };
-  }, [devices]);
+  }, [allSiteSnapshots]);
 
   // Calculate alert statistics
   const alertStats = useMemo(() => {
