@@ -34,9 +34,9 @@ import { supabase } from '../lib/supabaseClient';
 import { SiteDeviceSession } from '../hooks/useSiteDeviceSessions';
 import { useUserRole } from '../hooks/useUserRole';
 import { useSiteSnapshots } from '../hooks/useSiteSnapshots';
-// import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer'; // TODO: Restore
-// import { TimelineController } from '../components/lab/TimelineController'; // TODO: Restore
-// import ZoneAnalytics from '../components/lab/ZoneAnalytics'; // TODO: Restore
+import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
+import { TimelineController } from '../components/lab/TimelineController';
+import ZoneAnalytics from '../components/lab/ZoneAnalytics';
 import { SessionWakeSnapshot } from '../lib/types';
 
 interface DeviceSessionData {
@@ -679,21 +679,29 @@ const SiteDeviceSessionDetailPage = () => {
           <CardContent>
             <div className="space-y-4">
               {/* Timeline Controller */}
-              <div className="bg-gray-50 p-4 rounded text-center text-sm text-gray-500">
-                Timeline Controls (TODO: Restore TimelineController component)
-              </div>
+              <TimelineController
+                totalWakes={processedSnapshots.length}
+                currentWake={currentSnapshotIndex + 1}
+                onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(processedSnapshots.length - 1, wakeNum - 1)))}
+                wakeTimestamps={processedSnapshots.map(s => s.wake_round_start)}
+                autoPlaySpeed={2000}
+              />
 
               {/* Site Map */}
-              <div className="bg-gray-50 p-12 rounded text-center">
-                <p className="text-gray-600 font-medium">Site Map Visualization</p>
-                <p className="text-sm text-gray-500 mt-2">TODO: Restore SiteMapAnalyticsViewer component</p>
-              </div>
+              <SiteMapAnalyticsViewer
+                siteLength={siteData.length}
+                siteWidth={siteData.width}
+                siteName={siteData.name}
+                devices={displayDevices}
+                showControls={false}
+                height={500}
+                zoneMode={zoneMode}
+                onDeviceClick={(deviceId) => navigate(`/programs/${programId}/devices/${deviceId}`)}
+              />
 
               {/* Zone Analytics */}
               {zoneMode !== 'none' && displayDevices.length >= 2 && (
-                <div className="bg-gray-50 p-8 rounded text-center text-sm text-gray-500">
-                  Zone Analytics (TODO: Restore ZoneAnalytics component)
-                </div>
+                <ZoneAnalytics devices={displayDevices} zoneMode={zoneMode} />
               )}
             </div>
           </CardContent>
