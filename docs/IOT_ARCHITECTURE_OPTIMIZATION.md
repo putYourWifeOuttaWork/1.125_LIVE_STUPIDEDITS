@@ -1510,16 +1510,24 @@ Created migration with LOCF (Last Observation Carried Forward) logic using COALE
 **Function Updated:**
 - `generate_session_wake_snapshot()` - Now implements LOCF for telemetry and MGI state
 
-**Testing Required:**
-1. Apply migration to database
-2. Generate snapshot during normal operation (all devices wake)
-3. Simulate missed wake (device skips wake window)
-4. Generate snapshot again
-5. Verify telemetry/MGI carried forward with `is_current: false`
-6. Verify `hours_since_last` shows correct elapsed time
+**Testing Documentation Created:**
+- `/LOCF_TESTING_GUIDE.md` - Comprehensive 7-step testing guide with MQTT + SQL
+- `/test-locf-quick.sql` - Quick validation script (just run SQL)
+
+**Testing Status:** ✅ Migration Applied Successfully
+**How to Test (Web MQTT Client):**
+1. Send telemetry via MQTT (baseline: temperature, humidity, timestamp)
+2. Wait 30+ minutes or adjust SQL timestamps
+3. Run `/test-locf-quick.sql` with your session_id and device_id
+4. Verify: `is_current: false`, `data_freshness: carried_forward`, `hours_since_last > 0`
+
+**Success Criteria:**
+- Snapshot contains telemetry when device missed wake
+- LOCF flags correctly identify carried-forward data
+- Timeline shows continuous data (no gaps)
 
 **Next Steps:**
-Apply the migration using Supabase migration tools, then proceed to Phase 2 (Missed Wake Detection).
+User will test with web MQTT client, then proceed to Phase 2 (Missed Wake Detection).
 
 ---
 
