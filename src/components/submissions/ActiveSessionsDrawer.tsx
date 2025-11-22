@@ -35,7 +35,6 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
   } = useSessionStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sharedUsersDetails, setSharedUsersDetails] = useState<Map<string, { full_name: string | null; email: string }>>(new Map());
-  const [showUnclaimedSessions, setShowUnclaimedSessions] = useState(false);
 
   // Add state for in-drawer program and site selection
   const [drawerProgramId, setDrawerProgramId] = useState<string | null>(null);
@@ -63,53 +62,22 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
     }
   }, [isOpen, selectedProgram, selectedSite]);
 
-  // Function to load active sessions (UNIFIED: human + device)
+  // Function to load active sessions (DEVICE SESSIONS ONLY)
   const loadActiveSessions = async () => {
     setIsRefreshing(true);
     try {
       setIsLoading(true);
 
-      // Get unified active sessions (both human and device)
-      const { data, error } = await supabase.rpc('get_my_active_sessions_unified');
+      // Get device sessions only
+      const { data, error } = await supabase.rpc('get_my_active_device_sessions');
 
       if (error) {
         console.error('Error getting active sessions:', error);
         throw error;
       }
 
-      // Check if there are any unclaimed sessions (human only)
-      const hasUnclaimed = data?.some(session =>
-        session.session_type === 'human' &&
-        session.session_metadata?.is_unclaimed === true
-      ) || false;
-      setHasUnclaimedSessions(hasUnclaimed);
-
-      // Collect all unique user IDs from escalated_to_user_ids arrays (human sessions only)
-      const uniqueUserIds = new Set<string>();
-      data?.forEach(session => {
-        if (session.session_type === 'human' && session.session_metadata?.escalated_to_user_ids) {
-          session.session_metadata.escalated_to_user_ids.forEach((userId: string) => uniqueUserIds.add(userId));
-        }
-      });
-
-      // If we have shared users, fetch their details
-      if (uniqueUserIds.size > 0) {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('id, full_name, email')
-          .in('id', Array.from(uniqueUserIds));
-
-        if (!userError && userData) {
-          // Create a map for quick lookup
-          const userDetailsMap = new Map<string, { full_name: string | null; email: string }>();
-          userData.forEach(user => {
-            userDetailsMap.set(user.id, { full_name: user.full_name, email: user.email });
-          });
-          setSharedUsersDetails(userDetailsMap);
-        } else {
-          console.error('Error fetching shared user details:', userError);
-        }
-      }
+      // Device sessions only - no unclaimed sessions to check
+      setHasUnclaimedSessions(false);
 
       setActiveSessions(data || []);
     } catch (error) {
@@ -166,22 +134,11 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
   // Toggle selection mode
   const toggleSelectionMode = () => {
     setIsSelectionMode(!isSelectionMode);
-    // If entering selection mode, show the My Sessions tab
-    if (!isSelectionMode) {
-      setShowUnclaimedSessions(false);
-    }
+    // Selection mode logic (no tabs to switch)
   };
 
-  // Filter sessions based on claimed/unclaimed status
-  const filteredSessions = activeSessions.filter(session => {
-    // Device sessions are always shown in "My Sessions"
-    if (session.session_type === 'device') {
-      return !showUnclaimedSessions;
-    }
-    // Human sessions filter by unclaimed status
-    const isUnclaimed = session.session_metadata?.is_unclaimed === true;
-    return showUnclaimedSessions ? isUnclaimed : !isUnclaimed;
-  });
+  // No filtering needed - all device sessions shown
+  const filteredSessions = activeSessions;
 
   return (
     <div className={`fixed inset-0 z-50 ${isOpen ? 'block' : 'hidden'}`}>
@@ -328,36 +285,16 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
               {/* Tabs */}
               <div className="flex border-b border-gray-200">
                 <button
-                  className={`flex-1 py-2 px-4 text-center font-medium ${
-                    !showUnclaimedSessions
-                      ? 'text-primary-600 border-b-2 border-primary-600'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                  onClick={() => setShowUnclaimedSessions(false)}
+                  className="flex-1 py-2 px-4 text-center font-medium text-primary-600 border-b-2 border-primary-600"
                 >
                   <div className="flex items-center justify-center gap-1">
-                    <span>My Sessions</span>
-                    {!showUnclaimedSessions && filteredSessions.length > 0 && (
+                    <span>Device Sessions 🤖</span>
+                    {filteredSessions.length > 0 && (
                       <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold text-primary-600 bg-primary-100 rounded-full">
                         {filteredSessions.length}
                       </span>
                     )}
                   </div>
-                </button>
-                <button
-                  className={`flex-1 py-2 px-4 text-center font-medium ${
-                    showUnclaimedSessions
-                      ? 'text-primary-600 border-b-2 border-primary-600'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                  onClick={() => setShowUnclaimedSessions(true)}
-                >
-                  Unclaimed Sessions
-                  {hasUnclaimedSessions && (
-                    <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-primary-600 rounded-full">
-                      !
-                    </span>
-                  )}
                 </button>
               </div>
               
@@ -365,11 +302,9 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="mb-4 flex justify-between items-center">
                   <p className="text-sm text-gray-600">
-                    {filteredSessions.length === 0 
-                      ? showUnclaimedSessions 
-                        ? 'No unclaimed sessions available' 
-                        : 'You have no active sessions' 
-                      : `${filteredSessions.length} ${showUnclaimedSessions ? 'unclaimed' : 'active'} session${filteredSessions.length !== 1 ? 's' : ''}`}
+                    {filteredSessions.length === 0
+                      ? 'You have no active device sessions'
+                      : `${filteredSessions.length} active device session${filteredSessions.length !== 1 ? 's' : ''}`}
                   </p>
                   <Button
                     variant="outline"
@@ -386,14 +321,10 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                   <div className="text-center py-12 bg-gray-50 rounded-lg">
                     <FileText size={48} className="mx-auto text-gray-300 mb-3" />
                     <p className="text-gray-600 font-medium mb-2">
-                      {showUnclaimedSessions
-                        ? 'No Unclaimed Sessions'
-                        : 'No Active Sessions'}
+                      No Active Device Sessions
                     </p>
                     <p className="text-sm text-gray-500 mt-1">
-                      {showUnclaimedSessions
-                        ? 'There are no unclaimed sessions available for you to take.'
-                        : 'Active device sessions and your manual submissions will appear here'}
+                      Device sessions are created automatically when sites have scheduled wake times
                     </p>
                   </div>
                 ) : (
