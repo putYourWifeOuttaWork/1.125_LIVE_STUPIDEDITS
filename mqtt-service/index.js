@@ -577,9 +577,38 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
 }
 
 /**
+ * Convert ISO 8601 timestamp to simple time format for device
+ * Per BrainlyTree PDF spec: device expects "11:00PM" format, NOT ISO timestamps
+ *
+ * Examples:
+ *   "2025-11-22T20:00:00.000Z" -> "8:00PM"
+ *   "2025-11-22T08:30:00.000Z" -> "8:30AM"
+ */
+function formatTimeForDevice(isoTimestamp) {
+  try {
+    const date = new Date(isoTimestamp);
+    let hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+
+    // Convert to 12-hour format
+    hours = hours % 12;
+    hours = hours ? hours : 12; // 0 becomes 12
+
+    // Format minutes (only include if not :00)
+    const minuteStr = minutes > 0 ? `:${minutes.toString().padStart(2, '0')}` : '';
+
+    return `${hours}${minuteStr}${ampm}`;
+  } catch (error) {
+    console.error('[SCHEDULE] Error formatting time:', error);
+    return '12:00PM'; // Safe fallback
+  }
+}
+
+/**
  * Calculate next wake time based on device's wake schedule
- * Returns ISO 8601 UTC timestamp as expected by device
- * Per BrainlyTree PDF spec: device needs "next_wake" with wake time, NOT cron expression
+ * Returns simple time string as expected by device (e.g., "11:00PM")
+ * Per BrainlyTree PDF spec (page 5): device needs "next_wake": "wake_up_time"
  *
  * Priority:
  * 1. Use stored next_wake_at if it exists and is in the future
@@ -597,8 +626,11 @@ async function calculateNextWakeTime(deviceId) {
 
     if (error || !device) {
       console.log(`[SCHEDULE] Device ${deviceId} not found, using default 3h`);
-      return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+      const fallbackTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+      return formatTimeForDevice(fallbackTime.toISOString());
     }
+
+    let nextWakeISO = null;
 
     // Priority 1: Use stored next_wake_at if it exists and is in the future
     if (device.next_wake_at) {
@@ -607,48 +639,57 @@ async function calculateNextWakeTime(deviceId) {
 
       if (nextWakeDate > now) {
         console.log(`[SCHEDULE] Using stored next_wake_at for device ${deviceId}: ${device.next_wake_at}`);
-        return device.next_wake_at;
+        nextWakeISO = device.next_wake_at;
       } else {
         console.log(`[SCHEDULE] Stored next_wake_at is in the past, recalculating...`);
       }
     }
 
-    // Priority 2: Calculate from cron expression
-    let cronExpression = device.wake_schedule_cron;
+    // Priority 2: Calculate from cron expression if needed
+    if (!nextWakeISO) {
+      let cronExpression = device.wake_schedule_cron;
 
-    // If no device-level schedule, get from site
-    if (!cronExpression && device.site_id) {
-      const { data: site } = await supabase
-        .from('sites')
-        .select('wake_schedule_cron')
-        .eq('site_id', device.site_id)
-        .maybeSingle();
+      // If no device-level schedule, get from site
+      if (!cronExpression && device.site_id) {
+        const { data: site } = await supabase
+          .from('sites')
+          .select('wake_schedule_cron')
+          .eq('site_id', device.site_id)
+          .maybeSingle();
 
-      cronExpression = site?.wake_schedule_cron;
+        cronExpression = site?.wake_schedule_cron;
+      }
+
+      // Use default if still no schedule found
+      if (!cronExpression) {
+        cronExpression = '0 */3 * * *'; // Every 3 hours default
+      }
+
+      // Calculate next wake using RPC function from NOW()
+      const { data: nextWake, error: rpcError } = await supabase.rpc('fn_calculate_next_wake', {
+        p_cron_expression: cronExpression,
+        p_from_timestamp: new Date().toISOString(),
+      });
+
+      if (rpcError || !nextWake) {
+        console.error(`[SCHEDULE] RPC error:`, rpcError);
+        const fallbackTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+        return formatTimeForDevice(fallbackTime.toISOString());
+      }
+
+      nextWakeISO = nextWake;
+      console.log(`[SCHEDULE] Calculated next wake for device ${deviceId}: ${nextWake} (cron: ${cronExpression})`);
     }
 
-    // Use default if still no schedule found
-    if (!cronExpression) {
-      cronExpression = '0 */3 * * *'; // Every 3 hours default
-    }
-
-    // Calculate next wake using RPC function from NOW()
-    const { data: nextWake, error: rpcError } = await supabase.rpc('fn_calculate_next_wake', {
-      p_cron_expression: cronExpression,
-      p_from_timestamp: new Date().toISOString(),
-    });
-
-    if (rpcError || !nextWake) {
-      console.error(`[SCHEDULE] RPC error:`, rpcError);
-      return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
-    }
-
-    console.log(`[SCHEDULE] Calculated next wake for device ${deviceId}: ${nextWake} (cron: ${cronExpression})`);
-    return nextWake;
+    // Convert ISO timestamp to simple time format for device
+    const simpleTime = formatTimeForDevice(nextWakeISO);
+    console.log(`[SCHEDULE] Sending wake time to device: ${simpleTime} (from ${nextWakeISO})`);
+    return simpleTime;
 
   } catch (error) {
     console.error(`[SCHEDULE] Error calculating next wake:`, error);
-    return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const fallbackTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    return formatTimeForDevice(fallbackTime.toISOString());
   }
 }
 

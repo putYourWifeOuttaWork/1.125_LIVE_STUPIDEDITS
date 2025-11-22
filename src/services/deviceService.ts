@@ -358,15 +358,15 @@ export class DeviceService {
 
       // Queue set_wake_schedule command for device IF wake schedule changed
       if (params.wakeScheduleCron !== undefined && nextWakeTime) {
-        // Queue command with calculated next_wake_time (NOT cron expression)
+        // Per BrainlyTree protocol: ONLY send next_wake_time, NOT cron
+        // MQTT service will convert ISO timestamp to simple time format (e.g., "11:00PM")
         const { error: commandError } = await supabase
           .from('device_commands')
           .insert({
             device_id: params.deviceId,
             command_type: 'set_wake_schedule',
             command_payload: {
-              next_wake_time: nextWakeTime, // Calculated from NOW()
-              wake_schedule_cron: params.wakeScheduleCron // Reference only
+              next_wake_time: nextWakeTime // ISO timestamp - MQTT service converts to simple time
             },
             created_by_user_id: user?.id || null,
             notes: 'Wake schedule updated via UI'

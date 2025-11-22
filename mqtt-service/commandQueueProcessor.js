@@ -159,51 +159,82 @@ export class CommandQueueProcessor {
   }
 
   /**
+   * Convert ISO 8601 timestamp to simple time format for device
+   * Per BrainlyTree PDF spec: device expects "11:00PM" format, NOT ISO timestamps
+   */
+  formatTimeForDevice(isoTimestamp) {
+    try {
+      const date = new Date(isoTimestamp);
+      let hours = date.getHours();
+      const minutes = date.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+
+      // Convert to 12-hour format
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 becomes 12
+
+      // Format minutes (only include if not :00)
+      const minuteStr = minutes > 0 ? `:${minutes.toString().padStart(2, '0')}` : '';
+
+      return `${hours}${minuteStr}${ampm}`;
+    } catch (error) {
+      console.error('[CommandQueue] Error formatting time:', error);
+      return '12:00PM'; // Safe fallback
+    }
+  }
+
+  /**
    * Build MQTT payload from command
+   * Per BrainlyTree PDF spec (page 5): Messages should ONLY contain device_id and command fields
    */
   buildCommandPayload(command, deviceMac) {
-    const basePayload = {
-      device_id: deviceMac,
-      ...command.command_payload,
-    };
-
     // Add command-specific fields per BrainlyTree PDF spec
     switch (command.command_type) {
       case 'capture_image':
         return {
-          ...basePayload,
+          device_id: deviceMac,
           capture_image: true,
         };
 
       case 'send_image':
         return {
-          ...basePayload,
+          device_id: deviceMac,
           send_image: command.command_payload?.image_name,
         };
 
       case 'set_wake_schedule':
+        // Convert ISO timestamp to simple time format (e.g., "11:00PM")
+        const nextWakeISO = command.command_payload?.next_wake_time;
+        const nextWakeSimple = nextWakeISO ? this.formatTimeForDevice(nextWakeISO) : '12:00PM';
+        console.log(`[CommandQueue] Converting wake time: ${nextWakeISO} -> ${nextWakeSimple}`);
         return {
-          ...basePayload,
-          next_wake: command.command_payload?.next_wake_time,
+          device_id: deviceMac,
+          next_wake: nextWakeSimple, // Simple time format only
         };
 
       case 'update_config':
-        return basePayload;
+        return {
+          device_id: deviceMac,
+          ...command.command_payload,
+        };
 
       case 'reboot':
         return {
-          ...basePayload,
+          device_id: deviceMac,
           reboot: true,
         };
 
       case 'update_firmware':
         return {
-          ...basePayload,
+          device_id: deviceMac,
           firmware_url: command.command_payload?.firmware_url,
         };
 
       default:
-        return basePayload;
+        return {
+          device_id: deviceMac,
+          ...command.command_payload,
+        };
     }
   }
 
