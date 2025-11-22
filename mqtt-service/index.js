@@ -578,25 +578,29 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
 
 /**
  * Convert ISO 8601 timestamp to simple time format for device
- * Per BrainlyTree PDF spec: device expects "11:00PM" format, NOT ISO timestamps
+ * Per BrainlyTree PDF spec: device expects "11:00PM" format in UTC
+ * IMPORTANT: Device expects UTC time, NOT local time
  *
  * Examples:
- *   "2025-11-22T20:00:00.000Z" -> "8:00PM"
- *   "2025-11-22T08:30:00.000Z" -> "8:30AM"
+ *   "2025-11-22T20:00:00.000Z" -> "8:00PM" (UTC)
+ *   "2025-11-22T08:30:00.000Z" -> "8:30AM" (UTC)
+ *   "2025-11-22T12:00:00.000Z" -> "12:00PM" (UTC)
  */
 function formatTimeForDevice(isoTimestamp) {
   try {
     const date = new Date(isoTimestamp);
-    let hours = date.getHours();
-    const minutes = date.getMinutes();
+
+    // Use UTC methods to get UTC time (NOT local time)
+    let hours = date.getUTCHours();
+    const minutes = date.getUTCMinutes();
     const ampm = hours >= 12 ? 'PM' : 'AM';
 
     // Convert to 12-hour format
     hours = hours % 12;
     hours = hours ? hours : 12; // 0 becomes 12
 
-    // Format minutes (only include if not :00)
-    const minuteStr = minutes > 0 ? `:${minutes.toString().padStart(2, '0')}` : '';
+    // ALWAYS include minutes with leading zero (protocol expects "12:00PM" not "12PM")
+    const minuteStr = `:${minutes.toString().padStart(2, '0')}`;
 
     return `${hours}${minuteStr}${ampm}`;
   } catch (error) {
