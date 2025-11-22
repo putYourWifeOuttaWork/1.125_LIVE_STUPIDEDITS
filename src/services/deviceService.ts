@@ -332,14 +332,34 @@ export class DeviceService {
         return { success: false, error: updateError.message };
       }
 
-      // Queue update_config command for device IF wake schedule changed
+      // Queue set_wake_schedule command for device IF wake schedule changed
       if (params.wakeScheduleCron !== undefined) {
+        // Calculate next wake time based on new schedule
+        // Per BrainlyTree protocol: device expects next_wake_time, not cron expression
+        const { data: nextWakeTime, error: rpcError } = await supabase.rpc(
+          'fn_calculate_next_wake',
+          {
+            p_cron_expression: params.wakeScheduleCron,
+            p_from_timestamp: new Date().toISOString()
+          }
+        );
+
+        if (rpcError) {
+          logger.error('Failed to calculate next wake time', rpcError);
+          return { success: false, error: 'Failed to calculate next wake time: ' + rpcError.message };
+        }
+
+        // Queue command with calculated next_wake_time (NOT cron expression)
         const { error: commandError } = await supabase
           .from('device_commands')
           .insert({
             device_id: params.deviceId,
             command_type: 'set_wake_schedule',
-            command_payload: { wake_schedule_cron: params.wakeScheduleCron },
+            command_payload: {
+              next_wake_time: nextWakeTime || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+              // Store cron for reference but device won't use it
+              wake_schedule_cron: params.wakeScheduleCron
+            },
             created_by_user_id: user?.id || null,
             notes: 'Wake schedule updated via UI'
           });
@@ -349,9 +369,7 @@ export class DeviceService {
           return { success: false, error: 'Settings updated but command failed: ' + commandError.message };
         }
 
-        // NOTE: next_wake_at will NOT be recalculated here
-        // It will recalculate when device ACTUALLY wakes and receives the new schedule
-        logger.debug('Wake schedule command queued, next_wake_at will update on device wake');
+        logger.debug('Wake schedule command queued with next_wake_time', { nextWakeTime });
       }
 
       logger.info('Device settings updated successfully', params);
