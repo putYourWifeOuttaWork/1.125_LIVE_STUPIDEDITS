@@ -26,7 +26,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useSiteDeviceSessions } from '../hooks/useSiteDeviceSessions';
 import SiteDeviceSessionCard from '../components/devices/SiteDeviceSessionCard';
 import ActiveAlertsPanel from '../components/devices/ActiveAlertsPanel';
-import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
+// import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer'; // TODO: Restore lab components
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -528,16 +528,12 @@ const HomePage = () => {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : siteDevices.length > 0 && selectedSite.length && selectedSite.width ? (
-              <SiteMapAnalyticsViewer
-                siteLength={selectedSite.length}
-                siteWidth={selectedSite.width}
-                siteName={selectedSite.name}
-                devices={siteDevices}
-                onDeviceClick={(deviceId) => {
-                  navigate(`/devices/${deviceId}`);
-                }}
-                showControls={true}
-              />
+              <div className="text-center py-12 bg-gray-50 rounded-lg">
+                <MapPin className="mx-auto h-16 w-16 text-blue-400" />
+                <p className="text-gray-600 mt-4 font-medium">Site Map Visualization</p>
+                <p className="text-sm text-gray-500 mt-2">{siteDevices.length} devices positioned</p>
+                <p className="text-xs text-gray-400 mt-4">TODO: Restore SiteMapAnalyticsViewer component</p>
+              </div>
             ) : (
               <div className="text-center py-12 bg-gray-50 rounded-lg">
                 <MapPin className="mx-auto h-16 w-16 text-gray-300" />

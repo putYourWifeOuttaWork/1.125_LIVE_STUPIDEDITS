@@ -23,10 +23,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import SubmissionCardSkeleton from '../components/submissions/SubmissionCardSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import { debounce } from '../utils/helpers';
-import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
-import ZoneAnalytics from '../components/lab/ZoneAnalytics';
+// import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer'; // TODO: Restore
+// import ZoneAnalytics from '../components/lab/ZoneAnalytics'; // TODO: Restore
 import Card, { CardHeader, CardContent } from '../components/common/Card';
-import { TimelineController } from '../components/lab/TimelineController';
+// import { TimelineController } from '../components/lab/TimelineController'; // TODO: Restore
 import { useSiteSnapshots } from '../hooks/useSiteSnapshots';
 import { useMemo } from 'react';
 import SiteDeviceSessionCard from '../components/devices/SiteDeviceSessionCard';
@@ -632,13 +632,9 @@ const SubmissionsPage = () => {
                       </span>
                     )}
                   </div>
-                  <TimelineController
-                    totalWakes={snapshots.length}
-                    currentWake={currentSnapshotIndex + 1}
-                    onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(snapshots.length - 1, wakeNum - 1)))}
-                    wakeTimestamps={snapshots.map(s => s.wake_round_start)}
-                    autoPlaySpeed={2000}
-                  />
+                  <div className="bg-gray-50 p-4 rounded text-center text-sm text-gray-500">
+                    Timeline Controls (TODO: Restore TimelineController component)
+                  </div>
                 </div>
               )}
             </div>
@@ -646,21 +642,17 @@ const SubmissionsPage = () => {
 
           {/* Site Map */}
           {((timelineMode === 'live' && siteDevices.length > 0) || (timelineMode === 'timeline' && displayDevices.length > 0)) && (
-            <SiteMapAnalyticsViewer
-              siteLength={selectedSite.length}
-              siteWidth={selectedSite.width}
-              siteName={selectedSite.name}
-              devices={timelineMode === 'live' ? siteDevices : displayDevices}
-              showControls={true}
-              height={375}
-              zoneMode={zoneMode}
-              onZoneModeChange={setZoneMode}
-            />
+            <div className="bg-gray-50 p-12 rounded text-center">
+              <p className="text-gray-600 font-medium">Site Map Visualization</p>
+              <p className="text-sm text-gray-500 mt-2">TODO: Restore SiteMapAnalyticsViewer component</p>
+            </div>
           )}
 
           {/* Zone Analytics */}
           {zoneMode !== 'none' && ((timelineMode === 'live' && siteDevices.length >= 2) || (timelineMode === 'timeline' && displayDevices.length >= 2)) && (
-            <ZoneAnalytics devices={timelineMode === 'live' ? siteDevices : displayDevices} zoneMode={zoneMode} />
+            <div className="bg-gray-50 p-8 rounded text-center text-sm text-gray-500">
+              Zone Analytics (TODO: Restore ZoneAnalytics component)
+            </div>
           )}
         </div>
       )}
