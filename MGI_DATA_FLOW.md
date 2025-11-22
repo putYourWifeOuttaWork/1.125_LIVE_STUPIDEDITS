@@ -114,13 +114,14 @@
 │  └──────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
                                     ↓
-                  (Optional - Need to Verify These Exist)
                                     ↓
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  TRIGGER?: Regenerate session_wake_snapshots                            │
-│  - When device_images.mgi_score updates                                 │
-│  - Regenerates snapshot for visualization                               │
-│  - Updates site_state JSONB with new MGI data                           │
+│  SCHEDULED: session_wake_snapshots (every 3 hours by default)           │
+│  - NOT triggered by MGI updates                                         │
+│  - Created on schedule via pg_cron                                      │
+│  - Aggregates ALL data since last snapshot                              │
+│  - Includes latest MGI scores at time of snapshot                       │
+│  - Used for timeline playback and historical visualization              │
 └─────────────────────────────────────────────────────────────────────────┘
                                     ↓
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -238,11 +239,11 @@ const mgiScore = parseFloat(response[0].MGI);  // 0.05
 - ❌ NOT: `petri_observations` (legacy, ignore completely)
 
 ### 3. What Triggers Automatically?
-- ✅ Roboflow API call (via trigger)
-- ✅ Velocity calculation (via trigger)
-- ✅ Speed calculation (via trigger)
-- ✅ Rollup to devices table (via trigger)
-- ⚠️ Snapshot regeneration (verify trigger exists)
+- ✅ Roboflow API call (via trigger when image completes)
+- ✅ Velocity calculation (via trigger when mgi_score updates)
+- ✅ Speed calculation (via trigger when mgi_score updates)
+- ✅ Rollup to devices table (via trigger when mgi_score updates)
+- ✅ Snapshot creation (via pg_cron on schedule, NOT per-update)
 - ⚠️ Alert threshold check (verify trigger exists)
 
 ---

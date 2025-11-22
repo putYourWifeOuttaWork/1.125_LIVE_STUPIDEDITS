@@ -4,13 +4,14 @@
   ## Changes
   1. Add MGI scoring status tracking columns to device_images
   2. Update trigger to remove petri_observations dependency
-  3. Ensure automatic cascade: MGI score → velocity → speed → rollup → snapshots → alerts
+  3. Ensure automatic cascade: MGI score → velocity → speed → rollup → alerts
 
   ## Architecture
   - device_images: PRIMARY storage for MGI scores (no petri_observations)
   - Trigger calls Roboflow on image completion
   - Existing calculate_and_rollup_mgi() handles velocity/speed/rollup automatically
-  - Snapshots and alerts should regenerate when MGI updates
+  - Snapshots are created on SCHEDULE (every 3 hours), NOT on every MGI update
+  - Alert thresholds checked when devices.latest_mgi_score updates (if trigger exists)
 
   ## Security
   - All functions remain SECURITY DEFINER
@@ -247,7 +248,7 @@ BEGIN
   PERFORM cron.schedule(
     'retry-failed-mgi-scoring',
     '*/10 * * * *',
-    $$ SELECT fn_retry_failed_mgi_scoring(); $$
+    'SELECT fn_retry_failed_mgi_scoring();'
   );
 
   RAISE NOTICE '✓ Scheduled pg_cron job: retry-failed-mgi-scoring (every 10 minutes)';
@@ -277,8 +278,11 @@ AUTOMATIC CASCADE (already exists):
     ↓ trigger: calculate_and_rollup_mgi()
     ↓ calculates: mgi_velocity, mgi_speed
     ↓ rolls up to: devices.latest_mgi_score, latest_mgi_velocity
-    ↓ regenerates: session_wake_snapshots (if trigger exists)
     ↓ checks: device_alert_thresholds (if trigger exists)
+
+NOTE: session_wake_snapshots are created on schedule (every 3 hours by default)
+      and aggregate all data since the last snapshot. They do NOT regenerate
+      on every MGI update - they capture state at scheduled intervals.
 
 EDGE FUNCTION CHANGES (already deployed):
   ✓ Updated to use param2: "MGI"
