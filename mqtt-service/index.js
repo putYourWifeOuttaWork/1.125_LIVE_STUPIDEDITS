@@ -116,29 +116,33 @@ async function sendPendingCommands(device, client) {
       switch (command.command_type) {
         case 'ping':
           message = {
-            device_id: device.device_code || device.device_id,
+            device_id: device.device_mac, // Use MAC address per PDF spec
             ping: true,
             timestamp: command.command_payload?.timestamp || new Date().toISOString()
           };
           break;
 
         case 'capture_image':
+          // Per BrainlyTree PDF spec (page 5)
           message = {
-            device_id: device.device_code || device.device_id,
+            device_id: device.device_mac,
             capture_image: true
           };
           break;
 
         case 'set_wake_schedule':
+          // Per BrainlyTree PDF spec: send "next_wake" with calculated time, NOT cron
+          const nextWake = await calculateNextWakeTime(device.device_id);
           message = {
-            device_id: device.device_code || device.device_id,
-            set_wake_schedule: command.command_payload?.wake_schedule_cron
+            device_id: device.device_mac,
+            next_wake: nextWake // ISO 8601 UTC timestamp
           };
           break;
 
         case 'send_image':
+          // Per BrainlyTree PDF spec (page 5)
           message = {
-            device_id: device.device_code || device.device_id,
+            device_id: device.device_mac,
             send_image: command.command_payload?.image_name
           };
           break;
@@ -148,8 +152,8 @@ async function sendPendingCommands(device, client) {
           continue;
       }
 
-      // Publish command to device
-      const topic = `device/${device.device_code || device.device_id}/cmd`;
+      // Publish command to device - use MAC address in topic per PDF spec
+      const topic = `device/${device.device_mac}/cmd`;
       client.publish(topic, JSON.stringify(message));
       console.log(`[CMD] Sent ${command.command_type} to ${device.device_code || device.device_mac} on ${topic}`);
 
@@ -447,20 +451,19 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
     // Create submission and observation if device is mapped
     await createSubmissionAndObservation(buffer, urlData.publicUrl);
 
-    // Send acknowledgment to device
-    const nextWakeTime = calculateNextWakeTime();
+    // Send acknowledgment to device with next wake time
+    // Per BrainlyTree PDF spec: ACK_OK message format
+    const nextWakeTime = await calculateNextWakeTime(buffer.imageRecord.device_id);
     const ackMessage = {
-      device_id: deviceId,
+      device_id: buffer.device.device_mac, // Use MAC address for device identification
       image_name: imageName,
       ACK_OK: {
-        next_wake_time: nextWakeTime,
-        status: 'success',
-        image_url: urlData.publicUrl,
+        next_wake_time: nextWakeTime, // ISO 8601 UTC timestamp
       },
     };
 
-    client.publish(`device/${deviceId}/ack`, JSON.stringify(ackMessage));
-    console.log(`[ACK] Sent ACK_OK to ${deviceId} with next wake: ${nextWakeTime}`);
+    client.publish(`device/${buffer.device.device_mac}/ack`, JSON.stringify(ackMessage));
+    console.log(`[ACK] Sent ACK_OK to ${buffer.device.device_code || buffer.device.device_mac} with next wake: ${nextWakeTime}`);
 
     // Clean up buffer
     imageBuffers.delete(getImageKey(deviceId, imageName));
@@ -573,10 +576,61 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
   }
 }
 
-function calculateNextWakeTime() {
-  const now = new Date();
-  now.setHours(now.getHours() + 12);
-  return now.toISOString();
+/**
+ * Calculate next wake time based on device's wake schedule
+ * Returns ISO 8601 UTC timestamp as expected by device
+ * Per BrainlyTree PDF spec: device needs "next_wake" with wake time, NOT cron expression
+ */
+async function calculateNextWakeTime(deviceId) {
+  try {
+    // Get device's wake schedule
+    const { data: device, error } = await supabase
+      .from('devices')
+      .select('wake_schedule_cron, site_id')
+      .eq('device_id', deviceId)
+      .maybeSingle();
+
+    if (error || !device) {
+      console.log(`[SCHEDULE] Device ${deviceId} not found, using default 12h`);
+      return new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    }
+
+    let cronExpression = device.wake_schedule_cron;
+
+    // If no device-level schedule, get from site
+    if (!cronExpression && device.site_id) {
+      const { data: site } = await supabase
+        .from('sites')
+        .select('wake_schedule_cron')
+        .eq('site_id', device.site_id)
+        .maybeSingle();
+
+      cronExpression = site?.wake_schedule_cron;
+    }
+
+    // Use default if still no schedule found
+    if (!cronExpression) {
+      cronExpression = '0 */3 * * *'; // Every 3 hours default
+    }
+
+    // Calculate next wake using RPC function
+    const { data: nextWake, error: rpcError } = await supabase.rpc('fn_calculate_next_wake', {
+      p_cron_expression: cronExpression,
+      p_from_timestamp: new Date().toISOString(),
+    });
+
+    if (rpcError || !nextWake) {
+      console.error(`[SCHEDULE] RPC error:`, rpcError);
+      return new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    }
+
+    console.log(`[SCHEDULE] Next wake for device ${deviceId}: ${nextWake} (cron: ${cronExpression})`);
+    return nextWake;
+
+  } catch (error) {
+    console.error(`[SCHEDULE] Error calculating next wake:`, error);
+    return new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+  }
 }
 
 function connectToMQTT() {
