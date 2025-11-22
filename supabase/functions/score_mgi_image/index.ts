@@ -77,11 +77,14 @@ Deno.serve(async (req: Request) => {
     const roboflowData = await roboflowResponse.json();
     console.log('[MGI Scoring] Roboflow response:', JSON.stringify(roboflowData));
 
-    // Parse response: [{ "MGI": "0.05" }]
+    // Parse response: {"outputs": [{"MGI": "0.15"}], "profiler_trace": []}
     let mgiScore: number | null = null;
 
-    if (Array.isArray(roboflowData) && roboflowData.length > 0) {
-      const firstResult = roboflowData[0] as RoboflowResult;
+    // Handle new format with outputs wrapper
+    const outputs = roboflowData.outputs || roboflowData;
+
+    if (Array.isArray(outputs) && outputs.length > 0) {
+      const firstResult = outputs[0] as RoboflowResult;
       if (firstResult.MGI !== undefined) {
         mgiScore = parseFloat(firstResult.MGI);
       }
@@ -123,7 +126,7 @@ Deno.serve(async (req: Request) => {
       .from('device_images')
       .update({
         mgi_score: mgiScore,
-        mgi_scored_at: new Date().toISOString(),
+        scored_at: new Date().toISOString(),
         mgi_scoring_status: 'complete',
         roboflow_response: roboflowData
       })

@@ -69,14 +69,15 @@ BEGIN
       NEW.program_id := v_device_program_id;
     END IF;
 
-    -- Find active session for this device (if site_device_session_id not set)
-    IF NEW.site_device_session_id IS NULL THEN
+    -- Find active session for this device's site (if site_device_session_id not set)
+    -- Note: site_device_sessions are per-site, not per-device
+    IF NEW.site_device_session_id IS NULL AND v_device_site_id IS NOT NULL THEN
       SELECT session_id INTO v_active_session_id
       FROM site_device_sessions
-      WHERE device_id = NEW.device_id
-        AND status = 'active'
-        AND (end_time IS NULL OR end_time > NOW())
-      ORDER BY start_time DESC
+      WHERE site_id = v_device_site_id
+        AND status IN ('pending', 'in_progress')
+        AND session_date = CURRENT_DATE
+      ORDER BY session_start_time DESC
       LIMIT 1;
 
       IF v_active_session_id IS NOT NULL THEN
@@ -139,11 +140,12 @@ BEGIN
   LIMIT 1;
 
   IF v_sample_device.device_id IS NOT NULL THEN
-    -- Check for active session
+    -- Check for active session (sessions are per-site, not per-device)
     SELECT session_id INTO v_active_session
     FROM site_device_sessions
-    WHERE device_id = v_sample_device.device_id
-      AND status = 'active'
+    WHERE site_id = v_sample_device.site_id
+      AND status IN ('pending', 'in_progress')
+      AND session_date = CURRENT_DATE
     LIMIT 1;
 
     RAISE NOTICE '=== Context Inheritance Example ===';
