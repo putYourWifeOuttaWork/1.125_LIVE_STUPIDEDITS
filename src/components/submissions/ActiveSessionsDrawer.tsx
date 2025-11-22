@@ -329,18 +329,25 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
               <div className="flex border-b border-gray-200">
                 <button
                   className={`flex-1 py-2 px-4 text-center font-medium ${
-                    !showUnclaimedSessions 
-                      ? 'text-primary-600 border-b-2 border-primary-600' 
+                    !showUnclaimedSessions
+                      ? 'text-primary-600 border-b-2 border-primary-600'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                   onClick={() => setShowUnclaimedSessions(false)}
                 >
-                  My Sessions
+                  <div className="flex items-center justify-center gap-1">
+                    <span>My Sessions</span>
+                    {!showUnclaimedSessions && filteredSessions.length > 0 && (
+                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold text-primary-600 bg-primary-100 rounded-full">
+                        {filteredSessions.length}
+                      </span>
+                    )}
+                  </div>
                 </button>
                 <button
                   className={`flex-1 py-2 px-4 text-center font-medium ${
-                    showUnclaimedSessions 
-                      ? 'text-primary-600 border-b-2 border-primary-600' 
+                    showUnclaimedSessions
+                      ? 'text-primary-600 border-b-2 border-primary-600'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                   onClick={() => setShowUnclaimedSessions(true)}
@@ -379,14 +386,14 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                   <div className="text-center py-12 bg-gray-50 rounded-lg">
                     <FileText size={48} className="mx-auto text-gray-300 mb-3" />
                     <p className="text-gray-600 font-medium mb-2">
-                      {showUnclaimedSessions 
-                        ? 'No Unclaimed Sessions' 
+                      {showUnclaimedSessions
+                        ? 'No Unclaimed Sessions'
                         : 'No Active Sessions'}
                     </p>
                     <p className="text-sm text-gray-500 mt-1">
-                      {showUnclaimedSessions 
-                        ? 'There are no unclaimed sessions available for you to take.' 
-                        : 'When You Own or are Shared a Session It Will Show Here'}
+                      {showUnclaimedSessions
+                        ? 'There are no unclaimed sessions available for you to take.'
+                        : 'Active device sessions and your manual submissions will appear here'}
                     </p>
                   </div>
                 ) : (
