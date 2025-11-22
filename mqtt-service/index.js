@@ -580,21 +580,40 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
  * Calculate next wake time based on device's wake schedule
  * Returns ISO 8601 UTC timestamp as expected by device
  * Per BrainlyTree PDF spec: device needs "next_wake" with wake time, NOT cron expression
+ *
+ * Priority:
+ * 1. Use stored next_wake_at if it exists and is in the future
+ * 2. Calculate from cron expression (device or site level)
+ * 3. Fallback to default interval
  */
 async function calculateNextWakeTime(deviceId) {
   try {
-    // Get device's wake schedule
+    // Get device's wake schedule and stored next_wake_at
     const { data: device, error } = await supabase
       .from('devices')
-      .select('wake_schedule_cron, site_id')
+      .select('wake_schedule_cron, site_id, next_wake_at')
       .eq('device_id', deviceId)
       .maybeSingle();
 
     if (error || !device) {
-      console.log(`[SCHEDULE] Device ${deviceId} not found, using default 12h`);
-      return new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+      console.log(`[SCHEDULE] Device ${deviceId} not found, using default 3h`);
+      return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     }
 
+    // Priority 1: Use stored next_wake_at if it exists and is in the future
+    if (device.next_wake_at) {
+      const nextWakeDate = new Date(device.next_wake_at);
+      const now = new Date();
+
+      if (nextWakeDate > now) {
+        console.log(`[SCHEDULE] Using stored next_wake_at for device ${deviceId}: ${device.next_wake_at}`);
+        return device.next_wake_at;
+      } else {
+        console.log(`[SCHEDULE] Stored next_wake_at is in the past, recalculating...`);
+      }
+    }
+
+    // Priority 2: Calculate from cron expression
     let cronExpression = device.wake_schedule_cron;
 
     // If no device-level schedule, get from site
@@ -613,7 +632,7 @@ async function calculateNextWakeTime(deviceId) {
       cronExpression = '0 */3 * * *'; // Every 3 hours default
     }
 
-    // Calculate next wake using RPC function
+    // Calculate next wake using RPC function from NOW()
     const { data: nextWake, error: rpcError } = await supabase.rpc('fn_calculate_next_wake', {
       p_cron_expression: cronExpression,
       p_from_timestamp: new Date().toISOString(),
@@ -621,15 +640,15 @@ async function calculateNextWakeTime(deviceId) {
 
     if (rpcError || !nextWake) {
       console.error(`[SCHEDULE] RPC error:`, rpcError);
-      return new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+      return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     }
 
-    console.log(`[SCHEDULE] Next wake for device ${deviceId}: ${nextWake} (cron: ${cronExpression})`);
+    console.log(`[SCHEDULE] Calculated next wake for device ${deviceId}: ${nextWake} (cron: ${cronExpression})`);
     return nextWake;
 
   } catch (error) {
     console.error(`[SCHEDULE] Error calculating next wake:`, error);
-    return new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
   }
 }
 

@@ -312,13 +312,37 @@ export class DeviceService {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Update device record
+      // Calculate next wake time FIRST if wake schedule is changing
+      let nextWakeTime: string | null = null;
+      if (params.wakeScheduleCron !== undefined) {
+        // Calculate from current time (NOW())
+        const { data: calculatedWake, error: rpcError } = await supabase.rpc(
+          'fn_calculate_next_wake',
+          {
+            p_cron_expression: params.wakeScheduleCron,
+            p_from_timestamp: new Date().toISOString() // Calculate from NOW
+          }
+        );
+
+        if (rpcError) {
+          logger.error('Failed to calculate next wake time', rpcError);
+          return { success: false, error: 'Failed to calculate next wake time: ' + rpcError.message };
+        }
+
+        nextWakeTime = calculatedWake || new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(); // 3hr fallback
+        logger.debug('Calculated next wake time from NOW()', { nextWakeTime, cron: params.wakeScheduleCron });
+      }
+
+      // Update device record - include next_wake_at if calculated
       const updates: any = {
         updated_at: new Date().toISOString(),
-        last_updated_by_user_id: user?.id || null, // Track who made change
+        last_updated_by_user_id: user?.id || null,
       };
 
-      if (params.wakeScheduleCron !== undefined) updates.wake_schedule_cron = params.wakeScheduleCron;
+      if (params.wakeScheduleCron !== undefined) {
+        updates.wake_schedule_cron = params.wakeScheduleCron;
+        updates.next_wake_at = nextWakeTime; // Update next wake time in DB
+      }
       if (params.deviceName !== undefined) updates.device_name = params.deviceName;
       if (params.notes !== undefined) updates.notes = params.notes;
 
@@ -333,22 +357,7 @@ export class DeviceService {
       }
 
       // Queue set_wake_schedule command for device IF wake schedule changed
-      if (params.wakeScheduleCron !== undefined) {
-        // Calculate next wake time based on new schedule
-        // Per BrainlyTree protocol: device expects next_wake_time, not cron expression
-        const { data: nextWakeTime, error: rpcError } = await supabase.rpc(
-          'fn_calculate_next_wake',
-          {
-            p_cron_expression: params.wakeScheduleCron,
-            p_from_timestamp: new Date().toISOString()
-          }
-        );
-
-        if (rpcError) {
-          logger.error('Failed to calculate next wake time', rpcError);
-          return { success: false, error: 'Failed to calculate next wake time: ' + rpcError.message };
-        }
-
+      if (params.wakeScheduleCron !== undefined && nextWakeTime) {
         // Queue command with calculated next_wake_time (NOT cron expression)
         const { error: commandError } = await supabase
           .from('device_commands')
@@ -356,9 +365,8 @@ export class DeviceService {
             device_id: params.deviceId,
             command_type: 'set_wake_schedule',
             command_payload: {
-              next_wake_time: nextWakeTime || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
-              // Store cron for reference but device won't use it
-              wake_schedule_cron: params.wakeScheduleCron
+              next_wake_time: nextWakeTime, // Calculated from NOW()
+              wake_schedule_cron: params.wakeScheduleCron // Reference only
             },
             created_by_user_id: user?.id || null,
             notes: 'Wake schedule updated via UI'
@@ -369,7 +377,11 @@ export class DeviceService {
           return { success: false, error: 'Settings updated but command failed: ' + commandError.message };
         }
 
-        logger.debug('Wake schedule command queued with next_wake_time', { nextWakeTime });
+        logger.info('Wake schedule updated in DB and command queued', {
+          deviceId: params.deviceId,
+          nextWakeTime,
+          cron: params.wakeScheduleCron
+        });
       }
 
       logger.info('Device settings updated successfully', params);
