@@ -53,29 +53,53 @@ async function handleMqttMessage(
         // CHUNK message
         await handleChunk(supabase, client, payload as ImageChunk);
 
-        // Check if all chunks received
-        const metadata = payload as ImageChunk;
-        if (metadata.image_name) {
-          // Get total chunks from metadata (stored in buffer during handleMetadata)
-          // For now, we'll check completion after each chunk
-          const totalChunks = 100; // Placeholder - actual value from metadata
-          const complete = await isComplete(supabase, deviceMac, metadata.image_name, totalChunks);
+        // Check if all chunks received - only if we have metadata
+        const chunkPayload = payload as ImageChunk;
+        if (chunkPayload.image_name) {
+          // Get buffer to check if metadata exists
+          const { getBuffer } = await import('./idempotency.ts');
+          const buffer = await getBuffer(supabase, deviceMac, chunkPayload.image_name);
 
-          if (complete) {
-            console.log('[MQTT] All chunks received, finalizing:', metadata.image_name);
-            await finalizeImage(
-              supabase,
-              client,
-              deviceMac,
-              metadata.image_name,
-              totalChunks,
-              config.storage.bucket
-            );
+          if (buffer && buffer.totalChunks > 0) {
+            // We have metadata, check completion
+            const complete = await isComplete(supabase, deviceMac, chunkPayload.image_name, buffer.totalChunks);
+
+            if (complete) {
+              console.log('[MQTT] All chunks received, finalizing:', chunkPayload.image_name);
+              await finalizeImage(
+                supabase,
+                client,
+                deviceMac,
+                chunkPayload.image_name,
+                buffer.totalChunks,
+                config.storage.bucket
+              );
+            }
+          } else {
+            console.log('[MQTT] Chunk received but no metadata yet for:', chunkPayload.image_name);
           }
         }
       } else {
         // METADATA message
         await handleMetadata(supabase, client, payload as ImageMetadata);
+
+        // Check if all chunks already received (out-of-order arrival)
+        const metadataPayload = payload as ImageMetadata;
+        if (metadataPayload.image_name && metadataPayload.total_chunks_count) {
+          const complete = await isComplete(supabase, deviceMac, metadataPayload.image_name, metadataPayload.total_chunks_count);
+
+          if (complete) {
+            console.log('[MQTT] All chunks already received, finalizing:', metadataPayload.image_name);
+            await finalizeImage(
+              supabase,
+              client,
+              deviceMac,
+              metadataPayload.image_name,
+              metadataPayload.total_chunks_count,
+              config.storage.bucket
+            );
+          }
+        }
       }
     }
   } catch (err) {
