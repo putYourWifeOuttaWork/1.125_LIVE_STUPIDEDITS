@@ -101,25 +101,37 @@ const DeviceDetailPage = () => {
   // Calculate next wake estimate if not set but schedule exists
   const getNextWakeDisplay = () => {
     if (device.next_wake_at) {
-      return formatDistanceToNow(new Date(device.next_wake_at), { addSuffix: true });
+      const nextWakeDate = new Date(device.next_wake_at);
+      const now = new Date();
+
+      // If next wake is in the past, show as overdue
+      if (nextWakeDate < now) {
+        return <span className="text-red-600">Overdue ({formatDistanceToNow(nextWakeDate, { addSuffix: true })})</span>;
+      }
+
+      return <span className="text-green-600">{formatDistanceToNow(nextWakeDate, { addSuffix: true })}</span>;
     }
 
     if (device.wake_schedule_cron) {
+      if (!device.is_active) {
+        return <span className="text-amber-600">Activate device to calculate</span>;
+      }
+
       // Simple cron parser for common patterns
       const parts = device.wake_schedule_cron.split(' ');
       if (parts.length === 5) {
         const hours = parts[1];
-        if (hours === '*/3') return 'Every 3 hours (not yet calculated)';
-        if (hours === '*/6') return 'Every 6 hours (not yet calculated)';
-        if (hours === '*/12') return 'Every 12 hours (not yet calculated)';
+        if (hours === '*/3') return <span className="text-gray-600">Every 3 hours (pending first wake)</span>;
+        if (hours === '*/6') return <span className="text-gray-600">Every 6 hours (pending first wake)</span>;
+        if (hours === '*/12') return <span className="text-gray-600">Every 12 hours (pending first wake)</span>;
         if (hours.includes(',')) {
-          return `${hours.split(',').length} times daily (not yet calculated)`;
+          return <span className="text-gray-600">{hours.split(',').length} times daily (pending first wake)</span>;
         }
       }
-      return 'Scheduled (activate device to calculate)';
+      return <span className="text-gray-600">Pending first wake</span>;
     }
 
-    return 'Not scheduled';
+    return <span className="text-gray-400">Not scheduled</span>;
   };
 
   return (
@@ -307,10 +319,18 @@ const DeviceDetailPage = () => {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 mb-1">Next Wake</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="h-4 w-4 text-gray-400" />
+                    <p className="text-sm text-gray-500">Next Wake</p>
+                  </div>
                   <p className="font-medium">
                     {getNextWakeDisplay()}
                   </p>
+                  {device.next_wake_at && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {new Date(device.next_wake_at).toLocaleString()}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Wake Schedule</p>
@@ -337,36 +357,75 @@ const DeviceDetailPage = () => {
             </CardContent>
           </Card>
 
-          {/* Device Statistics Card - NEW */}
+          {/* Device Statistics Card - ENHANCED */}
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Device Statistics</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Device Statistics</h2>
+                {device.last_wake_at && (
+                  <span className="text-xs text-gray-500">
+                    Updated {formatDistanceToNow(new Date(device.last_wake_at), { addSuffix: true })}
+                  </span>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Total Wakes</p>
+                <div className="group transition-all hover:bg-gray-50 p-3 rounded-lg -m-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Activity className="h-4 w-4 text-blue-500" />
+                    <p className="text-sm text-gray-500">Total Wakes</p>
+                  </div>
                   <p className="text-2xl font-bold text-gray-900">
                     {device.total_wakes || 0}
                   </p>
+                  {device.last_wake_at && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Last: {formatDistanceToNow(new Date(device.last_wake_at), { addSuffix: true })}
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Total Alerts</p>
+                <div className="group transition-all hover:bg-gray-50 p-3 rounded-lg -m-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Bell className="h-4 w-4 text-red-500" />
+                    <p className="text-sm text-gray-500">Total Alerts</p>
+                  </div>
                   <p className="text-2xl font-bold text-gray-900">
                     {device.total_alerts || 0}
                   </p>
+                  {device.total_alerts > 0 && (
+                    <p className="text-xs text-red-600 mt-1">
+                      Requires attention
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Images Taken</p>
+                <div className="group transition-all hover:bg-gray-50 p-3 rounded-lg -m-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Camera className="h-4 w-4 text-green-500" />
+                    <p className="text-sm text-gray-500">Images Taken</p>
+                  </div>
                   <p className="text-2xl font-bold text-gray-900">
                     {device.total_images_taken || 0}
                   </p>
+                  {device.total_images_taken > 0 && device.latest_mgi_at && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Latest: {formatDistanceToNow(new Date(device.latest_mgi_at), { addSuffix: true })}
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Expected Images</p>
+                <div className="group transition-all hover:bg-gray-50 p-3 rounded-lg -m-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Image className="h-4 w-4 text-purple-500" />
+                    <p className="text-sm text-gray-500">Expected Images</p>
+                  </div>
                   <p className="text-2xl font-bold text-gray-900">
                     {device.total_images_expected_to_date || 0}
                   </p>
+                  {device.total_images_expected_to_date > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Since {device.mapped_at ? 'mapping' : 'provisioning'}
+                    </p>
+                  )}
                 </div>
               </div>
 
