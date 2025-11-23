@@ -39,6 +39,7 @@ export interface SiteDeviceSession {
   completed_wake_count: number;
   failed_wake_count: number;
   extra_wake_count: number;
+  total_wakes: number;
   status: 'pending' | 'in_progress' | 'locked';
   config_changed_flag: boolean;
   created_at: string;
@@ -82,11 +83,38 @@ export function useSiteDeviceSessions(siteId?: string) {
 
         console.log(`Successfully fetched ${data?.length || 0} device sessions`);
 
-        return (data || []).map((session: any) => ({
-          ...session,
-          site_name: session.sites?.name || 'Unknown Site',
-          program_name: session.pilot_programs?.name || 'Unknown Program',
-        })) as SiteDeviceSession[];
+        // For each session, calculate actual counts from device_wake_payloads
+        const sessionsWithActualCounts = await Promise.all(
+          (data || []).map(async (session: any) => {
+            const { data: payloads } = await supabase
+              .from('device_wake_payloads')
+              .select('payload_status, overage_flag')
+              .eq('site_device_session_id', session.session_id);
+
+            const completed_wake_count = payloads?.filter(
+              (p) => p.payload_status === 'complete' && !p.overage_flag
+            ).length || 0;
+            const failed_wake_count = payloads?.filter(
+              (p) => p.payload_status === 'failed'
+            ).length || 0;
+            const extra_wake_count = payloads?.filter(
+              (p) => p.overage_flag === true
+            ).length || 0;
+            const total_wakes = completed_wake_count + failed_wake_count + extra_wake_count;
+
+            return {
+              ...session,
+              site_name: session.sites?.name || 'Unknown Site',
+              program_name: session.pilot_programs?.name || 'Unknown Program',
+              completed_wake_count,
+              failed_wake_count,
+              extra_wake_count,
+              total_wakes,
+            };
+          })
+        );
+
+        return sessionsWithActualCounts as SiteDeviceSession[];
       } catch (err) {
         console.error('Error in device sessions query:', err);
         throw err;
