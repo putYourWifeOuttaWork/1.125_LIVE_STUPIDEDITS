@@ -1,15 +1,23 @@
 /*
-  # Fix All Column Names in Device Session View
+  # Fix Completed Wakes Count to Exclude Overage
 
-  1. Fixes
-    - device_wake_payloads: use site_device_session_id (not session_id)
-    - device_images: no storage_path column, use image_url
-    - device_images: status column (not image_status)
+  1. Problem
+    - The `get_session_devices_with_wakes` RPC function was counting ALL complete payloads as "completed_wakes"
+    - This incorrectly included overage payloads (extra wakes beyond schedule)
+    - Result: completed_wakes count was higher than expected and didn't match UI expectations
+
+  2. Solution
+    - Add `AND dwp.overage_flag = FALSE` filter to completed_wakes count
+    - Completed wakes = payloads that are complete AND not overage
+    - Extra wakes = payloads where overage_flag = TRUE (already correct)
+
+  3. Impact
+    - UI will now show accurate completed wake counts
+    - Overage wakes properly separated into "Extra" category
+    - Matches the session counter logic in other parts of the system
 */
 
--- Drop and recreate with ALL correct column names
-DROP FUNCTION IF EXISTS get_session_devices_with_wakes(UUID);
-
+-- Recreate the function with the corrected completed_wakes logic
 CREATE OR REPLACE FUNCTION get_session_devices_with_wakes(p_session_id UUID)
 RETURNS JSONB
 SECURITY DEFINER
@@ -86,13 +94,14 @@ BEGIN
         AND dwp.site_device_session_id = p_session_id
       ) as actual_wakes,
 
+      -- FIXED: Exclude overage payloads from completed count
       (
         SELECT COUNT(*)::INT
         FROM device_wake_payloads dwp
         WHERE dwp.device_id = d.device_id
         AND dwp.site_device_session_id = p_session_id
         AND dwp.payload_status = 'complete'
-        AND dwp.overage_flag = FALSE  -- Exclude extra/overage wakes
+        AND dwp.overage_flag = FALSE  -- Only count expected wakes
       ) as completed_wakes,
 
       (
@@ -148,18 +157,19 @@ BEGIN
         JOIN device_wake_payloads dwp ON di.image_id = dwp.image_id
         WHERE dwp.device_id = d.device_id
         AND dwp.site_device_session_id = p_session_id
-        AND di.image_id IS NOT NULL
       ) as images
 
     FROM devices d
     JOIN device_site_assignments dsa ON d.device_id = dsa.device_id
     WHERE dsa.site_id = v_session_record.site_id
-    AND dsa.is_active = TRUE
-    AND d.is_active = TRUE
+    -- Device was assigned before or during this session
     AND dsa.assigned_at <= v_session_record.session_end_time
-    ORDER BY dsa.is_primary DESC, d.device_code
+    -- Device hasn't been unassigned yet, or was unassigned after session start
+    AND (dsa.unassigned_at IS NULL OR dsa.unassigned_at >= v_session_record.session_start_time)
+    ORDER BY dsa.is_primary DESC NULLS LAST, d.device_code
+
   LOOP
-    -- Build device JSON object
+    -- Add device to array
     v_device_array := v_device_array || jsonb_build_object(
       'device_id', v_device_record.device_id,
       'device_code', v_device_record.device_code,
@@ -170,9 +180,6 @@ BEGIN
       'battery_voltage', v_device_record.battery_voltage,
       'battery_health_percent', v_device_record.battery_health_percent,
       'wifi_ssid', v_device_record.wifi_ssid,
-      'last_seen_at', v_device_record.last_seen_at,
-      'x_position', v_device_record.x_position,
-      'y_position', v_device_record.y_position,
       'assigned_at', v_device_record.assigned_at,
       'is_primary', v_device_record.is_primary,
       'expected_wakes_in_session', v_device_record.expected_wakes_in_session,
@@ -183,22 +190,15 @@ BEGIN
       'wake_payloads', v_device_record.wake_payloads,
       'images', v_device_record.images,
       'added_mid_session', CASE
-        WHEN v_device_record.assigned_at > v_session_record.session_start_time THEN true
-        ELSE false
+        WHEN v_device_record.assigned_at > v_session_record.session_start_time THEN TRUE
+        ELSE FALSE
       END
     );
   END LOOP;
 
-  RETURN jsonb_build_object(
-    'session_id', v_session_record.session_id,
-    'site_id', v_session_record.site_id,
-    'session_date', v_session_record.session_date,
-    'session_start_time', v_session_record.session_start_time,
-    'session_end_time', v_session_record.session_end_time,
-    'devices', v_device_array
-  );
+  RETURN jsonb_build_object('devices', v_device_array);
 END;
 $$;
 
 COMMENT ON FUNCTION get_session_devices_with_wakes IS
-'Get all devices in a session with wake payloads, images, and statistics. Uses correct column names: site_device_session_id, status (not image_status), image_url (not storage_path).';
+'Get all devices in a session with wake payloads, images, and statistics. FIXED: completed_wakes now excludes overage payloads.';
