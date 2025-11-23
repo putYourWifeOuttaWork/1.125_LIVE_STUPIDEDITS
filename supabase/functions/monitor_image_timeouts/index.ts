@@ -26,9 +26,9 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log('[Monitor] Starting image timeout check...');
+    console.log('[Monitor] Starting timeout check (120s threshold)...');
 
-    // Step 1: Timeout stale images based on next_wake schedule
+    // Step 1: Timeout stale images (120-second timeout)
     const { data: timedOutImages, error: timeoutError } = await supabase
       .rpc('timeout_stale_images');
 
@@ -39,6 +39,18 @@ Deno.serve(async (req: Request) => {
 
     const results: TimeoutResult[] = timedOutImages || [];
     console.log(`[Monitor] Found ${results.length} images to timeout`);
+
+    // Step 1B: Timeout stale wake payloads (120-second timeout)
+    const { data: timedOutWakes, error: wakeTimeoutError } = await supabase
+      .rpc('timeout_stale_wake_payloads');
+
+    if (wakeTimeoutError) {
+      console.error('[Monitor] Error timing out wake payloads:', wakeTimeoutError);
+      // Don't throw - continue with image processing
+    }
+
+    const wakeResults = timedOutWakes || [];
+    console.log(`[Monitor] Found ${wakeResults.length} wake payloads to timeout`);
 
     // Step 2: Queue retry commands and create history events
     const processedImages: string[] = [];
@@ -124,6 +136,7 @@ Deno.serve(async (req: Request) => {
       success: true,
       summary: {
         images_timed_out: results.length,
+        wake_payloads_timed_out: wakeResults.length,
         retries_queued: processedImages.length,
         failed_to_queue: failedImages.length,
       },
