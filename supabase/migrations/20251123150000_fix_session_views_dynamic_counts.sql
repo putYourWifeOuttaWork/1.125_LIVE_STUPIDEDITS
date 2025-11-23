@@ -16,8 +16,9 @@ SELECT
   sds.status,
   sds.expected_wake_count,
   -- Calculate actual counts from device_wake_payloads (replaces stored values)
+  -- Cast to integer to match original column type
   COALESCE(
-    (SELECT COUNT(*)
+    (SELECT COUNT(*)::integer
      FROM device_wake_payloads dwp
      WHERE dwp.site_device_session_id = sds.session_id
        AND dwp.payload_status = 'complete'
@@ -25,14 +26,14 @@ SELECT
     ), 0
   ) as completed_wake_count,
   COALESCE(
-    (SELECT COUNT(*)
+    (SELECT COUNT(*)::integer
      FROM device_wake_payloads dwp
      WHERE dwp.site_device_session_id = sds.session_id
        AND dwp.payload_status = 'failed'
     ), 0
   ) as failed_wake_count,
   COALESCE(
-    (SELECT COUNT(*)
+    (SELECT COUNT(*)::integer
      FROM device_wake_payloads dwp
      WHERE dwp.site_device_session_id = sds.session_id
        AND dwp.overage_flag = true
