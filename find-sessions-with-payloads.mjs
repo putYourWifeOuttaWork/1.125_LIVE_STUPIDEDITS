@@ -9,30 +9,43 @@ const supabase = createClient(
   process.env.VITE_SUPABASE_SERVICE_ROLE_KEY
 );
 
-async function findSessionsWithPayloads() {
-  console.log('=== Finding Sessions with Actual Payloads ===\n');
+async function findSessions() {
+  console.log('=== Finding All Sessions with Payloads ===\n');
 
-  // Get all payloads with their session info
-  const { data: payloads } = await supabase
+  // Get all payloads
+  const { data: allPayloads } = await supabase
     .from('device_wake_payloads')
-    .select('site_device_session_id, captured_at, payload_status')
-    .order('captured_at', { ascending: false })
-    .limit(100);
+    .select('site_device_session_id, payload_status, overage_flag')
+    .order('captured_at', { ascending: false });
 
-  console.log(`Total payloads in database: ${payloads?.length || 0}\n`);
+  console.log(`Total payloads in database: ${allPayloads?.length || 0}\n`);
 
   // Group by session
   const sessionMap = {};
-  payloads?.forEach(p => {
+  allPayloads?.forEach(p => {
     if (!sessionMap[p.site_device_session_id]) {
-      sessionMap[p.site_device_session_id] = { complete: 0, pending: 0, failed: 0 };
+      sessionMap[p.site_device_session_id] = {
+        complete_not_overage: 0,
+        complete_overage: 0,
+        failed: 0,
+        pending: 0,
+        total: 0
+      };
     }
-    sessionMap[p.site_device_session_id][p.payload_status]++;
+    sessionMap[p.site_device_session_id].total++;
+    if (p.payload_status === 'complete' && !p.overage_flag) {
+      sessionMap[p.site_device_session_id].complete_not_overage++;
+    }
+    if (p.payload_status === 'complete' && p.overage_flag) {
+      sessionMap[p.site_device_session_id].complete_overage++;
+    }
+    if (p.payload_status === 'failed') sessionMap[p.site_device_session_id].failed++;
+    if (p.payload_status === 'pending') sessionMap[p.site_device_session_id].pending++;
   });
 
-  console.log('Sessions with payloads:');
+  console.log('Sessions with payloads:\n');
+
   for (const [sessionId, counts] of Object.entries(sessionMap)) {
-    // Get session details
     const { data: session } = await supabase
       .from('site_device_sessions')
       .select('session_date, expected_wake_count, completed_wake_count, sites(name)')
@@ -40,17 +53,33 @@ async function findSessionsWithPayloads() {
       .single();
 
     if (session) {
-      const total = counts.complete + counts.pending + counts.failed;
-      console.log(`\n${session.sites?.name} - ${session.session_date}`);
+      console.log(`${session.sites?.name || 'Unknown'} - ${session.session_date}`);
+      console.log(`  Session ID: ${sessionId}`);
       console.log(`  Expected: ${session.expected_wake_count}`);
-      console.log(`  Actual payloads: ${total} (${counts.complete} complete, ${counts.pending} pending, ${counts.failed} failed)`);
-      console.log(`  Stored counter: ${session.completed_wake_count} ⬅️ Should match ${counts.complete}`);
-      
-      if (session.completed_wake_count !== counts.complete) {
-        console.log(`  ⚠️  MISMATCH! Needs update.`);
+      console.log(`  Stored completed_wake_count: ${session.completed_wake_count}`);
+      console.log(`  Actual payloads:`);
+      console.log(`    Total: ${counts.total}`);
+      console.log(`    Complete (not overage): ${counts.complete_not_overage} ⬅️ Should match UI "Completed"`);
+      console.log(`    Complete (overage): ${counts.complete_overage} ⬅️ Should be UI "Extra"`);
+      console.log(`    Failed: ${counts.failed}`);
+      console.log(`    Pending: ${counts.pending}`);
+      console.log('');
+
+      // Now test RPC for this session
+      const { data: rpcData, error } = await supabase.rpc('get_session_devices_with_wakes', {
+        p_session_id: sessionId
+      });
+
+      if (!error && rpcData?.devices) {
+        const rpcCompleted = rpcData.devices.reduce((sum, d) => sum + d.completed_wakes, 0);
+        const rpcExtra = rpcData.devices.reduce((sum, d) => sum + d.extra_wakes, 0);
+        console.log(`  RPC returns:`);
+        console.log(`    Completed: ${rpcCompleted} ${rpcCompleted !== counts.complete_not_overage ? '❌ MISMATCH' : '✅'}`);
+        console.log(`    Extra: ${rpcExtra} ${rpcExtra !== counts.complete_overage ? '❌ MISMATCH' : '✅'}`);
+        console.log('');
       }
     }
   }
 }
 
-findSessionsWithPayloads().then(() => setTimeout(() => process.exit(0), 2000)).catch(console.error);
+findSessions().then(() => process.exit(0)).catch(console.error);
