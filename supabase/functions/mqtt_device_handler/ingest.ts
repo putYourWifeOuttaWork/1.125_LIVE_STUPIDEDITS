@@ -186,11 +186,16 @@ export async function handleHelloStatus(
       // Get active session for context
       let sessionId = null;
       if (lineageData?.site_id) {
-        const { data: sessionData } = await supabase.rpc(
-          'fn_get_active_session_for_site',
-          { p_site_id: lineageData.site_id }
-        );
-        sessionId = sessionData;
+        const { data: sessionData } = await supabase
+          .from('site_device_sessions')
+          .select('session_id')
+          .eq('site_id', lineageData.site_id)
+          .in('status', ['pending', 'in_progress'])
+          .eq('session_date', new Date().toISOString().split('T')[0])
+          .order('session_start_time', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        sessionId = sessionData?.session_id || null;
       }
 
       // Create consolidated wake_payload record
@@ -388,11 +393,16 @@ export async function handleMetadata(
       // Get active session for context
       let sessionId = null;
       if (lineageData.site_id) {
-        const { data: sessionData } = await supabase.rpc(
-          'fn_get_active_session_for_site',
-          { p_site_id: lineageData.site_id }
-        );
-        sessionId = sessionData;
+        const { data: sessionData } = await supabase
+          .from('site_device_sessions')
+          .select('session_id')
+          .eq('site_id', lineageData.site_id)
+          .in('status', ['pending', 'in_progress'])
+          .eq('session_date', new Date().toISOString().split('T')[0])
+          .order('session_start_time', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        sessionId = sessionData?.session_id || null;
       }
 
       const { error: telemetryError } = await supabase
@@ -560,11 +570,16 @@ export async function handleTelemetryOnly(
     // Get active session for the site (if exists)
     let sessionId = null;
     if (lineageData.site_id) {
-      const { data: sessionData } = await supabase.rpc(
-        'fn_get_active_session_for_site',
-        { p_site_id: lineageData.site_id }
-      );
-      sessionId = sessionData;
+      const { data: sessionData } = await supabase
+        .from('site_device_sessions')
+        .select('session_id')
+        .eq('site_id', lineageData.site_id)
+        .in('status', ['pending', 'in_progress'])
+        .eq('session_date', new Date().toISOString().split('T')[0])
+        .order('session_start_time', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      sessionId = sessionData?.session_id || null;
     }
 
     // Insert into device_telemetry table with FULL CONTEXT
