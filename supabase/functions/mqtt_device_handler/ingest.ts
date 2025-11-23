@@ -439,7 +439,10 @@ export async function handleMetadata(
     );
 
     buffer.metadata = payload;
-    buffer.imageRecord = { image_id: result.image_id };
+    buffer.imageRecord = {
+      image_id: result.image_id,
+      wake_payload_id: result.payload_id  // Link to wake payload for finalization
+    };
     buffer.payloadId = result.payload_id;
     buffer.sessionInfo = { session_id: result.session_id };
   } catch (err) {
