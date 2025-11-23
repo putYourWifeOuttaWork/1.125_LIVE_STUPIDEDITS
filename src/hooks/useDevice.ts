@@ -171,16 +171,45 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
 
       logger.debug('Fetching device', { deviceId });
 
-      const { data, error } = await supabase
+      // First get the device
+      const { data: deviceData, error: deviceError } = await supabase
         .from('devices')
+        .select('*')
+        .eq('device_id', deviceId)
+        .or('device_type.is.null,device_type.neq.virtual') // Show physical devices (null or not virtual)
+        .maybeSingle();
+
+      if (deviceError) {
+        logger.error('Error fetching device:', deviceError);
+        throw deviceError;
+      }
+
+      if (!deviceData) {
+        throw new Error('Device not found');
+      }
+
+      // Get active site assignment from junction table (source of truth)
+      const { data: siteAssignment } = await supabase
+        .from('device_site_assignments')
         .select(`
-          *,
+          site_id,
+          program_id,
           sites:site_id (
             site_id,
             name,
             type,
             program_id
-          ),
+          )
+        `)
+        .eq('device_id', deviceId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      // Get active program assignment from junction table (source of truth)
+      const { data: programAssignment } = await supabase
+        .from('device_program_assignments')
+        .select(`
+          program_id,
           pilot_programs:program_id (
             program_id,
             name,
@@ -188,19 +217,17 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
           )
         `)
         .eq('device_id', deviceId)
-        .or('device_type.is.null,device_type.neq.virtual') // Show physical devices (null or not virtual)
+        .eq('is_active', true)
         .maybeSingle();
 
-      if (error) {
-        logger.error('Error fetching device:', error);
-        throw error;
-      }
+      // Combine device data with junction table assignments
+      const data = {
+        ...deviceData,
+        sites: siteAssignment?.sites || null,
+        pilot_programs: programAssignment?.pilot_programs || null
+      };
 
-      if (!data) {
-        throw new Error('Device not found');
-      }
-
-      logger.debug('Device fetched successfully');
+      logger.debug('Device fetched successfully with junction table data');
       return data as Device;
     },
     enabled: !!deviceId,
