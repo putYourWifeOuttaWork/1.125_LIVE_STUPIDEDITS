@@ -98,6 +98,7 @@ export async function finalizeImage(
 
     // Calculate next wake time using device's schedule
     let nextWake: string;
+    let deviceId: string | null = null;
 
     if (result.next_wake_at) {
       // Use value from SQL handler if provided
@@ -110,11 +111,29 @@ export async function finalizeImage(
 
       if (lineageData?.wake_schedule_cron) {
         nextWake = calculateNextWake(lineageData.wake_schedule_cron);
+        deviceId = lineageData.device_id;
         console.log('[Finalize] Calculated next wake from cron:', nextWake);
       } else {
         // Fallback: 12 hours from now
         nextWake = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
         console.warn('[Finalize] No wake schedule found, using 12h fallback');
+      }
+    }
+
+    // PHASE 4: Update devices.next_wake_at for UI display
+    if (deviceId || buffer.imageRecord.device_id) {
+      const { error: nextWakeError } = await supabase
+        .from('devices')
+        .update({
+          next_wake_at: nextWake,
+          last_wake_at: new Date().toISOString(),
+        })
+        .eq('device_id', deviceId || buffer.imageRecord.device_id);
+
+      if (nextWakeError) {
+        console.error('[Finalize] Error updating next_wake_at:', nextWakeError);
+      } else {
+        console.log('[Finalize] Updated next_wake_at:', nextWake);
       }
     }
 
