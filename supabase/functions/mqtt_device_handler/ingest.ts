@@ -199,6 +199,7 @@ export async function handleHelloStatus(
       }
 
       // Create consolidated wake_payload record
+      // A wake is complete as soon as device transmits (regardless of image status)
       const { data: wakePayload, error: wakeError } = await supabase
         .from('device_wake_payloads')
         .insert({
@@ -217,9 +218,9 @@ export async function handleHelloStatus(
           wifi_rssi: payload.wifi_rssi,
           telemetry_data: payload, // Store full JSONB payload
           wake_type: 'hello', // HELLO message type
-          payload_status: 'pending', // Will be updated when image completes
+          payload_status: 'complete', // Device woke up and transmitted - wake is complete
           overage_flag: false,
-          is_complete: false,
+          is_complete: true, // Wake event completed successfully
         })
         .select('payload_id')
         .single();
@@ -228,7 +229,7 @@ export async function handleHelloStatus(
         console.error('[Ingest] Error creating wake_payload:', wakeError);
         // Continue - wake tracking is supplementary
       } else {
-        console.log('[Ingest] Wake payload created:', wakePayload?.payload_id);
+        console.log('[Ingest] Wake payload created and marked complete:', wakePayload?.payload_id);
       }
 
       // Create historical telemetry record for battery & wifi tracking (legacy system)

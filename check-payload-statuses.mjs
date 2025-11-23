@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
@@ -8,61 +9,83 @@ const supabase = createClient(
   process.env.VITE_SUPABASE_SERVICE_ROLE_KEY
 );
 
-async function check() {
-  console.log('\n=== Wake Payload Status Breakdown ===\n');
+async function checkPayloads() {
+  console.log('=== Analyzing Wake Payload Statuses ===\n');
 
-  const { data: statuses } = await supabase
+  // Get all payloads with their status
+  const { data: payloads, error } = await supabase
     .from('device_wake_payloads')
-    .select('payload_status')
-    .gte('captured_at', '2025-11-20');
+    .select('payload_id, payload_status, image_id, image_status, captured_at, received_at, created_at')
+    .order('created_at', { ascending: false })
+    .limit(50);
 
-  if (statuses) {
-    const counts = statuses.reduce((acc, s) => {
-      acc[s.payload_status] = (acc[s.payload_status] || 0) + 1;
-      return acc;
-    }, {});
-
-    console.log('Status counts since Nov 20:');
-    console.log(counts);
+  if (error) {
+    console.error('Error:', error);
+    return;
   }
 
-  // Check if ANY have image_id set
-  const { data: withImage } = await supabase
-    .from('device_wake_payloads')
-    .select('payload_id, image_id, payload_status, image_status')
-    .gte('captured_at', '2025-11-20')
-    .not('image_id', 'is', null)
-    .limit(5);
+  // Group by status
+  const statusCounts = {
+    pending: 0,
+    complete: 0,
+    failed: 0,
+    null_or_other: 0
+  };
 
-  console.log('\nWake payloads WITH image_id:', withImage?.length || 0);
-  if (withImage && withImage.length > 0) {
-    withImage.forEach(w => {
-      console.log(`  - payload: ${w.payload_status}, image: ${w.image_status}`);
+  const statusDetails = {
+    pending: [],
+    complete: [],
+    failed: []
+  };
+
+  payloads.forEach(p => {
+    const status = p.payload_status || 'null_or_other';
+    if (statusCounts[status] !== undefined) {
+      statusCounts[status]++;
+      statusDetails[status]?.push(p);
+    } else {
+      statusCounts.null_or_other++;
+    }
+  });
+
+  console.log(`Total payloads analyzed: ${payloads.length}\n`);
+  console.log('Status Distribution:');
+  console.log(`  pending: ${statusCounts.pending}`);
+  console.log(`  complete: ${statusCounts.complete}`);
+  console.log(`  failed: ${statusCounts.failed}`);
+  console.log(`  null/other: ${statusCounts.null_or_other}\n`);
+
+  // Analyze pending payloads
+  if (statusCounts.pending > 0) {
+    console.log('=== PENDING PAYLOADS ANALYSIS ===');
+    console.log(`Found ${statusCounts.pending} pending payloads. Checking what they are waiting for...\n`);
+    
+    statusDetails.pending.slice(0, 5).forEach(p => {
+      const age = (new Date() - new Date(p.created_at)) / 1000 / 60; // minutes
+      console.log(`Payload ${p.payload_id.substring(0, 8)}...`);
+      console.log(`  Created: ${p.created_at}`);
+      console.log(`  Age: ${Math.round(age)} minutes`);
+      console.log(`  Captured at: ${p.captured_at || 'NULL'}`);
+      console.log(`  Received at: ${p.received_at || 'NULL'}`);
+      console.log(`  Has image_id: ${p.image_id ? 'YES' : 'NO'}`);
+      console.log(`  Image status: ${p.image_status || 'NULL'}`);
+      console.log('');
     });
   }
 
-  // Check images that should have completed
-  const { data: completeImages } = await supabase
-    .from('device_images')
-    .select('image_id, status')
-    .eq('status', 'complete')
-    .gte('created_at', '2025-11-20')
-    .limit(3);
-
-  console.log('\nComplete images:', completeImages?.length || 0);
-
-  if (completeImages && completeImages.length > 0) {
-    for (const img of completeImages) {
-      const { data: wake } = await supabase
-        .from('device_wake_payloads')
-        .select('payload_id, payload_status')
-        .eq('image_id', img.image_id)
-        .maybeSingle();
-
-      console.log(`  Image ${img.image_id.substring(0, 8)}... →`, 
-        wake ? `Wake ${wake.payload_status}` : 'NO WAKE FOUND');
-    }
-  }
+  console.log('\n=== ISSUE ANALYSIS ===');
+  console.log('You are correct: A wake either happened or it did not.');
+  console.log('The payload_status field should be:');
+  console.log('  - "complete" when device woke up and transmitted (regardless of image status)');
+  console.log('  - "failed" when device was expected to wake but did not');
+  console.log('');
+  console.log('Current problem: Payloads are stuck in "pending" state.');
+  console.log('This likely means:');
+  console.log('  1. MQTT handler creates payload as "pending" when device first transmits');
+  console.log('  2. Handler should mark it "complete" when transmission finishes');
+  console.log('  3. Timeout system should mark it "failed" if device never wakes');
+  console.log('');
+  console.log('The logic to mark payloads "complete" may be missing or broken.');
 }
 
-check();
+checkPayloads().then(() => process.exit(0)).catch(console.error);
