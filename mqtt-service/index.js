@@ -223,17 +223,18 @@ async function handleStatusMessage(payload, client) {
 
   if (pendingCount === 0) {
     try {
-      const nextWakeTime = await calculateNextWakeTime(device.device_id);
+      // Get next wake time in ISO format (don't convert to simple time)
+      const nextWakeISO = await calculateNextWakeISO(device.device_id);
       const ackMessage = {
         device_id: deviceMac,
         ACK_OK: {
-          next_wake_time: nextWakeTime
+          next_wake_time: nextWakeISO  // Send full ISO timestamp
         }
       };
 
       const ackTopic = `device/${deviceMac}/ack`;
       client.publish(ackTopic, JSON.stringify(ackMessage));
-      console.log(`[ACK] Sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeTime}`);
+      console.log(`[ACK] Sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeISO}`);
     } catch (ackError) {
       console.error(`[ERROR] Failed to send ACK_OK:`, ackError);
     }
@@ -599,6 +600,82 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
 }
 
 /**
+ * Calculate next wake time for device in ISO format
+ * Returns full ISO 8601 timestamp (e.g., "2025-11-23T12:00:00.000Z")
+ */
+async function calculateNextWakeISO(deviceId) {
+  try {
+    const { data: device, error } = await supabase
+      .from('devices')
+      .select('wake_schedule_cron, site_id, next_wake_at')
+      .eq('device_id', deviceId)
+      .maybeSingle();
+
+    if (error || !device) {
+      console.log(`[SCHEDULE] Device ${deviceId} not found, using default 3h`);
+      const fallbackTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+      return fallbackTime.toISOString();
+    }
+
+    // Priority 1: Use stored next_wake_at if it exists and is in the future
+    if (device.next_wake_at) {
+      const nextWakeDate = new Date(device.next_wake_at);
+      const now = new Date();
+
+      if (nextWakeDate > now) {
+        console.log(`[SCHEDULE] Using stored next_wake_at for device ${deviceId}: ${device.next_wake_at}`);
+        return device.next_wake_at;
+      } else {
+        console.log(`[SCHEDULE] Stored next_wake_at is in the past, recalculating...`);
+      }
+    }
+
+    // Priority 2: Calculate from cron expression if needed
+    let cronExpression = device.wake_schedule_cron;
+
+    // If no device-level schedule, get from site
+    if (!cronExpression && device.site_id) {
+      const { data: site } = await supabase
+        .from('sites')
+        .select('wake_schedule_cron')
+        .eq('site_id', device.site_id)
+        .maybeSingle();
+
+      cronExpression = site?.wake_schedule_cron;
+    }
+
+    if (cronExpression) {
+      const { data: nextWake, error: rpcError } = await supabase.rpc(
+        'fn_calculate_next_wake_time',
+        {
+          p_last_wake_at: new Date().toISOString(),
+          p_cron_expression: cronExpression,
+          p_timezone: 'UTC'
+        }
+      );
+
+      if (rpcError || !nextWake) {
+        console.error(`[SCHEDULE] RPC error:`, rpcError);
+        const fallbackTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+        return fallbackTime.toISOString();
+      }
+
+      console.log(`[SCHEDULE] Calculated next wake for device ${deviceId}: ${nextWake}`);
+      return nextWake;
+    }
+
+    // Priority 3: Fallback to default 3 hours
+    const fallbackTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    return fallbackTime.toISOString();
+
+  } catch (error) {
+    console.error(`[SCHEDULE] Error calculating next wake:`, error);
+    const fallbackTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    return fallbackTime.toISOString();
+  }
+}
+
+/**
  * Convert ISO 8601 timestamp to simple time format for device
  * Per BrainlyTree PDF spec: device expects "11:00PM" format in UTC
  * IMPORTANT: Device expects UTC time, NOT local time
@@ -823,9 +900,13 @@ function connectToMQTT() {
 
         // Process locally (full protocol implementation - sends MQTT commands to devices)
         if (topic.includes('/ack') && commandQueueProcessor) {
-          // Handle command acknowledgment
-          const deviceMac = topic.split('/')[1];
-          await commandQueueProcessor.handleCommandAck(deviceMac, payload);
+          // Only process device command acknowledgments, not our own ACK_OK messages
+          // Device ACKs have command_id or specific command fields
+          // Our ACK_OK messages have ACK_OK field
+          if (!payload.ACK_OK && !payload.missing_chunks) {
+            const deviceMac = topic.split('/')[1];
+            await commandQueueProcessor.handleCommandAck(deviceMac, payload);
+          }
         } else if (topic.includes('/status')) {
           const result = await handleStatusMessage(payload, client);
           if (result && result.pendingCount > 0) {
