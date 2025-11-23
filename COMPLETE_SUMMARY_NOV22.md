@@ -23,7 +23,7 @@ Two different assignment code paths existed:
 Result: 6 devices (LAB001-005, TEST-DEVICE-002) have incomplete junction records.
 
 #### Solution Created
-**Migration file:** `/tmp/migration-fix-junction.sql`
+**Migration file:** `supabase/migrations/20251122140000_fix_junction_table_assignment_system.sql`
 
 Makes junction tables the source of truth:
 - Fixes `fn_assign_device_to_site` to create junction records
@@ -39,7 +39,7 @@ Makes junction tables the source of truth:
 
 1. **View the SQL:**
    ```bash
-   cat /tmp/migration-fix-junction.sql
+   cat supabase/migrations/20251122140000_fix_junction_table_assignment_system.sql
    ```
 
 2. **Copy all of it**
@@ -81,7 +81,7 @@ Makes junction tables the source of truth:
 - `FIXES_APPLIED_NOV22.md` - Summary doc
 
 **Migration:**
-- `/tmp/migration-fix-junction.sql` - The migration to apply
+- `supabase/migrations/20251122140000_fix_junction_table_assignment_system.sql` - The migration to apply
 
 **Verification:**
 - `verify-junction-fix.mjs` - Run after migration

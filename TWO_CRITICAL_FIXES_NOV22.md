@@ -12,14 +12,14 @@
 
 1. **View the migration SQL:**
    ```bash
-   cat /tmp/migration-fix-junction.sql
+   cat supabase/migrations/20251122140000_fix_junction_table_assignment_system.sql
    ```
 
 2. **Apply in Supabase Dashboard:**
    - Open Supabase project dashboard
    - Navigate to SQL Editor
    - Click New Query
-   - Copy/paste entire migration
+   - Copy/paste entire migration from above file
    - Click Run
 
 3. **Verify:**
@@ -39,4 +39,4 @@
 ✅ No data loss
 ✅ Maps look identical
 
-**Files:** `/tmp/migration-fix-junction.sql` | `verify-junction-fix.mjs` | `ASSIGNMENT_SYSTEM_AUDIT.md`
+**Files:** `supabase/migrations/20251122140000_fix_junction_table_assignment_system.sql` | `verify-junction-fix.mjs` | `ASSIGNMENT_SYSTEM_AUDIT.md`
