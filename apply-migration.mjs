@@ -1,72 +1,31 @@
-import { createClient } from '@supabase/supabase-js';
+import pg from 'pg';
 import { readFileSync } from 'fs';
-import { config } from 'dotenv';
+import dotenv from 'dotenv';
 
-// Load environment variables
-config({ path: '/tmp/cc-agent/51386994/project/.env' });
+dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Construct Supabase database URL
+const dbUrl = `postgresql://postgres.jycxolmevsvrxmeinxff:${process.env.SUPABASE_DB_PASSWORD}@aws-0-us-east-1.pooler.supabase.com:6543/postgres`;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing Supabase credentials');
-  process.exit(1);
-}
+const client = new pg.Client({ connectionString: dbUrl });
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
-
-console.log('🚀 Applying snapshot cadence migration...\n');
-
-// Read migration file
-const migrationSQL = readFileSync('/tmp/snapshot_cadence_migration.sql', 'utf8');
-
-// Split into individual statements (rough split)
-const statements = migrationSQL
-  .split(/;\s*$$/m)
-  .map(s => s.trim())
-  .filter(s => s.length > 0 && !s.startsWith('--') && !s.startsWith('/*'));
-
-console.log(`Found ${statements.length} SQL statements to execute\n`);
-
-// Execute via Supabase SQL editor endpoint
-const response = await fetch(`${supabaseUrl}/rest/v1/rpc/exec`, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'apikey': supabaseServiceKey,
-    'Authorization': `Bearer ${supabaseServiceKey}`
-  },
-  body: JSON.stringify({ query: migrationSQL })
-});
-
-if (!response.ok) {
-  const error = await response.text();
-  console.error('❌ Migration failed:', error);
+try {
+  await client.connect();
+  console.log('✅ Connected to Supabase database');
   
-  // Try alternative: use pg client
-  console.log('\n⚠️  Direct execution failed. Saving migration file for manual execution.');
-  console.log('📝 Migration saved to: /tmp/snapshot_cadence_migration.sql');
-  console.log('\n📋 To apply manually:');
-  console.log('   1. Go to Supabase Dashboard > SQL Editor');
-  console.log('   2. Copy contents from /tmp/snapshot_cadence_migration.sql');
-  console.log('   3. Execute in SQL editor');
+  const sql = readFileSync('/tmp/phase3_part1_triggers.sql', 'utf8');
+  console.log('📋 Executing Phase 3 Part 1 (Triggers)...\n');
+  
+  const result = await client.query(sql);
+  console.log('✅ Triggers created successfully!');
+  console.log('  - trg_increment_wake_count');
+  console.log('  - trg_increment_image_count');
+  console.log('  - trg_increment_alert_count');
+  
+} catch (error) {
+  console.error('❌ Error:', error.message);
+  console.error(error);
   process.exit(1);
+} finally {
+  await client.end();
 }
-
-console.log('✅ Migration applied successfully!\n');
-console.log('📋 Summary:');
-console.log('  - Added snapshot_cadence_per_day column to sites table');
-console.log('  - Created get_next_snapshot_time() function');
-console.log('  - Created is_snapshot_due() function');  
-console.log('  - Created generate_scheduled_snapshots() function');
-console.log('  - Added indexes for performance');
-console.log('\n⚠️  Next Steps:');
-console.log('  1. Set up pg_cron job in Supabase Dashboard');
-console.log('  2. Add UI controls for snapshot cadence');
-console.log('  3. Test snapshot generation');
-
