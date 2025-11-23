@@ -217,7 +217,29 @@ async function handleStatusMessage(payload, client) {
   // Send any pending commands to the device
   await sendPendingCommands(device, client);
 
-  return { device, pendingCount: payload.pendingImg || 0 };
+  // Per ESP32-CAM architecture: Send ACK_OK with next_wake_time for HELLO messages
+  // If device has no pending images, it expects an ACK to know when to wake next
+  const pendingCount = payload.pendingImg || payload.pending_count || 0;
+
+  if (pendingCount === 0) {
+    try {
+      const nextWakeTime = await calculateNextWakeTime(device.device_id);
+      const ackMessage = {
+        device_id: deviceMac,
+        ACK_OK: {
+          next_wake_time: nextWakeTime
+        }
+      };
+
+      const ackTopic = `device/${deviceMac}/ack`;
+      client.publish(ackTopic, JSON.stringify(ackMessage));
+      console.log(`[ACK] Sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeTime}`);
+    } catch (ackError) {
+      console.error(`[ERROR] Failed to send ACK_OK:`, ackError);
+    }
+  }
+
+  return { device, pendingCount };
 }
 
 async function handleMetadataMessage(payload, client) {
