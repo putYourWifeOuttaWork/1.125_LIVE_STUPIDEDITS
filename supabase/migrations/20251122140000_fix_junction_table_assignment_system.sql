@@ -260,9 +260,15 @@ DECLARE
 BEGIN
   RAISE NOTICE 'Starting backfill of missing junction table records...';
 
-  -- Temporarily disable the log_device_assignment_history trigger to avoid conflicts
-  ALTER TABLE device_site_assignments DISABLE TRIGGER log_device_assignment_history;
-  RAISE NOTICE 'Temporarily disabled log_device_assignment_history trigger';
+  -- Temporarily disable the trigger_log_device_assignment trigger to avoid conflicts
+  -- Use IF EXISTS logic to handle case where trigger may not exist
+  BEGIN
+    ALTER TABLE device_site_assignments DISABLE TRIGGER trigger_log_device_assignment;
+    RAISE NOTICE 'Temporarily disabled trigger_log_device_assignment trigger';
+  EXCEPTION
+    WHEN undefined_object THEN
+      RAISE NOTICE 'Trigger trigger_log_device_assignment does not exist, skipping disable';
+  END;
 
   FOR v_device IN
     SELECT
@@ -309,8 +315,13 @@ BEGIN
   END LOOP;
 
   -- Re-enable the trigger
-  ALTER TABLE device_site_assignments ENABLE TRIGGER log_device_assignment_history;
-  RAISE NOTICE 'Re-enabled log_device_assignment_history trigger';
+  BEGIN
+    ALTER TABLE device_site_assignments ENABLE TRIGGER trigger_log_device_assignment;
+    RAISE NOTICE 'Re-enabled trigger_log_device_assignment trigger';
+  EXCEPTION
+    WHEN undefined_object THEN
+      RAISE NOTICE 'Trigger trigger_log_device_assignment does not exist, skipping enable';
+  END;
 
   RAISE NOTICE 'Backfill complete. Created junction records for % devices', v_backfill_count;
 END $$;
