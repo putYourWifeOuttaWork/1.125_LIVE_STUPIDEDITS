@@ -39,7 +39,6 @@ export interface SiteDeviceSession {
   completed_wake_count: number;
   failed_wake_count: number;
   extra_wake_count: number;
-  total_wakes: number;
   status: 'pending' | 'in_progress' | 'locked';
   config_changed_flag: boolean;
   created_at: string;
@@ -100,7 +99,6 @@ export function useSiteDeviceSessions(siteId?: string) {
             const extra_wake_count = payloads?.filter(
               (p) => p.overage_flag === true
             ).length || 0;
-            const total_wakes = completed_wake_count + failed_wake_count + extra_wake_count;
 
             return {
               ...session,
@@ -109,7 +107,6 @@ export function useSiteDeviceSessions(siteId?: string) {
               completed_wake_count,
               failed_wake_count,
               extra_wake_count,
-              total_wakes,
             };
           })
         );
