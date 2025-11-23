@@ -205,7 +205,7 @@ BEGIN
   PERFORM cron.schedule(
     'recalculate-expected-images',
     '0 0 * * *',
-    $$SELECT recalculate_expected_images()$$
+    $CRON$SELECT recalculate_expected_images()$CRON$
   );
   RAISE NOTICE 'Scheduled recalculate_expected_images to run daily at midnight UTC';
 EXCEPTION
