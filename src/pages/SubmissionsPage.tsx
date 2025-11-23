@@ -737,17 +737,9 @@ const SubmissionsPage = () => {
       ) : (
         <div className="space-y-3 md:space-y-4" data-testid="submissions-list">
           {filteredSubmissions.map(submission => {
-            // Render device submission card
-            if (submission.submission_type === 'device' && submission.device_submission) {
-              return (
-                <DeviceSubmissionCard
-                  key={submission.submission_id}
-                  submission={submission.device_submission}
-                  programId={programId || ''}
-                  siteId={siteId || ''}
-                  testId={`device-submission-card-${submission.submission_id}`}
-                />
-              );
+            // Skip device submissions - they're already shown in Device Session History above
+            if (submission.submission_type === 'device') {
+              return null;
             }
 
             // Render manual submission card

@@ -1268,7 +1268,7 @@ const SiteDeviceSessionDetailPage = () => {
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/programs/${programId}/devices/${device.device_id}`);
+                              navigate(`/devices/${device.device_id}`);
                             }}
                             className="text-blue-600 hover:text-blue-700"
                           >
