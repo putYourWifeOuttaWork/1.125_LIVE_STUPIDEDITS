@@ -1,109 +1,153 @@
-# ✅ Migration Complete - November 23, 2025
+# ✅ Complete Migration Summary - Nov 23, 2025
 
-## Status: SUCCESS
+## Issues Fixed Today
 
-The junction table assignment system migration has been successfully applied!
+### 1. ✅ Database Trigger Format() Error
+**Problem:** `populate_device_data_company_id()` trigger was failing  
+**Root Cause:** Missing TRY-EXCEPT blocks for optional columns  
+**Fix Applied:** Added exception handling for all 4 context columns  
+**Status:** ✅ Verified working via direct SQL test
 
----
+### 2. ✅ Edge Function RPC Error  
+**Problem:** Telemetry inserts failing with format() error  
+**Root Cause:** Edge function calling non-existent `fn_get_active_session_for_site()`  
+**Fix Applied:** Replaced RPC calls with direct Supabase queries  
+**File:** `supabase/functions/mqtt_device_handler/ingest.ts`  
+**Status:** ⏳ **Needs deployment via Supabase Dashboard**
 
-## What Was Fixed
+### 3. 🔧 Session Roll-Up Counters Missing
+**Problem:** Session wake counts showing 0 despite multiple device wakes  
+**Root Cause:** No triggers to increment `site_device_sessions` counters  
+**Fix Created:** New migration with session roll-up triggers  
+**File:** `session-rollup-triggers.sql`  
+**Status:** ⏳ **Ready to apply**
 
-### Problem
-Site Template device assignments were only updating the `devices` table without creating junction table records, causing:
-- Missing data in Programs tab
-- Incorrect Assignment card display
-- Incomplete session analytics
+## Action Items
 
-### Solution Applied
-Migration `20251122140000_fix_junction_table_assignment_system.sql` successfully:
+### Priority 1: Deploy Edge Function
+Deploy the updated MQTT handler to fix telemetry inserts:
 
-1. ✅ **Fixed `fn_assign_device_to_site`**
-   - Now creates `device_site_assignments` records
-   - Now creates `device_program_assignments` records
-   - Properly deactivates old assignments
+1. Go to Supabase Dashboard → Edge Functions
+2. Find `mqtt_device_handler`
+3. Click Deploy/Update
+4. Wait for completion
 
-2. ✅ **Fixed `fn_remove_device_from_site`**
-   - Now deactivates junction table records
-   - Maintains complete audit trail
+**Expected Result:** Device telemetry records created successfully
 
-3. ✅ **Created Auto-Sync Triggers**
-   - `trg_sync_device_site` - Syncs devices.site_id from junction
-   - `trg_sync_device_program` - Syncs devices.program_id from junction
+### Priority 2: Apply Session Roll-Up Migration
+Run the SQL file in Supabase Dashboard SQL Editor:
 
-4. ✅ **Backfilled Missing Records**
-   - Created junction records for 5 devices (LAB001-005)
-   - All devices now have proper junction records
-
----
-
-## Verification Results
-
-```
-✅ All 18 devices with site assignments have matching junction records
-✅ 5 devices successfully backfilled (LAB001, LAB002, LAB003, LAB004, LAB005)
-✅ Junction tables are now the source of truth
-✅ Auto-sync triggers created and active
+```bash
+# File location
+session-rollup-triggers.sql
 ```
 
----
+**What it does:**
+- Creates `increment_session_wake_counts()` trigger function
+- Creates `update_session_status_on_wake()` trigger function  
+- Automatically increments session counters on new wakes
+- Auto-transitions session status from 'pending' → 'in_progress'
 
-## What This Means
+**Expected Result:**
+- ✅ `completed_wake_count` increments on wake completion
+- ✅ `failed_wake_count` increments on wake failure
+- ✅ `extra_wake_count` increments on extra wakes
+- ✅ Session status changes from pending to in_progress
 
-### For Users
-- **Programs tab** now shows complete device assignment history
-- **Assignment card** displays correct current assignments
-- **Session analytics** will work for all devices
+### Priority 3: Backfill Existing Wake Counts
+After applying the migration, backfill historical data:
 
-### For Developers
-- **Site Template assignments** now create proper junction records automatically
-- **devices table** is maintained as a cached copy via triggers
-- **Map positions** (x_position, y_position) are preserved
-- **No breaking changes** to existing queries
+```sql
+-- Backfill session wake counts from existing wake_payloads
+UPDATE site_device_sessions s
+SET
+  completed_wake_count = (
+    SELECT COUNT(*)
+    FROM device_wake_payloads w
+    WHERE w.site_device_session_id = s.session_id
+      AND w.wake_complete = true
+  ),
+  failed_wake_count = (
+    SELECT COUNT(*)
+    FROM device_wake_payloads w
+    WHERE w.site_device_session_id = s.session_id
+      AND w.wake_failed = true
+  ),
+  extra_wake_count = (
+    SELECT COUNT(*)
+    FROM device_wake_payloads w
+    WHERE w.site_device_session_id = s.session_id
+      AND w.is_extra_wake = true
+  )
+WHERE session_date >= '2025-11-01'; -- Only recent sessions
+```
 
----
+## Current Architecture
 
-## Files Updated
+### Device Roll-Ups (✅ Working)
+**Table:** `devices`  
+**Triggers:** Phase 3 migration applied  
+**Counters:**
+- `total_wakes` ← device_wake_payloads INSERT
+- `total_images_taken` ← device_images status = 'complete'
+- `total_alerts` ← device_alerts INSERT
+- `latest_mgi_score`, `latest_mgi_velocity`, `latest_mgi_at` ← device_images UPDATE
 
-**Migration:**
-- `supabase/migrations/20251122140000_fix_junction_table_assignment_system.sql` ✅
+### Session Roll-Ups (🔧 In Progress)
+**Table:** `site_device_sessions`  
+**Triggers:** ⏳ To be applied  
+**Counters:**
+- `completed_wake_count` ← device_wake_payloads.wake_complete = true
+- `failed_wake_count` ← device_wake_payloads.wake_failed = true
+- `extra_wake_count` ← device_wake_payloads.is_extra_wake = true
+- `status` ← auto-transition on first wake
 
-**Documentation:**
-- `MIGRATION_COMPLETE_NOV23.md` (this file)
-- `MIGRATION_READY_FINAL.md` (application guide)
-- `TWO_CRITICAL_FIXES_NOV22.md` (fix summary)
-- `COMPLETE_SUMMARY_NOV22.md` (detailed summary)
-- `ASSIGNMENT_SYSTEM_AUDIT.md` (technical audit)
+## Testing Checklist
 
-**Frontend Fix:**
-- `src/pages/DeviceDetailPage.tsx` (Zone & Placement card) ✅
+After deployment and migration:
 
----
+- [ ] Deploy edge function via dashboard
+- [ ] Apply session roll-up migration
+- [ ] Run backfill query for historical data
+- [ ] Send test device wake message
+- [ ] Verify session counters increment
+- [ ] Verify device counters increment
+- [ ] Check session status changes to 'in_progress'
+- [ ] Verify UI shows correct wake counts
 
-## Test It Out
+## Files Changed
 
-1. **Go to Device Detail page** for any device (e.g., LAB001)
-2. **Check Programs tab** - Should show assignment history
-3. **Check Assignment card** - Should show current site/program
-4. **Try Site Template assignment** - Will now create junction records
+1. **`supabase/functions/mqtt_device_handler/ingest.ts`**
+   - Removed 3x RPC calls to `fn_get_active_session_for_site()`
+   - Added direct Supabase queries to site_device_sessions
+   - Lines: ~189, ~395, ~568
 
----
+2. **`session-rollup-triggers.sql`** (NEW)
+   - Session wake count trigger functions
+   - Ready to apply to database
 
-## Next Steps (Optional)
+## Expected UI Results
 
-The system is fully functional now. If you want to enhance it further:
+After all fixes:
 
-1. **Update Assignment Card UI** to query junction tables directly
-2. **Add assignment history timeline** to device detail page
-3. **Create reports** on device utilization across programs
+**Session Detail Page:**
+- ✅ Total Wakes: Shows actual count (not 0)
+- ✅ Images This Session: Shows actual count  
+- ✅ Wakes This Session: Completed/Failed/Extra counts
+- ✅ Device Performance: Shows wake counts per device
+- ✅ Status: Auto-transitions to 'in_progress'
 
-But these are optional - everything works correctly now!
+**Device Detail Page:**
+- ✅ Total Wakes: Increments on each wake
+- ✅ Total Images: Increments on image completion  
+- ✅ Latest MGI: Updates on scoring
 
----
+## Summary
 
-## Build Status
+**Database:** ✅ Trigger fixed  
+**Edge Function:** ⏳ Needs deployment  
+**Session Counters:** ⏳ Needs migration  
+**Backfill:** ⏳ Needs manual SQL  
+**Build:** ✅ Successful  
 
-✅ Project builds successfully in 18.11s with no errors
-
----
-
-**Migration completed successfully on November 23, 2025**
+All code ready - just needs deployment and migration!
