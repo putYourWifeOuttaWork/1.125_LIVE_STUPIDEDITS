@@ -76,6 +76,26 @@ export async function finalizeImage(
       submission_id: result.submission_id,
     });
 
+    // PHASE 2.3: Mark wake_payload as complete
+    if (buffer.imageRecord.wake_payload_id) {
+      const { error: wakeError } = await supabase
+        .from('device_wake_payloads')
+        .update({
+          payload_status: 'complete',
+          image_status: 'complete',
+          is_complete: true,
+          chunks_received: totalChunks,
+        })
+        .eq('payload_id', buffer.imageRecord.wake_payload_id);
+
+      if (wakeError) {
+        console.error('[Finalize] Error updating wake_payload:', wakeError);
+        // Don't fail - wake tracking is supplementary
+      } else {
+        console.log('[Finalize] Wake payload marked complete:', buffer.imageRecord.wake_payload_id);
+      }
+    }
+
     // Calculate next wake time using device's schedule
     let nextWake: string;
 

@@ -182,31 +182,68 @@ export async function handleHelloStatus(
         return;
       }
 
-      // Create historical telemetry record for battery & wifi tracking
-      if (payload.battery_voltage !== undefined || payload.wifi_rssi !== undefined) {
-        // Get active session for context
-        let sessionId = null;
-        if (lineageData?.site_id) {
-          const { data: sessionData } = await supabase.rpc(
-            'fn_get_active_session_for_site',
-            { p_site_id: lineageData.site_id }
-          );
-          sessionId = sessionData;
-        }
+      // PHASE 2.3: Create wake_payload record for this wake event (per ESP32-CAM architecture)
+      // Get active session for context
+      let sessionId = null;
+      if (lineageData?.site_id) {
+        const { data: sessionData } = await supabase.rpc(
+          'fn_get_active_session_for_site',
+          { p_site_id: lineageData.site_id }
+        );
+        sessionId = sessionData;
+      }
 
+      // Create consolidated wake_payload record
+      const { data: wakePayload, error: wakeError } = await supabase
+        .from('device_wake_payloads')
+        .insert({
+          device_id: existingDevice.device_id,
+          company_id: existingDevice.company_id,
+          program_id: lineageData?.program_id || null,
+          site_id: lineageData?.site_id || null,
+          site_device_session_id: sessionId,
+          captured_at: now,
+          received_at: now,
+          temperature: payload.temperature,
+          humidity: payload.humidity,
+          pressure: payload.pressure,
+          gas_resistance: payload.gas_resistance,
+          battery_voltage: payload.battery_voltage,
+          wifi_rssi: payload.wifi_rssi,
+          telemetry_data: payload, // Store full JSONB payload
+          wake_type: 'hello', // HELLO message type
+          payload_status: 'pending', // Will be updated when image completes
+          overage_flag: false,
+          is_complete: false,
+        })
+        .select('payload_id')
+        .single();
+
+      if (wakeError) {
+        console.error('[Ingest] Error creating wake_payload:', wakeError);
+        // Continue - wake tracking is supplementary
+      } else {
+        console.log('[Ingest] Wake payload created:', wakePayload?.payload_id);
+      }
+
+      // Create historical telemetry record for battery & wifi tracking (legacy system)
+      if (payload.battery_voltage !== undefined || payload.wifi_rssi !== undefined) {
         const { error: telemetryError } = await supabase
           .from('device_telemetry')
           .insert({
             device_id: existingDevice.device_id,
             company_id: existingDevice.company_id,
-            program_id: lineageData?.program_id || null,    // ✅ INHERIT FROM DEVICE
-            site_id: lineageData?.site_id || null,          // ✅ INHERIT FROM DEVICE
-            site_device_session_id: sessionId,              // ✅ ACTIVE SESSION
-            wake_payload_id: null,                          // HELLO has no wake payload
+            program_id: lineageData?.program_id || null,
+            site_id: lineageData?.site_id || null,
+            site_device_session_id: sessionId,
+            wake_payload_id: wakePayload?.payload_id || null, // Link to wake payload
             captured_at: now,
             battery_voltage: payload.battery_voltage,
             wifi_rssi: payload.wifi_rssi,
-            // No environmental sensors in HELLO message
+            temperature: payload.temperature,
+            humidity: payload.humidity,
+            pressure: payload.pressure,
+            gas_resistance: payload.gas_resistance,
           });
 
         if (telemetryError) {
@@ -322,6 +359,27 @@ export async function handleMetadata(
       wake_index: result.wake_index,
       is_overage: result.is_overage,
     });
+
+    // PHASE 2.3: Update wake_payload with image information and chunk tracking
+    if (result.payload_id && result.image_id) {
+      const { error: wakeUpdateError } = await supabase
+        .from('device_wake_payloads')
+        .update({
+          image_id: result.image_id,
+          image_status: 'receiving',
+          wake_type: 'image_wake',
+          chunk_count: payload.total_chunks_count,
+          chunks_received: 0,
+        })
+        .eq('payload_id', result.payload_id);
+
+      if (wakeUpdateError) {
+        console.error('[Ingest] Error updating wake_payload with image info:', wakeUpdateError);
+        // Don't fail - wake tracking is supplementary
+      } else {
+        console.log('[Ingest] Wake payload updated with image info:', result.payload_id);
+      }
+    }
 
     // Create historical telemetry record if environmental data present
     if (payload.temperature !== undefined || payload.humidity !== undefined ||
