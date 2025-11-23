@@ -26,6 +26,7 @@
   4. **Backfill Missing Records**
      - Creates junction records for devices with site_id but no junction records
      - Preserves existing data integrity
+     - Temporarily disables triggers during backfill to avoid conflicts
 
   ## Impact
   - ✅ Site Template assignments now create junction records
@@ -255,8 +256,13 @@ DO $$
 DECLARE
   v_backfill_count INTEGER := 0;
   v_device RECORD;
+  v_trigger_status BOOLEAN;
 BEGIN
   RAISE NOTICE 'Starting backfill of missing junction table records...';
+
+  -- Temporarily disable the log_device_assignment_history trigger to avoid conflicts
+  ALTER TABLE device_site_assignments DISABLE TRIGGER log_device_assignment_history;
+  RAISE NOTICE 'Temporarily disabled log_device_assignment_history trigger';
 
   FOR v_device IN
     SELECT
@@ -274,6 +280,7 @@ BEGIN
         WHERE dsa.device_id = d.device_id AND dsa.is_active = true
       )
   LOOP
+    -- Insert without triggering history log
     INSERT INTO device_site_assignments (
       device_id, site_id, program_id, is_primary, is_active,
       assigned_at, assigned_by_user_id, notes
@@ -300,6 +307,10 @@ BEGIN
     v_backfill_count := v_backfill_count + 1;
     RAISE NOTICE 'Backfilled device: % (site_id: %)', v_device.device_code, v_device.site_id;
   END LOOP;
+
+  -- Re-enable the trigger
+  ALTER TABLE device_site_assignments ENABLE TRIGGER log_device_assignment_history;
+  RAISE NOTICE 'Re-enabled log_device_assignment_history trigger';
 
   RAISE NOTICE 'Backfill complete. Created junction records for % devices', v_backfill_count;
 END $$;
