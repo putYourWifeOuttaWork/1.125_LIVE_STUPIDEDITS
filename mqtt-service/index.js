@@ -223,18 +223,18 @@ async function handleStatusMessage(payload, client) {
 
   if (pendingCount === 0) {
     try {
-      // Get next wake time in ISO format (don't convert to simple time)
-      const nextWakeISO = await calculateNextWakeISO(device.device_id);
+      // Get next wake time in simplified format (e.g., "1:57AM")
+      const nextWakeTime = await calculateNextWakeTime(device.device_id);
       const ackMessage = {
         device_id: deviceMac,
         ACK_OK: {
-          next_wake_time: nextWakeISO  // Send full ISO timestamp
+          next_wake_time: nextWakeTime
         }
       };
 
       const ackTopic = `device/${deviceMac}/ack`;
       client.publish(ackTopic, JSON.stringify(ackMessage));
-      console.log(`[ACK] Sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeISO}`);
+      console.log(`[ACK] Sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeTime}`);
     } catch (ackError) {
       console.error(`[ERROR] Failed to send ACK_OK:`, ackError);
     }
