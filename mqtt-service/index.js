@@ -879,8 +879,15 @@ function connectToMQTT() {
     client.on('message', async (topic, message) => {
       try {
         // Log raw message for debugging
-        const messageStr = message.toString();
+        let messageStr = message.toString();
         console.log(`[MQTT] 📨 Raw message on ${topic} (${message.length} bytes):`, messageStr);
+
+        // Sanitize smart quotes and other non-standard JSON characters
+        // Replace Unicode smart quotes with straight quotes
+        messageStr = messageStr
+          .replace(/[\u201C\u201D]/g, '"')  // Replace " and " with "
+          .replace(/[\u2018\u2019]/g, "'")  // Replace ' and ' with '
+          .trim();
 
         // Try to parse JSON
         const payload = JSON.parse(messageStr);
