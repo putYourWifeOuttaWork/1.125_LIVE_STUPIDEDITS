@@ -1,5 +1,5 @@
 /**
- * Phase 3 - MQTT Edge Function Type Definitions
+ * Phase 3 - MQTT Edge Function Type DefinitionsDEC25
  * 
  * Shared types for all modules to ensure type safety across the edge function
  */
