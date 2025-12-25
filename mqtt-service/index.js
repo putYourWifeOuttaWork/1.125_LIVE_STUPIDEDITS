@@ -53,8 +53,34 @@ async function generateDeviceCode(hardwareVersion = 'ESP32-S3') {
   return `${prefix}${String(nextNum).padStart(3, '0')}`;
 }
 
+/**
+ * Normalize MAC address to standard format: XX:XX:XX:XX:XX:XX (uppercase with colons)
+ * Handles input formats: XXXXXXXXXXXX, XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX
+ */
+function normalizeMacAddress(mac) {
+  if (!mac) return null;
+
+  // Remove all separators (colons, hyphens, spaces)
+  const cleaned = mac.replace(/[:\-\s]/g, '').toUpperCase();
+
+  // Validate it's a 12-character hex string
+  if (!/^[0-9A-F]{12}$/.test(cleaned)) {
+    console.warn(`[MAC] Invalid MAC address format: ${mac}`);
+    return null;
+  }
+
+  // Insert colons every 2 characters: XXXXXXXXXXXX -> XX:XX:XX:XX:XX:XX
+  return cleaned.match(/.{1,2}/g).join(':');
+}
+
 async function autoProvisionDevice(deviceMac) {
-  console.log(`[AUTO-PROVISION] Attempting to provision new device: ${deviceMac}`);
+  const normalizedMac = normalizeMacAddress(deviceMac);
+  if (!normalizedMac) {
+    console.error(`[ERROR] Invalid MAC address: ${deviceMac}`);
+    return null;
+  }
+
+  console.log(`[AUTO-PROVISION] Attempting to provision new device: ${deviceMac} (normalized: ${normalizedMac})`);
 
   try {
     const deviceCode = await generateDeviceCode('ESP32-S3');
@@ -62,7 +88,7 @@ async function autoProvisionDevice(deviceMac) {
     const { data: newDevice, error: insertError } = await supabase
       .from('devices')
       .insert({
-        device_mac: deviceMac,
+        device_mac: normalizedMac,  // Use normalized MAC
         device_code: deviceCode,
         device_name: null,
         hardware_version: 'ESP32-S3',
@@ -79,7 +105,7 @@ async function autoProvisionDevice(deviceMac) {
       return null;
     }
 
-    console.log(`[SUCCESS] Auto-provisioned device ${deviceMac} with code ${deviceCode} and ID ${newDevice.device_id}`);
+    console.log(`[SUCCESS] Auto-provisioned device ${normalizedMac} with code ${deviceCode} and ID ${newDevice.device_id}`);
     return newDevice;
   } catch (error) {
     console.error(`[ERROR] Auto-provision exception:`, error);
@@ -181,16 +207,23 @@ async function sendPendingCommands(device, client) {
 
 async function handleStatusMessage(payload, client) {
   const deviceMac = payload.device_mac || payload.device_id;
-  console.log(`[STATUS] Device ${payload.device_id} (MAC: ${deviceMac}) is alive, pending images: ${payload.pendingImg || payload.pending_count || 0}`);
+  const normalizedMac = normalizeMacAddress(deviceMac);
+
+  if (!normalizedMac) {
+    console.error(`[ERROR] Invalid MAC address in status message: ${deviceMac}`);
+    return null;
+  }
+
+  console.log(`[STATUS] Device ${payload.device_id} (MAC: ${deviceMac}, normalized: ${normalizedMac}) is alive, pending images: ${payload.pendingImg || payload.pending_count || 0}`);
 
   let { data: device, error: deviceError } = await supabase
     .from('devices')
     .select('*')
-    .eq('device_mac', deviceMac)
+    .eq('device_mac', normalizedMac)  // Use normalized MAC for lookup
     .maybeSingle();
 
   if (!device && !deviceError) {
-    console.log(`[AUTO-PROVISION] Device ${deviceMac} not found, attempting auto-provision...`);
+    console.log(`[AUTO-PROVISION] Device ${normalizedMac} not found, attempting auto-provision...`);
     device = await autoProvisionDevice(deviceMac);
 
     if (!device) {
@@ -245,12 +278,19 @@ async function handleStatusMessage(payload, client) {
 
 async function handleMetadataMessage(payload, client) {
   const deviceMac = payload.device_mac || payload.device_id;
-  console.log(`[METADATA] Received for image ${payload.image_name} from ${payload.device_id} (MAC: ${deviceMac})`);
+  const normalizedMac = normalizeMacAddress(deviceMac);
+
+  if (!normalizedMac) {
+    console.error(`[ERROR] Invalid MAC address in metadata: ${deviceMac}`);
+    return;
+  }
+
+  console.log(`[METADATA] Received for image ${payload.image_name} from ${payload.device_id} (MAC: ${normalizedMac})`);
 
   const { data: device, error: deviceError } = await supabase
     .from('devices')
     .select('*')
-    .eq('device_mac', deviceMac)
+    .eq('device_mac', normalizedMac)  // Use normalized MAC for lookup
     .maybeSingle();
 
   if (deviceError) {
