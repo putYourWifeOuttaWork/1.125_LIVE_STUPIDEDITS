@@ -878,8 +878,13 @@ function connectToMQTT() {
 
     client.on('message', async (topic, message) => {
       try {
-        const payload = JSON.parse(message.toString());
-        console.log(`[MQTT] 📨 Message on ${topic}:`, JSON.stringify(payload).substring(0, 200));
+        // Log raw message for debugging
+        const messageStr = message.toString();
+        console.log(`[MQTT] 📨 Raw message on ${topic} (${message.length} bytes):`, messageStr);
+
+        // Try to parse JSON
+        const payload = JSON.parse(messageStr);
+        console.log(`[MQTT] ✅ Parsed payload:`, JSON.stringify(payload).substring(0, 200));
 
         // Forward to edge function with timeout
         // NOTE: Edge Function can't send MQTT commands back (receives via HTTP webhook)
@@ -942,6 +947,8 @@ function connectToMQTT() {
         }
       } catch (error) {
         console.error('[MQTT] ❌ Message processing error:', error);
+        console.error('[MQTT] 📋 Raw message buffer (hex):', message.toString('hex'));
+        console.error('[MQTT] 📋 Raw message buffer (utf8):', message.toString('utf8'));
       }
     });
   });
