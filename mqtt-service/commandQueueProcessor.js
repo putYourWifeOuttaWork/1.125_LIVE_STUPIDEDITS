@@ -114,7 +114,7 @@ export class CommandQueueProcessor {
       const payload = this.buildCommandPayload(command, deviceMac);
 
       // Determine topic (per BrainlyTree PDF spec)
-      const topic = `device/${deviceMac}/cmd`;
+      const topic = `ESP32CAM/${deviceMac}/cmd`;
 
       // Publish to MQTT
       this.mqttClient.publish(topic, JSON.stringify(payload), { qos: 1 }, async (error) => {
@@ -212,8 +212,11 @@ export class CommandQueueProcessor {
       case 'set_wake_schedule':
         // Convert ISO timestamp to simple time format (e.g., "11:00PM")
         const nextWakeISO = command.command_payload?.next_wake_time;
+        if (!nextWakeISO) {
+          console.error(`[CommandQueue] No next_wake_time in payload for device ${deviceMac}, using default 12:00PM`);
+        }
         const nextWakeSimple = nextWakeISO ? this.formatTimeForDevice(nextWakeISO) : '12:00PM';
-        console.log(`[CommandQueue] Converting wake time: ${nextWakeISO} -> ${nextWakeSimple}`);
+        console.log(`[CommandQueue] Converting wake time: ${nextWakeISO || 'undefined'} -> ${nextWakeSimple}`);
         return {
           device_id: deviceMac,
           next_wake: nextWakeSimple, // Simple time format only

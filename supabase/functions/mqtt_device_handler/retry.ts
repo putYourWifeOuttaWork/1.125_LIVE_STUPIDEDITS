@@ -21,7 +21,7 @@ export function publishRetryCommand(
     send_image: imageName,
   };
 
-  const topic = `device/${deviceMac}/cmd`;
+  const topic = `ESP32CAM/${deviceMac}/cmd`;
   client.publish(topic, JSON.stringify(command));
 
   console.log('[Retry] Published retry command:', { device: deviceMac, image: imageName });

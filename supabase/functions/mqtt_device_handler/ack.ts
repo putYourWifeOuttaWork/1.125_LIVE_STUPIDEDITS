@@ -24,7 +24,7 @@ export async function publishMissingChunks(
     missing_chunks: missingChunks,
   };
 
-  const topic = `device/${deviceMac}/ack`;
+  const topic = `ESP32CAM/${deviceMac}/ack`;
 
   try {
     client.publish(topic, JSON.stringify(message));
@@ -84,7 +84,7 @@ export async function publishAckOk(
     },
   };
 
-  const topic = `device/${deviceMac}/ack`;
+  const topic = `ESP32CAM/${deviceMac}/ack`;
 
   try {
     client.publish(topic, JSON.stringify(message));

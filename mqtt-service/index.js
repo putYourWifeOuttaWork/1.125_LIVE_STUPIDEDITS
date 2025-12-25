@@ -153,7 +153,7 @@ async function sendPendingCommands(device, client) {
       }
 
       // Publish command to device - use MAC address in topic per PDF spec
-      const topic = `device/${device.device_mac}/cmd`;
+      const topic = `ESP32CAM/${device.device_mac}/cmd`;
       client.publish(topic, JSON.stringify(message));
       console.log(`[CMD] Sent ${command.command_type} to ${device.device_code || device.device_mac} on ${topic}`);
 
@@ -232,7 +232,7 @@ async function handleStatusMessage(payload, client) {
         }
       };
 
-      const ackTopic = `device/${deviceMac}/ack`;
+      const ackTopic = `ESP32CAM/${deviceMac}/ack`;
       client.publish(ackTopic, JSON.stringify(ackMessage));
       console.log(`[ACK] Sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeTime}`);
     } catch (ackError) {
@@ -330,6 +330,14 @@ async function handleMetadataMessage(payload, client) {
   });
 
   console.log(`[METADATA] Ready to receive ${payload.total_chunks_count} chunks for ${payload.image_name}`);
+
+  // Send send_image command to request chunks (per PDF spec page 3, step 11)
+  const sendImageCmd = {
+    device_id: deviceMac,
+    send_image: payload.image_name
+  };
+  client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(sendImageCmd));
+  console.log(`[CMD] Sent send_image command for ${payload.image_name} to ${deviceMac}`);
 }
 
 async function handleChunkMessage(payload, client) {
@@ -389,7 +397,7 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
         image_name: imageName,
         missing_chunks: missingChunks,
       };
-      client.publish(`device/${deviceId}/ack`, JSON.stringify(missingRequest));
+      client.publish(`ESP32CAM/${deviceId}/ack`, JSON.stringify(missingRequest));
 
       // Update status to show we're waiting for retransmission
       await supabase
@@ -485,7 +493,7 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
       },
     };
 
-    client.publish(`device/${buffer.device.device_mac}/ack`, JSON.stringify(ackMessage));
+    client.publish(`ESP32CAM/${buffer.device.device_mac}/ack`, JSON.stringify(ackMessage));
     console.log(`[ACK] Sent ACK_OK to ${buffer.device.device_code || buffer.device.device_mac} with next wake: ${nextWakeTime}`);
 
     // Clean up buffer
@@ -814,9 +822,17 @@ function connectToMQTT() {
 
       client.subscribe('ESP32CAM/+/data', (err) => {
         if (err) {
-          console.error('[MQTT] ❌ Subscription error (ESP32CAM):', err);
+          console.error('[MQTT] ❌ Subscription error (ESP32CAM/data):', err);
         } else {
           console.log('[MQTT] ✅ Subscribed to ESP32CAM/+/data');
+        }
+      });
+
+      client.subscribe('ESP32CAM/+/status', (err) => {
+        if (err) {
+          console.error('[MQTT] ❌ Subscription error (ESP32CAM/status):', err);
+        } else {
+          console.log('[MQTT] ✅ Subscribed to ESP32CAM/+/status');
         }
       });
 
@@ -914,7 +930,7 @@ function connectToMQTT() {
               device_id: payload.device_id,
               capture_image: true,
             };
-            client.publish(`device/${payload.device_id}/cmd`, JSON.stringify(captureCmd));
+            client.publish(`ESP32CAM/${payload.device_id}/cmd`, JSON.stringify(captureCmd));
             console.log(`[CMD] Sent capture command to ${payload.device_id}`);
           }
         } else if (topic.includes('/data')) {
