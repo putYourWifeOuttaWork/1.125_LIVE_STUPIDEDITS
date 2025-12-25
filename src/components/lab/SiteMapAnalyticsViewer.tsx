@@ -393,12 +393,23 @@ export default function SiteMapAnalyticsViewer({
     return null;
   }
 
-  // Calculate zone statistics
+  // Calculate zone statistics with safe division
+  const calculateAverage = (values: (number | null)[]) => {
+    const validValues = values.filter(v => v !== null) as number[];
+    if (validValues.length === 0) return 0;
+    return validValues.reduce((sum, v) => sum + v, 0) / validValues.length;
+  };
+
   const zoneStats = {
-    avgTemp: devices.filter(d => d.temperature !== null).reduce((sum, d) => sum + (d.temperature || 0), 0) / devices.filter(d => d.temperature !== null).length || 0,
-    avgHumidity: devices.filter(d => d.humidity !== null).reduce((sum, d) => sum + (d.humidity || 0), 0) / devices.filter(d => d.humidity !== null).length || 0,
-    avgBattery: devices.filter(d => d.battery_level !== null).reduce((sum, d) => sum + (d.battery_level || 0), 0) / devices.filter(d => d.battery_level !== null).length || 0,
-    avgMGI: devices.filter(d => d.mgi_score !== null).reduce((sum, d) => sum + (d.mgi_score || 0), 0) / devices.filter(d => d.mgi_score !== null).length || 0,
+    avgTemp: calculateAverage(devices.map(d => d.temperature)),
+    avgHumidity: calculateAverage(devices.map(d => d.humidity)),
+    avgBattery: calculateAverage(devices.map(d => d.battery_level)),
+    avgMGI: calculateAverage(devices.map(d => d.mgi_score)),
+    deviceCount: devices.length,
+    devicesWithTemp: devices.filter(d => d.temperature !== null).length,
+    devicesWithHumidity: devices.filter(d => d.humidity !== null).length,
+    devicesWithBattery: devices.filter(d => d.battery_level !== null).length,
+    devicesWithMGI: devices.filter(d => d.mgi_score !== null).length,
   };
 
   return (
@@ -425,8 +436,10 @@ export default function SiteMapAnalyticsViewer({
                   </select>
                 </div>
               )}
-              <div className="text-sm text-gray-600">
-                {siteName} • {siteLength}ft × {siteWidth}ft
+              <div className="text-sm text-gray-600 flex items-center gap-2">
+                <span className="font-medium">{zoneStats.deviceCount} {zoneStats.deviceCount === 1 ? 'device' : 'devices'}</span>
+                <span className="text-gray-400">•</span>
+                <span>{siteName} • {siteLength}ft × {siteWidth}ft</span>
               </div>
             </div>
           </div>
@@ -435,19 +448,31 @@ export default function SiteMapAnalyticsViewer({
               {zoneMode === 'temperature' && (
                 <div className="flex items-center gap-1">
                   <Thermometer size={14} />
-                  <span>Avg: {zoneStats.avgTemp.toFixed(1)}°F</span>
+                  <span>
+                    {zoneStats.devicesWithTemp > 0
+                      ? `Avg: ${zoneStats.avgTemp.toFixed(1)}°F (${zoneStats.devicesWithTemp}/${zoneStats.deviceCount} devices)`
+                      : 'No temperature data'}
+                  </span>
                 </div>
               )}
               {zoneMode === 'humidity' && (
                 <div className="flex items-center gap-1">
                   <Droplets size={14} />
-                  <span>Avg: {zoneStats.avgHumidity.toFixed(0)}%</span>
+                  <span>
+                    {zoneStats.devicesWithHumidity > 0
+                      ? `Avg: ${zoneStats.avgHumidity.toFixed(0)}% (${zoneStats.devicesWithHumidity}/${zoneStats.deviceCount} devices)`
+                      : 'No humidity data'}
+                  </span>
                 </div>
               )}
               {zoneMode === 'battery' && (
                 <div className="flex items-center gap-1">
                   <Battery size={14} />
-                  <span>Avg: {zoneStats.avgBattery.toFixed(0)}%</span>
+                  <span>
+                    {zoneStats.devicesWithBattery > 0
+                      ? `Avg: ${zoneStats.avgBattery.toFixed(0)}% (${zoneStats.devicesWithBattery}/${zoneStats.deviceCount} devices)`
+                      : 'No battery data'}
+                  </span>
                 </div>
               )}
             </div>

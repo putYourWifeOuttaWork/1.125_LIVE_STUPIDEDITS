@@ -115,33 +115,43 @@ const HomePage = () => {
 
         console.log('Found devices with positions:', data?.length || 0, data);
 
-        // Fetch latest telemetry for each device
-        const devicesWithTelemetry = await Promise.all(
-          (data || []).map(async (device) => {
-            const { data: telemetryData } = await supabase
-              .from('device_telemetry')
-              .select('temperature, humidity')
-              .eq('device_id', device.device_id)
-              .order('captured_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
+        // Batch fetch latest telemetry for all devices
+        const deviceIds = (data || []).map(d => d.device_id);
+        const { data: telemetryData } = await supabase
+          .from('device_telemetry')
+          .select('device_id, temperature, humidity, captured_at')
+          .in('device_id', deviceIds)
+          .order('captured_at', { ascending: false });
 
-            return {
-              device_id: device.device_id,
-              device_code: device.device_code,
-              device_name: device.device_name,
-              x: device.x_position,
-              y: device.y_position,
-              battery_level: device.battery_health_percent,
-              status: device.is_active ? 'active' : 'inactive',
-              last_seen: device.last_seen_at,
-              temperature: telemetryData?.temperature || null,
-              humidity: telemetryData?.humidity || null,
-              mgi_score: device.latest_mgi_score,
-              mgi_velocity: device.latest_mgi_velocity,
-            };
-          })
-        );
+        // Create a map of device_id to latest telemetry
+        const telemetryMap = new Map();
+        (telemetryData || []).forEach(t => {
+          if (!telemetryMap.has(t.device_id)) {
+            telemetryMap.set(t.device_id, {
+              temperature: t.temperature,
+              humidity: t.humidity
+            });
+          }
+        });
+
+        // Combine device data with telemetry
+        const devicesWithTelemetry = (data || []).map((device) => {
+          const telemetry = telemetryMap.get(device.device_id);
+          return {
+            device_id: device.device_id,
+            device_code: device.device_code,
+            device_name: device.device_name,
+            x: device.x_position,
+            y: device.y_position,
+            battery_level: device.battery_health_percent,
+            status: device.is_active ? 'active' : 'inactive',
+            last_seen: device.last_seen_at,
+            temperature: telemetry?.temperature || null,
+            humidity: telemetry?.humidity || null,
+            mgi_score: device.latest_mgi_score,
+            mgi_velocity: device.latest_mgi_velocity,
+          };
+        });
 
         console.log('Devices with telemetry:', devicesWithTelemetry);
         setSiteDevices(devicesWithTelemetry);
@@ -541,13 +551,13 @@ const HomePage = () => {
             ) : (
               <div className="text-center py-12 bg-gray-50 rounded-lg">
                 <MapPin className="mx-auto h-16 w-16 text-gray-300" />
-                <p className="text-gray-600 mt-4 font-medium">No Device Positions Set</p>
+                <p className="text-gray-600 mt-4 font-medium">Site Map Not Ready</p>
                 <p className="text-sm text-gray-500 mt-2">
                   {!selectedSite.length || !selectedSite.width
-                    ? `Site dimensions not configured (Length: ${selectedSite.length || 'not set'}, Width: ${selectedSite.width || 'not set'})`
+                    ? 'Site dimensions need to be configured before devices can be placed on the map.'
                     : siteDevices.length === 0
-                    ? 'No devices with positions found for this site'
-                    : 'Devices need to be placed on the site map before visualization is available'
+                    ? 'No devices have been placed on this site map yet. Place devices to see environmental zones and real-time data.'
+                    : 'Devices need to be placed on the site map before visualization is available.'
                   }
                 </p>
                 <Button
@@ -555,7 +565,7 @@ const HomePage = () => {
                   className="mt-4"
                   onClick={() => navigate(`/programs/${selectedProgram?.program_id}/sites/${selectedSite.site_id}`)}
                 >
-                  Configure Site
+                  {!selectedSite.length || !selectedSite.width ? 'Set Site Dimensions' : 'Place Devices on Map'}
                 </Button>
               </div>
             )}

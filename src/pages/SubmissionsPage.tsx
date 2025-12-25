@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { usePilotProgramStore } from '../stores/pilotProgramStore';
-import { Plus, Search, ArrowLeft, Settings, History, FileText } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Settings, History, FileText, MapPin } from 'lucide-react';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -234,33 +234,43 @@ const SubmissionsPage = () => {
 
         if (error) throw error;
 
-        // Fetch latest telemetry
-        const devicesWithTelemetry = await Promise.all(
-          (data || []).map(async (device) => {
-            const { data: telemetryData } = await supabase
-              .from('device_telemetry')
-              .select('temperature, humidity')
-              .eq('device_id', device.device_id)
-              .order('captured_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
+        // Batch fetch latest telemetry for all devices
+        const deviceIds = (data || []).map(d => d.device_id);
+        const { data: telemetryData } = await supabase
+          .from('device_telemetry')
+          .select('device_id, temperature, humidity, captured_at')
+          .in('device_id', deviceIds)
+          .order('captured_at', { ascending: false });
 
-            return {
-              device_id: device.device_id,
-              device_code: device.device_code,
-              device_name: device.device_name,
-              x: device.x_position,
-              y: device.y_position,
-              battery_level: device.battery_health_percent,
-              status: device.is_active ? 'active' : 'inactive',
-              last_seen: device.last_seen_at,
-              temperature: telemetryData?.temperature || null,
-              humidity: telemetryData?.humidity || null,
-              mgi_score: device.latest_mgi_score,
-              mgi_velocity: device.latest_mgi_velocity,
-            };
-          })
-        );
+        // Create a map of device_id to latest telemetry
+        const telemetryMap = new Map();
+        (telemetryData || []).forEach(t => {
+          if (!telemetryMap.has(t.device_id)) {
+            telemetryMap.set(t.device_id, {
+              temperature: t.temperature,
+              humidity: t.humidity
+            });
+          }
+        });
+
+        // Combine device data with telemetry
+        const devicesWithTelemetry = (data || []).map((device) => {
+          const telemetry = telemetryMap.get(device.device_id);
+          return {
+            device_id: device.device_id,
+            device_code: device.device_code,
+            device_name: device.device_name,
+            x: device.x_position,
+            y: device.y_position,
+            battery_level: device.battery_health_percent,
+            status: device.is_active ? 'active' : 'inactive',
+            last_seen: device.last_seen_at,
+            temperature: telemetry?.temperature || null,
+            humidity: telemetry?.humidity || null,
+            mgi_score: device.latest_mgi_score,
+            mgi_velocity: device.latest_mgi_velocity,
+          };
+        });
 
         setSiteDevices(devicesWithTelemetry);
       } catch (error: any) {
@@ -645,7 +655,18 @@ const SubmissionsPage = () => {
           )}
 
           {/* Site Map */}
-          {((timelineMode === 'live' && siteDevices.length > 0) || (timelineMode === 'timeline' && displayDevices.length > 0)) && (
+          {devicesLoading ? (
+            <Card>
+              <CardContent>
+                <div className="flex justify-center items-center py-20">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <p className="text-sm text-gray-600">Loading site map...</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : ((timelineMode === 'live' && siteDevices.length > 0) || (timelineMode === 'timeline' && displayDevices.length > 0)) ? (
             <SiteMapAnalyticsViewer
               siteLength={selectedSite.length}
               siteWidth={selectedSite.width}
@@ -655,8 +676,21 @@ const SubmissionsPage = () => {
               height={375}
               zoneMode={zoneMode}
               onZoneModeChange={setZoneMode}
+              onDeviceClick={(deviceId) => navigate(`/devices/${deviceId}`)}
             />
-          )}
+          ) : timelineMode === 'live' && siteDevices.length === 0 && !devicesLoading ? (
+            <Card>
+              <CardContent>
+                <div className="text-center py-12 bg-gray-50 rounded-lg">
+                  <MapPin className="mx-auto h-12 w-12 text-gray-300" />
+                  <p className="text-gray-600 mt-3 font-medium">No Devices on Map</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    No devices have been placed on this site map yet.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {/* Zone Analytics */}
           {zoneMode !== 'none' && ((timelineMode === 'live' && siteDevices.length >= 2) || (timelineMode === 'timeline' && displayDevices.length >= 2)) && (

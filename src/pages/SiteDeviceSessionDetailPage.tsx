@@ -716,7 +716,7 @@ const SiteDeviceSessionDetailPage = () => {
                 showControls={false}
                 height={500}
                 zoneMode={zoneMode}
-                onDeviceClick={(deviceId) => navigate(`/programs/${programId}/devices/${deviceId}`)}
+                onDeviceClick={(deviceId) => navigate(`/devices/${deviceId}`)}
               />
 
               {/* Zone Analytics */}
