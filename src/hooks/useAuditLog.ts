@@ -48,14 +48,17 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
     setError(null);
 
     try {
-      // Use the new separate audit history functions (no device events)
-      const functionName = siteId ? 'get_site_audit_history' : 'get_program_audit_history';
+      // Use comprehensive audit log for sites, traditional for programs
+      const functionName = siteId ? 'get_comprehensive_site_audit_log' : 'get_program_audit_history';
       const params = siteId
         ? {
             p_site_id: siteId,
             p_start_date: null,
             p_end_date: null,
-            p_event_types: null,
+            p_event_sources: null,
+            p_severity_levels: null,
+            p_user_id: null,
+            p_device_id: null,
             p_limit: 100
           }
         : {
@@ -99,14 +102,17 @@ export function useAuditLog({ programId, siteId, includeDeviceEvents = true }: U
     setError(null);
 
     try {
-      // Use the new separate audit history functions (no device events)
-      const functionName = siteId ? 'get_site_audit_history' : 'get_program_audit_history';
+      // Use comprehensive audit log for sites with device event filtering
+      const functionName = siteId ? 'get_comprehensive_site_audit_log' : 'get_program_audit_history';
       const params = siteId
         ? {
             p_site_id: siteId,
             p_start_date: startDate || null,
             p_end_date: endDate || null,
-            p_event_types: eventType ? [eventType] : null,
+            p_event_sources: objectType ? [objectType] : null, // Map objectType to event_sources
+            p_severity_levels: null,
+            p_user_id: userId || null,
+            p_device_id: null,
             p_limit: 100
           }
         : {

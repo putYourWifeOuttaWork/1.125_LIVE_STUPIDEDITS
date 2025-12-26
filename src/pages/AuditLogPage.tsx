@@ -37,7 +37,7 @@ const eventTypeLabels: Record<HistoryEventType, string> = {
   UserReactivated: 'User Reactivated'
 };
 
-// Object types for filtering
+// Object types for filtering (program level)
 const objectTypes = [
   { value: 'pilot_program', label: 'Programs' },
   { value: 'site', label: 'Sites' },
@@ -45,6 +45,17 @@ const objectTypes = [
   { value: 'petri_observation', label: 'Petri Samples' },
   { value: 'gasifier_observation', label: 'Gasifier Samples' },
   { value: 'program_user', label: 'Program Users' }
+];
+
+// Event sources for filtering (site level - comprehensive audit)
+const siteEventSources = [
+  { value: 'site', label: 'Site Updates' },
+  { value: 'device', label: 'Device Events' },
+  { value: 'alert', label: 'Device Alerts' },
+  { value: 'command', label: 'Device Commands' },
+  { value: 'image', label: 'Image Captures' },
+  { value: 'assignment', label: 'Device Assignments' },
+  { value: 'schedule', label: 'Schedule Changes' }
 ];
 
 // Event types grouped by category for filtering
@@ -334,15 +345,15 @@ const AuditLogPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Object Type
+                  {siteId ? 'Event Source' : 'Object Type'}
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   value={filterObjectType}
                   onChange={(e) => setFilterObjectType(e.target.value)}
                 >
-                  <option value="">All Types</option>
-                  {objectTypes.map((type) => (
+                  <option value="">{siteId ? 'All Sources' : 'All Types'}</option>
+                  {(siteId ? siteEventSources : objectTypes).map((type) => (
                     <option key={type.value} value={type.value}>
                       {type.label}
                     </option>
@@ -470,12 +481,29 @@ const AuditLogPage = () => {
                           <User className="h-4 w-4 text-gray-400 mr-1" />
                           {log.user_email || 'System'}
                         </div>
+                        {log.device_code && (
+                          <div className="flex items-center mt-1 text-xs text-gray-500">
+                            <span className="font-mono">{log.device_code}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
                       <div>
-                        <p className="font-medium text-gray-900">
-                          {log.description || (log.object_type ? log.object_type.charAt(0).toUpperCase() + log.object_type.slice(1).replace('_', ' ') : '')}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900">
+                            {log.description || (log.object_type ? log.object_type.charAt(0).toUpperCase() + log.object_type.slice(1).replace('_', ' ') : '')}
+                          </p>
+                          {log.severity && log.event_source === 'alert' && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              log.severity === 'critical' ? 'bg-error-100 text-error-800' :
+                              log.severity === 'error' ? 'bg-error-100 text-error-700' :
+                              log.severity === 'warning' ? 'bg-warning-100 text-warning-800' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {log.severity}
+                            </span>
+                          )}
+                        </div>
                         {log.new_data && Object.keys(log.new_data).length > 0 && (
                           <div className="mt-1 text-xs">
                             {log.update_type === 'UserAdded' && (
