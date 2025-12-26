@@ -1,0 +1,29 @@
+═══════════════════════════════════════════════════════════════
+  QUICK FIX: audit_log Error in Device Assignment
+═══════════════════════════════════════════════════════════════
+
+PROBLEM:
+  Wake schedule updates fail with error: "relation audit_log does not exist"
+
+SOLUTION:
+  Apply the migration to remove audit_log references from device functions
+
+STEPS:
+  1. Go to: https://supabase.com/dashboard/project/jycxolmevsvrxmeinxff/sql
+
+  2. Copy the SQL from:
+     /tmp/cc-agent/51386994/project/supabase/migrations/20251226120000_fix_audit_log_references.sql
+
+  3. Paste into SQL Editor and click "Run"
+
+WHAT IT DOES:
+  • Removes audit_log INSERT from fn_assign_device_to_site()
+  • Removes audit_log INSERT from fn_remove_device_from_site()
+  • Device history is still logged via triggers (no data loss)
+
+VERIFICATION:
+  • Test device assignment in UI
+  • Test wake schedule updates in device placement modal
+  • Check browser console for no audit_log errors
+
+═══════════════════════════════════════════════════════════════
