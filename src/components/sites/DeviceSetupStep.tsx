@@ -71,10 +71,16 @@ export default function DeviceSetupStep({
 
       if (error) throw error;
 
-      setAvailableDevices(data || []);
+      // Map device_status to status for component compatibility
+      const mappedDevices = (data || []).map((d: any) => ({
+        ...d,
+        status: d.device_status || d.status || 'unknown',
+      }));
+
+      setAvailableDevices(mappedDevices);
 
       // Load currently assigned devices
-      const assigned = (data || [])
+      const assigned = mappedDevices
         .filter((d: AvailableDevice) => d.is_currently_assigned)
         .map((d: AvailableDevice) => ({
           device_id: d.device_id,
@@ -334,32 +340,34 @@ export default function DeviceSetupStep({
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-4 border-t">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Camera size={16} />
-          <span>
-            {assignments.length} {assignments.length === 1 ? 'device' : 'devices'} positioned
-          </span>
-        </div>
+      {(onSkip || onDevicesAssigned) && (
+        <div className="flex items-center justify-between pt-4 border-t">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Camera size={16} />
+            <span>
+              {assignments.length} {assignments.length === 1 ? 'device' : 'devices'} positioned
+            </span>
+          </div>
 
-        <div className="flex items-center gap-3">
-          {onSkip && (
-            <Button variant="outline" onClick={onSkip}>
-              Skip for Now
-            </Button>
-          )}
-          {assignments.length > 0 && (
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              disabled={saving}
-              icon={<CheckCircle size={16} />}
-            >
-              {saving ? 'Saving...' : 'Continue'}
-            </Button>
-          )}
+          <div className="flex items-center gap-3">
+            {onSkip && (
+              <Button variant="outline" onClick={onSkip}>
+                Skip for Now
+              </Button>
+            )}
+            {assignments.length > 0 && onDevicesAssigned && (
+              <Button
+                variant="primary"
+                onClick={handleSave}
+                disabled={saving}
+                icon={<CheckCircle size={16} />}
+              >
+                {saving ? 'Saving...' : 'Continue'}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Device Placement Modal */}
       {pendingPlacement && (
