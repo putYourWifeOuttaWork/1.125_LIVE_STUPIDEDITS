@@ -1159,19 +1159,21 @@ const SiteDeviceSessionDetailPage = () => {
                       ? Math.round((device.completed_wakes / device.expected_wakes_in_session) * 100)
                       : 0;
 
-                    const avgTemp = device.wake_payloads
-                      ?.filter((w: any) => w.temperature != null)
-                      .reduce((sum: number, w: any, _: number, arr: any[]) => sum + w.temperature / arr.length, 0);
+                    const tempReadings = device.wake_payloads?.filter((w: any) => w.temperature != null) || [];
+                    const avgTemp = tempReadings.length > 0
+                      ? tempReadings.reduce((sum: number, w: any) => sum + w.temperature, 0) / tempReadings.length
+                      : null;
 
-                    const avgHumidity = device.wake_payloads
-                      ?.filter((w: any) => w.humidity != null)
-                      .reduce((sum: number, w: any, _: number, arr: any[]) => sum + w.humidity / arr.length, 0);
+                    const humidityReadings = device.wake_payloads?.filter((w: any) => w.humidity != null) || [];
+                    const avgHumidity = humidityReadings.length > 0
+                      ? humidityReadings.reduce((sum: number, w: any) => sum + w.humidity, 0) / humidityReadings.length
+                      : null;
 
                     return (
                       <tr
                         key={device.device_id}
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
-                        onClick={() => navigate(`/programs/${programId}/devices/${device.device_id}`)}
+                        onClick={() => navigate(`/devices/${device.device_id}`)}
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center space-x-2">
@@ -1258,8 +1260,8 @@ const SiteDeviceSessionDetailPage = () => {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <DeviceStatusBadge
-                            status={device.failed_wakes > 0 ? 'offline' : 'active'}
-                            size="sm"
+                            isActive={device.is_active}
+                            lastSeenAt={device.last_seen_at}
                           />
                         </td>
                         <td className="px-4 py-3 text-right">

@@ -146,9 +146,9 @@ const DeviceDetailPage = () => {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-900">
-            {device.device_name || device.device_mac}
+            {device.device_name || device.device_code}
           </h1>
-          <p className="text-gray-600 mt-1 font-mono text-sm">{device.device_mac}</p>
+          <p className="text-gray-600 mt-1 font-mono text-sm">{device.device_code}</p>
         </div>
         <div className="flex items-center gap-3">
           <DeviceStatusBadge
@@ -856,7 +856,7 @@ const DeviceDetailPage = () => {
             <>
               <p className="mb-2">Are you sure you want to delete this device?</p>
               <p className="mb-2">
-                <strong>{device.device_name || device.device_mac}</strong>
+                <strong>{device.device_name || device.device_code}</strong>
               </p>
               <p className="text-sm text-red-600 font-semibold">
                 ⚠️ FOR TESTING ONLY - This will permanently delete the device and all related records:
