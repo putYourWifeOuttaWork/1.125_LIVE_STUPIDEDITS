@@ -634,7 +634,7 @@ export class DeviceService {
       },
       {
         label: 'Device Activated',
-        completed: device.is_active && device.provisioning_status === 'active',
+        completed: device.is_active === true,
         required: true
       },
       {
