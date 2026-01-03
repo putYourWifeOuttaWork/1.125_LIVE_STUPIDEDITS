@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS mqtt_messages (
   created_at timestamptz DEFAULT now() NOT NULL,
 
   -- Message identification
-  device_id uuid REFERENCES devices(id) ON DELETE CASCADE,
+  device_id uuid REFERENCES devices(device_id) ON DELETE CASCADE,
   mac_address text NOT NULL,
 
   -- Message routing
@@ -75,9 +75,9 @@ CREATE TABLE IF NOT EXISTS mqtt_messages (
   chunk_id int,
 
   -- Metadata
-  company_id uuid REFERENCES companies(id) ON DELETE CASCADE NOT NULL,
-  site_id uuid REFERENCES sites(id) ON DELETE SET NULL,
-  pilot_program_id uuid REFERENCES pilot_programs(id) ON DELETE SET NULL,
+  company_id uuid REFERENCES companies(company_id) ON DELETE CASCADE NOT NULL,
+  site_id uuid REFERENCES sites(site_id) ON DELETE SET NULL,
+  pilot_program_id uuid REFERENCES pilot_programs(program_id) ON DELETE SET NULL,
 
   -- Protocol compliance tracking
   protocol_version text DEFAULT '1.0',
@@ -398,7 +398,7 @@ SELECT
   mm.direction,
   mm.message_type,
   mm.mac_address,
-  d.name as device_name,
+  d.device_name,
   mm.topic,
   mm.payload,
   mm.session_id,
@@ -409,9 +409,9 @@ SELECT
   c.name as company_name,
   s.name as site_name
 FROM mqtt_messages mm
-LEFT JOIN devices d ON mm.device_id = d.id
-LEFT JOIN companies c ON mm.company_id = c.id
-LEFT JOIN sites s ON mm.site_id = s.id
+LEFT JOIN devices d ON mm.device_id = d.device_id
+LEFT JOIN companies c ON mm.company_id = c.company_id
+LEFT JOIN sites s ON mm.site_id = s.site_id
 WHERE mm.created_at > now() - interval '24 hours'
 ORDER BY mm.created_at DESC;
 
@@ -421,15 +421,15 @@ SELECT
   mm.id,
   mm.created_at,
   mm.mac_address,
-  d.name as device_name,
+  d.device_name,
   mm.message_type,
   mm.direction,
   mm.error_message,
   mm.payload,
   c.name as company_name
 FROM mqtt_messages mm
-LEFT JOIN devices d ON mm.device_id = d.id
-LEFT JOIN companies c ON mm.company_id = c.id
+LEFT JOIN devices d ON mm.device_id = d.device_id
+LEFT JOIN companies c ON mm.company_id = c.company_id
 WHERE mm.error_message IS NOT NULL
 ORDER BY mm.created_at DESC;
 
