@@ -9,8 +9,8 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
 import type { MqttClient } from 'npm:mqtt@5.3.4';
 import { getBuffer, getMissingChunks, assembleImage, clearBuffer, withSingleAck } from './idempotency.ts';
 import { uploadImage } from './storage.ts';
-import { publishMissingChunks, publishAckOk } from './ack.ts';
-import { calculateNextWake } from './scheduler.ts';
+import { publishMissingChunks, publishSleepCommand, calculateNextWake as calculateNextWakeTime } from './ack.ts';
+import { formatNextWakeTime } from './protocol.ts';
 import { normalizeMacAddress } from './utils.ts';
 
 /**
@@ -84,15 +84,15 @@ export async function finalizeImage(
       submission_id: result.submission_id,
     });
 
-    // PHASE 2.3: Update wake_payload image status
-    // Note: payload_status is already 'complete' (wake happened when device transmitted)
-    // We only update image_status to reflect image completion
+    // PHASE 2.3: Update wake_payload to metadata_received state
+    // Will be completed when SLEEP is sent
     if (buffer.imageRecord.wake_payload_id) {
       const { error: wakeError } = await supabase
         .from('device_wake_payloads')
         .update({
           image_status: 'complete',
           chunks_received: totalChunks,
+          protocol_state: 'metadata_received', // Image complete, ready to send SLEEP
         })
         .eq('payload_id', buffer.imageRecord.wake_payload_id);
 
@@ -104,52 +104,65 @@ export async function finalizeImage(
       }
     }
 
-    // Calculate next wake time using device's schedule
-    let nextWake: string;
-    let deviceId: string | null = null;
+    // Fetch device lineage for next wake calculation
+    const { data: lineageData } = await supabase.rpc('fn_resolve_device_lineage', {
+      p_device_mac: normalizedMac,
+    });
 
-    if (result.next_wake_at) {
-      // Use value from SQL handler if provided
-      nextWake = result.next_wake_at;
-    } else {
-      // Fetch device lineage to get wake schedule
-      const { data: lineageData } = await supabase.rpc('fn_resolve_device_lineage', {
-        p_device_mac: normalizedMac,
-      });
-
-      if (lineageData?.wake_schedule_cron) {
-        nextWake = calculateNextWake(lineageData.wake_schedule_cron);
-        deviceId = lineageData.device_id;
-        console.log('[Finalize] Calculated next wake from cron:', nextWake);
-      } else {
-        // Fallback: 12 hours from now
-        nextWake = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
-        console.warn('[Finalize] No wake schedule found, using 12h fallback');
-      }
+    if (!lineageData) {
+      console.error('[Finalize] Device lineage not found for:', normalizedMac);
+      return;
     }
 
-    // PHASE 4: Update devices.next_wake_at for UI display
-    if (deviceId || buffer.imageRecord.device_id) {
+    const deviceId = lineageData.device_id;
+    const siteId = lineageData.site_id;
+    const timezone = lineageData.timezone || 'America/New_York';
+
+    // Calculate next wake time with site inheritance
+    const nextWakeDate = await calculateNextWakeTime(
+      supabase,
+      deviceId,
+      siteId,
+      timezone
+    );
+
+    // Format for protocol
+    const nextWakeFormatted = nextWakeDate
+      ? formatNextWakeTime(nextWakeDate)
+      : '8:00AM'; // Default fallback
+
+    console.log('[Finalize] Calculated next wake:', {
+      nextWake: nextWakeDate?.toISOString(),
+      formatted: nextWakeFormatted,
+      timezone,
+    });
+
+    // Update devices.next_wake_at for UI display and next session calculation
+    if (deviceId) {
       const { error: nextWakeError } = await supabase
         .from('devices')
         .update({
-          next_wake_at: nextWake,
+          next_wake_at: nextWakeDate?.toISOString() || null,
           last_wake_at: new Date().toISOString(),
         })
-        .eq('device_id', deviceId || buffer.imageRecord.device_id);
+        .eq('device_id', deviceId);
 
       if (nextWakeError) {
         console.error('[Finalize] Error updating next_wake_at:', nextWakeError);
       } else {
-        console.log('[Finalize] Updated next_wake_at:', nextWake);
+        console.log('[Finalize] Updated device next_wake_at:', nextWakeDate?.toISOString());
       }
     }
 
-    // Publish ACK_OK exactly once using advisory lock
-    await withSingleAck(supabase, normalizedMac, imageName, async () => {
-      await publishAckOk(client, normalizedMac, imageName, nextWake, supabase);
-      return true;
-    });
+    // Send SLEEP command to complete the wake cycle
+    // This updates protocol_state to 'complete' and marks wake as finished
+    await publishSleepCommand(
+      client,
+      normalizedMac,
+      nextWakeFormatted,
+      supabase,
+      buffer.imageRecord.wake_payload_id
+    );
 
     // Clear buffer from Postgres
     await clearBuffer(supabase, normalizedMac, imageName);

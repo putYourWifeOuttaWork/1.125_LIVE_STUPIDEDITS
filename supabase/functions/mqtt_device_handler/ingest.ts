@@ -10,6 +10,8 @@ import type { MqttClient } from 'npm:mqtt@5.3.4';
 import type { DeviceStatusMessage, ImageMetadata, ImageChunk, TelemetryOnlyMessage } from './types.ts';
 import { getOrCreateBuffer, storeChunk } from './idempotency.ts';
 import { normalizeMacAddress } from './utils.ts';
+import { publishSnapCommand, publishSleepCommand, calculateNextWake } from './ack.ts';
+import { formatNextWakeTime } from './protocol.ts';
 
 // System user UUID for automated updates
 const SYSTEM_USER_UUID = '00000000-0000-0000-0000-000000000001';
@@ -206,8 +208,11 @@ export async function handleHelloStatus(
         sessionId = sessionData?.session_id || null;
       }
 
-      // Create consolidated wake_payload record
-      // A wake is complete as soon as device transmits (regardless of image status)
+      // Generate server image name for this wake
+      const timestamp = Date.now();
+      const serverImageName = `${normalizedMac}_${timestamp}.jpg`;
+
+      // Create consolidated wake_payload record with protocol state tracking
       const { data: wakePayload, error: wakeError } = await supabase
         .from('device_wake_payloads')
         .insert({
@@ -224,11 +229,13 @@ export async function handleHelloStatus(
           gas_resistance: payload.gas_resistance,
           battery_voltage: payload.battery_voltage,
           wifi_rssi: payload.wifi_rssi,
-          telemetry_data: payload, // Store full JSONB payload
-          wake_type: 'hello', // HELLO message type
-          payload_status: 'complete', // Device woke up and transmitted - wake is complete
+          telemetry_data: payload,
+          wake_type: 'hello',
+          protocol_state: 'hello_received', // Initial state
+          server_image_name: serverImageName,
+          payload_status: 'pending', // Pending until SLEEP sent
           overage_flag: false,
-          is_complete: true, // Wake event completed successfully
+          is_complete: false, // Not complete until SLEEP sent
         })
         .select('payload_id')
         .single();
@@ -237,7 +244,59 @@ export async function handleHelloStatus(
         console.error('[Ingest] Error creating wake_payload:', wakeError);
         // Continue - wake tracking is supplementary
       } else {
-        console.log('[Ingest] Wake payload created and marked complete:', wakePayload?.payload_id);
+        console.log('[Ingest] Wake payload created:', wakePayload?.payload_id, 'state: hello_received');
+
+        // STATE MACHINE: Process HELLO and send appropriate commands
+        const payloadId = wakePayload?.payload_id;
+        const isProvisioned = lineageData?.provisioning_status === 'provisioned';
+        const isMapped = lineageData?.site_id !== null;
+
+        // Calculate next wake time (with site inheritance)
+        const nextWake = await calculateNextWake(
+          supabase,
+          existingDevice.device_id,
+          lineageData?.site_id || null,
+          deviceTimezone
+        );
+
+        const nextWakeFormatted = nextWake ? formatNextWakeTime(nextWake) : '8:00AM'; // Default fallback
+
+        if (!isProvisioned || !isMapped) {
+          // Unmapped or unprovisvioned device: Send SLEEP only (no image capture)
+          console.log('[Ingest] Device not fully provisioned or unmapped - sending SLEEP only');
+          await publishSleepCommand(client, normalizedMac, nextWakeFormatted, supabase, payloadId);
+
+          // Update to sleep_only state
+          if (payloadId) {
+            await supabase
+              .from('device_wake_payloads')
+              .update({
+                protocol_state: 'sleep_only',
+                payload_status: 'complete',
+                is_complete: true,
+              })
+              .eq('payload_id', payloadId);
+          }
+        } else {
+          // Provisioned and mapped: Full protocol flow (ACK -> SNAP -> wait for image)
+          console.log('[Ingest] Device provisioned - initiating image capture protocol');
+
+          // Update state to ACK sent
+          if (payloadId) {
+            await supabase
+              .from('device_wake_payloads')
+              .update({
+                protocol_state: 'ack_sent',
+                ack_sent_at: new Date().toISOString(),
+              })
+              .eq('payload_id', payloadId);
+          }
+
+          // Send SNAP command to capture image
+          await publishSnapCommand(client, normalizedMac, serverImageName, supabase, payloadId);
+
+          console.log('[Ingest] Protocol flow initiated: HELLO -> ACK -> SNAP, waiting for metadata');
+        }
       }
 
       // Create historical telemetry record for battery & wifi tracking (legacy system)
