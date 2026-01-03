@@ -33,18 +33,44 @@ export default function ManualWakeModal({
     setIsSubmitting(true);
     try {
       const nextWakeTime = new Date(Date.now() + minutes * 60 * 1000);
+      const now = new Date().toISOString();
 
-      const { error } = await supabase
+      // Step 1: Update device record with manual wake flags
+      const { error: updateError } = await supabase
         .from('devices')
         .update({
           next_wake_at: nextWakeTime.toISOString(),
           manual_wake_override: true,
           manual_wake_requested_by: user.id,
-          manual_wake_requested_at: new Date().toISOString(),
+          manual_wake_requested_at: now,
         })
         .eq('device_id', deviceId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+
+      // Step 2: Queue command to notify device via MQTT
+      const { error: commandError } = await supabase
+        .from('device_commands')
+        .insert({
+          device_id: deviceId,
+          command_type: 'set_wake_schedule',
+          command_payload: {
+            next_wake_time: nextWakeTime.toISOString(),
+            manual_wake: true,
+          },
+          status: 'pending',
+          created_by_user_id: user.id,
+        });
+
+      if (commandError) {
+        console.error('Error queuing wake command:', commandError);
+        toast.warning(
+          'Manual wake scheduled but device notification failed. Device will wake at scheduled time.',
+          { autoClose: 6000 }
+        );
+      } else {
+        console.log('[ManualWake] Command queued successfully for device:', deviceId);
+      }
 
       toast.success(
         `Manual wake scheduled for ${nextWakeTime.toLocaleTimeString()}. Device will resume regular schedule after this wake.`,

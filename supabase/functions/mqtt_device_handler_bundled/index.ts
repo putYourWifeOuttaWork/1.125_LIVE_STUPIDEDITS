@@ -593,7 +593,7 @@ async function handleHelloStatus(
 
     const { data: existingDevice, error: queryError } = await supabase
       .from('devices')
-      .select('device_id, device_mac, wake_schedule_cron, company_id')
+      .select('device_id, device_mac, wake_schedule_cron, company_id, manual_wake_override')
       .eq('device_mac', normalizedMac)
       .maybeSingle();
 
@@ -644,6 +644,15 @@ async function handleHelloStatus(
       last_updated_by_user_id: SYSTEM_USER_UUID,
     };
 
+    // Check if this was a manual wake override
+    const wasManualWake = existingDevice.manual_wake_override === true;
+    if (wasManualWake) {
+      console.log('[Ingest] Manual wake override detected - clearing flag and resuming schedule');
+      updateData.manual_wake_override = false;
+      updateData.manual_wake_requested_by = null;
+      updateData.manual_wake_requested_at = null;
+    }
+
     if (payload.battery_voltage !== undefined) {
       updateData.battery_voltage = payload.battery_voltage;
     }
@@ -657,6 +666,9 @@ async function handleHelloStatus(
       updateData.hardware_version = payload.hardware_version;
     }
 
+    // Calculate next wake time
+    // For manual wakes: Resume regular schedule from now
+    // For normal wakes: Calculate next occurrence from now
     if (existingDevice.wake_schedule_cron) {
       const { data: nextWakeCalc } = await supabase.rpc(
         'fn_calculate_next_wake_time',
@@ -669,6 +681,12 @@ async function handleHelloStatus(
 
       if (nextWakeCalc) {
         updateData.next_wake_at = nextWakeCalc;
+        console.log(
+          wasManualWake ? '[Ingest] Resuming scheduled wake:' : '[Ingest] Next wake calculated:',
+          nextWakeCalc,
+          'timezone:',
+          deviceTimezone
+        );
       }
     }
 
