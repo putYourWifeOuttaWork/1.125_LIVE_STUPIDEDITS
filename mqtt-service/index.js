@@ -54,8 +54,13 @@ async function generateDeviceCode(hardwareVersion = 'ESP32-S3') {
 }
 
 /**
- * Normalize MAC address to standard format: XX:XX:XX:XX:XX:XX (uppercase with colons)
+ * Normalize MAC address to standard format: XXXXXXXXXXXX (uppercase without separators)
  * Handles input formats: XXXXXXXXXXXX, XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX
+ *
+ * Examples:
+ *   "98:A3:16:F8:29:28" -> "98A316F82928"
+ *   "98-a3-16-f8-29-28" -> "98A316F82928"
+ *   "98A316F82928"      -> "98A316F82928"
  */
 function normalizeMacAddress(mac) {
   if (!mac) return null;
@@ -69,8 +74,8 @@ function normalizeMacAddress(mac) {
     return null;
   }
 
-  // Insert colons every 2 characters: XXXXXXXXXXXX -> XX:XX:XX:XX:XX:XX
-  return cleaned.match(/.{1,2}/g).join(':');
+  // Return uppercase 12-character format without separators
+  return cleaned;
 }
 
 async function autoProvisionDevice(deviceMac) {

@@ -11,6 +11,7 @@ import { getBuffer, getMissingChunks, assembleImage, clearBuffer, withSingleAck 
 import { uploadImage } from './storage.ts';
 import { publishMissingChunks, publishAckOk } from './ack.ts';
 import { calculateNextWake } from './scheduler.ts';
+import { normalizeMacAddress } from './utils.ts';
 
 /**
  * Finalize image transmission
@@ -27,22 +28,29 @@ export async function finalizeImage(
   console.log('[Finalize] Starting finalization for:', imageName);
 
   try {
-    const buffer = await getBuffer(supabase, deviceMac, imageName);
+    // Normalize MAC address (remove separators, uppercase)
+    const normalizedMac = normalizeMacAddress(deviceMac);
+    if (!normalizedMac) {
+      console.error('[Finalize] Invalid MAC address format:', deviceMac);
+      return;
+    }
+
+    const buffer = await getBuffer(supabase, normalizedMac, imageName);
     if (!buffer || !buffer.imageRecord?.image_id) {
       console.error('[Finalize] No buffer or image_id found for:', imageName);
       return;
     }
 
     // Check for missing chunks
-    const missingChunks = await getMissingChunks(supabase, deviceMac, imageName, totalChunks);
+    const missingChunks = await getMissingChunks(supabase, normalizedMac, imageName, totalChunks);
     if (missingChunks.length > 0) {
       console.log('[Finalize] Missing chunks detected:', missingChunks.length);
-      await publishMissingChunks(client, deviceMac, imageName, missingChunks, supabase);
+      await publishMissingChunks(client, normalizedMac, imageName, missingChunks, supabase);
       return;
     }
 
     // Assemble image from Postgres chunks
-    const imageBuffer = await assembleImage(supabase, deviceMac, imageName, totalChunks);
+    const imageBuffer = await assembleImage(supabase, normalizedMac, imageName, totalChunks);
     if (!imageBuffer) {
       console.error('[Finalize] Failed to assemble image:', imageName);
       await callFailureHandler(supabase, buffer.imageRecord.image_id, 2, 'Image assembly failed');
@@ -50,7 +58,7 @@ export async function finalizeImage(
     }
 
     // Upload to storage (stable filename - idempotent)
-    const imageUrl = await uploadImage(supabase, deviceMac, imageName, imageBuffer, bucketName);
+    const imageUrl = await uploadImage(supabase, normalizedMac, imageName, imageBuffer, bucketName);
     if (!imageUrl) {
       console.error('[Finalize] Failed to upload image:', imageName);
       await callFailureHandler(supabase, buffer.imageRecord.image_id, 1, 'Image upload failed');
@@ -106,7 +114,7 @@ export async function finalizeImage(
     } else {
       // Fetch device lineage to get wake schedule
       const { data: lineageData } = await supabase.rpc('fn_resolve_device_lineage', {
-        p_device_mac: deviceMac,
+        p_device_mac: normalizedMac,
       });
 
       if (lineageData?.wake_schedule_cron) {
@@ -138,13 +146,13 @@ export async function finalizeImage(
     }
 
     // Publish ACK_OK exactly once using advisory lock
-    await withSingleAck(supabase, deviceMac, imageName, async () => {
-      await publishAckOk(client, deviceMac, imageName, nextWake, supabase);
+    await withSingleAck(supabase, normalizedMac, imageName, async () => {
+      await publishAckOk(client, normalizedMac, imageName, nextWake, supabase);
       return true;
     });
 
     // Clear buffer from Postgres
-    await clearBuffer(supabase, deviceMac, imageName);
+    await clearBuffer(supabase, normalizedMac, imageName);
 
     console.log('[Finalize] Finalization complete for:', imageName);
   } catch (err) {
@@ -152,11 +160,12 @@ export async function finalizeImage(
 
     // Log to async_error_logs
     try {
+      const normalizedMac = normalizeMacAddress(deviceMac);
       await supabase.from('async_error_logs').insert({
         table_name: 'device_images',
         trigger_name: 'edge_finalize',
         function_name: 'finalizeImage',
-        payload: { device_mac: deviceMac, image_name: imageName },
+        payload: { device_mac: normalizedMac || deviceMac, image_name: imageName },
         error_message: err instanceof Error ? err.message : String(err),
         error_details: { stack: err instanceof Error ? err.stack : null },
       });

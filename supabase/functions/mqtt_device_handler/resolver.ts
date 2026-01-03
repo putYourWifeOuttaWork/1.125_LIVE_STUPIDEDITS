@@ -6,6 +6,7 @@
  */
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
+import { normalizeMacAddress } from './utils.ts';
 
 /**
  * Simple device_mac to device_id lookup
@@ -16,10 +17,17 @@ export async function resolveDeviceId(
   deviceMac: string
 ): Promise<string | null> {
   try {
+    // Normalize MAC address (remove separators, uppercase)
+    const normalizedMac = normalizeMacAddress(deviceMac);
+    if (!normalizedMac) {
+      console.error('[Resolver] Invalid MAC address format:', deviceMac);
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('devices')
       .select('device_id')
-      .eq('device_mac', deviceMac)
+      .eq('device_mac', normalizedMac)
       .maybeSingle();
 
     if (error || !data) {

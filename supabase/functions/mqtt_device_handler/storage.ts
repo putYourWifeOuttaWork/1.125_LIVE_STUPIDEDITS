@@ -6,6 +6,7 @@
  */
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
+import { normalizeMacAddress } from './utils.ts';
 
 /**
  * Upload image to Supabase Storage with idempotency
@@ -20,16 +21,23 @@ export async function uploadImage(
   bucketName: string
 ): Promise<string | null> {
   try {
+    // Normalize MAC address (remove separators, uppercase)
+    const normalizedMac = normalizeMacAddress(deviceMac);
+    if (!normalizedMac) {
+      console.error('[Storage] Invalid MAC address format:', deviceMac);
+      return null;
+    }
+
     // First, resolve device lineage to get company_id and site_id
     const { data: lineageData, error: lineageError } = await supabase.rpc(
       'fn_resolve_device_lineage',
-      { p_device_mac: deviceMac }
+      { p_device_mac: normalizedMac }
     );
 
     if (lineageError || !lineageData) {
       console.error('[Storage] Failed to resolve device lineage:', lineageError);
       // Fallback to simple path if lineage resolution fails
-      const fileName = `${deviceMac}/${imageName}`;
+      const fileName = `${normalizedMac}/${imageName}`;
       return await uploadWithPath(supabase, bucketName, fileName, imageBuffer);
     }
 
@@ -39,7 +47,7 @@ export async function uploadImage(
       {
         p_company_id: lineageData.company_id,
         p_site_id: lineageData.site_id,
-        p_device_mac: deviceMac,
+        p_device_mac: normalizedMac,
         p_image_name: imageName,
       }
     );
@@ -47,7 +55,7 @@ export async function uploadImage(
     if (pathError || !pathData) {
       console.error('[Storage] Failed to build image path:', pathError);
       // Fallback to simple path
-      const fileName = `${deviceMac}/${imageName}`;
+      const fileName = `${normalizedMac}/${imageName}`;
       return await uploadWithPath(supabase, bucketName, fileName, imageBuffer);
     }
 

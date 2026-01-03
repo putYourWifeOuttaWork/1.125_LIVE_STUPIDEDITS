@@ -9,6 +9,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
 import type { MqttClient } from 'npm:mqtt@5.3.4';
 import type { DeviceStatusMessage, ImageMetadata, ImageChunk, TelemetryOnlyMessage } from './types.ts';
 import { getOrCreateBuffer, storeChunk } from './idempotency.ts';
+import { normalizeMacAddress } from './utils.ts';
 
 // System user UUID for automated updates
 const SYSTEM_USER_UUID = '00000000-0000-0000-0000-000000000001';
@@ -63,10 +64,17 @@ export async function handleHelloStatus(
   console.log('[Ingest] HELLO from device:', payload.device_id, 'MAC:', payload.device_mac, 'pending:', payload.pending_count || 0);
 
   try {
+    // Normalize MAC address (remove separators, uppercase)
+    const normalizedMac = normalizeMacAddress(payload.device_mac || payload.device_id);
+    if (!normalizedMac) {
+      console.error('[Ingest] Invalid MAC address format:', payload.device_mac || payload.device_id);
+      return;
+    }
+
     // First, resolve lineage to get timezone for next wake calculation
     const { data: lineageData } = await supabase.rpc(
       'fn_resolve_device_lineage',
-      { p_device_mac: payload.device_mac || payload.device_id }
+      { p_device_mac: normalizedMac }
     );
 
     const deviceTimezone = lineageData?.timezone || 'America/New_York'; // Fallback to Eastern
@@ -75,7 +83,7 @@ export async function handleHelloStatus(
     const { data: existingDevice, error: queryError } = await supabase
       .from('devices')
       .select('device_id, device_mac, wake_schedule_cron, company_id')
-      .eq('device_mac', payload.device_mac || payload.device_id)
+      .eq('device_mac', normalizedMac)
       .maybeSingle();
 
     if (queryError) {
@@ -97,7 +105,7 @@ export async function handleHelloStatus(
       const { data: newDevice, error: insertError } = await supabase
         .from('devices')
         .insert({
-          device_mac: payload.device_mac || payload.device_id,
+          device_mac: normalizedMac,
           device_code: deviceCode, // Add generated code
           mqtt_client_id: payload.device_id, // Store firmware-reported ID
           device_name: `Device ${payload.device_id}`,
@@ -285,10 +293,17 @@ export async function handleMetadata(
   console.log('[Ingest] Metadata received:', payload.image_name, 'chunks:', payload.total_chunks_count);
 
   try {
+    // Normalize MAC address (remove separators, uppercase)
+    const normalizedMac = normalizeMacAddress(payload.device_id);
+    if (!normalizedMac) {
+      console.error('[Ingest] Invalid MAC address format:', payload.device_id);
+      return;
+    }
+
     // Resolve device MAC to complete lineage using SQL function
     const { data: lineageData, error: lineageError } = await supabase.rpc(
       'fn_resolve_device_lineage',
-      { p_device_mac: payload.device_id }
+      { p_device_mac: normalizedMac }
     );
 
     if (lineageError) {
@@ -509,10 +524,17 @@ export async function handleTelemetryOnly(
   console.log('[Ingest] Telemetry-only from device:', deviceMac, 'temp:', payload.temperature, 'rh:', payload.humidity);
 
   try {
+    // Normalize MAC address (remove separators, uppercase)
+    const normalizedMac = normalizeMacAddress(deviceMac);
+    if (!normalizedMac) {
+      console.error('[Ingest] Invalid MAC address format:', deviceMac);
+      return;
+    }
+
     // Resolve device MAC to get device_id and company_id
     const { data: lineageData, error: lineageError } = await supabase.rpc(
       'fn_resolve_device_lineage',
-      { p_device_mac: deviceMac }
+      { p_device_mac: normalizedMac }
     );
 
     if (lineageError) {

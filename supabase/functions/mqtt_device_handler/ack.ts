@@ -7,6 +7,7 @@
 import type { MqttClient } from 'npm:mqtt@5.3.4';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
 import type { MissingChunksRequest, AckMessage } from './types.ts';
+import { normalizeMacAddress } from './utils.ts';
 
 /**
  * Publish missing chunks request to device
@@ -18,19 +19,26 @@ export async function publishMissingChunks(
   missingChunks: number[],
   supabase?: SupabaseClient
 ): Promise<void> {
+  // Normalize MAC address (remove separators, uppercase)
+  const normalizedMac = normalizeMacAddress(deviceMac);
+  if (!normalizedMac) {
+    console.error('[ACK] Invalid MAC address format:', deviceMac);
+    return;
+  }
+
   const message: MissingChunksRequest = {
-    device_id: deviceMac,
+    device_id: normalizedMac,
     image_name: imageName,
     missing_chunks: missingChunks,
   };
 
-  const topic = `ESP32CAM/${deviceMac}/ack`;
+  const topic = `ESP32CAM/${normalizedMac}/ack`;
 
   try {
     client.publish(topic, JSON.stringify(message));
 
     console.log('[ACK] Published missing_chunks:', {
-      device: deviceMac,
+      device: normalizedMac,
       image: imageName,
       missing: missingChunks.length,
     });
@@ -38,7 +46,7 @@ export async function publishMissingChunks(
     // Log to audit trail
     if (supabase) {
       await supabase.rpc('fn_log_device_ack', {
-        p_device_mac: deviceMac,
+        p_device_mac: normalizedMac,
         p_image_name: imageName,
         p_ack_type: 'MISSING_CHUNKS',
         p_mqtt_topic: topic,
@@ -53,7 +61,7 @@ export async function publishMissingChunks(
     // Log failure to audit trail
     if (supabase) {
       await supabase.rpc('fn_log_device_ack', {
-        p_device_mac: deviceMac,
+        p_device_mac: normalizedMac,
         p_image_name: imageName,
         p_ack_type: 'MISSING_CHUNKS',
         p_mqtt_topic: topic,
@@ -76,21 +84,28 @@ export async function publishAckOk(
   nextWakeTime: string,
   supabase?: SupabaseClient
 ): Promise<void> {
+  // Normalize MAC address (remove separators, uppercase)
+  const normalizedMac = normalizeMacAddress(deviceMac);
+  if (!normalizedMac) {
+    console.error('[ACK] Invalid MAC address format:', deviceMac);
+    return;
+  }
+
   const message: AckMessage = {
-    device_id: deviceMac,
+    device_id: normalizedMac,
     image_name: imageName,
     ACK_OK: {
       next_wake_time: nextWakeTime,
     },
   };
 
-  const topic = `ESP32CAM/${deviceMac}/ack`;
+  const topic = `ESP32CAM/${normalizedMac}/ack`;
 
   try {
     client.publish(topic, JSON.stringify(message));
 
     console.log('[ACK] Published ACK_OK:', {
-      device: deviceMac,
+      device: normalizedMac,
       image: imageName,
       next_wake: nextWakeTime,
     });
@@ -98,7 +113,7 @@ export async function publishAckOk(
     // Log to audit trail
     if (supabase) {
       await supabase.rpc('fn_log_device_ack', {
-        p_device_mac: deviceMac,
+        p_device_mac: normalizedMac,
         p_image_name: imageName,
         p_ack_type: 'ACK_OK',
         p_mqtt_topic: topic,
@@ -113,7 +128,7 @@ export async function publishAckOk(
     // Log failure to audit trail
     if (supabase) {
       await supabase.rpc('fn_log_device_ack', {
-        p_device_mac: deviceMac,
+        p_device_mac: normalizedMac,
         p_image_name: imageName,
         p_ack_type: 'ACK_OK',
         p_mqtt_topic: topic,

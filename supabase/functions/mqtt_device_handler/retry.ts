@@ -7,6 +7,7 @@
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.8';
 import type { MqttClient } from 'npm:mqtt@5.3.4';
+import { normalizeMacAddress } from './utils.ts';
 
 /**
  * Publish retry command to device via MQTT
@@ -16,15 +17,22 @@ export function publishRetryCommand(
   deviceMac: string,
   imageName: string
 ): void {
+  // Normalize MAC address (remove separators, uppercase)
+  const normalizedMac = normalizeMacAddress(deviceMac);
+  if (!normalizedMac) {
+    console.error('[Retry] Invalid MAC address format:', deviceMac);
+    return;
+  }
+
   const command = {
-    device_id: deviceMac,
+    device_id: normalizedMac,
     send_image: imageName,
   };
 
-  const topic = `ESP32CAM/${deviceMac}/cmd`;
+  const topic = `ESP32CAM/${normalizedMac}/cmd`;
   client.publish(topic, JSON.stringify(command));
 
-  console.log('[Retry] Published retry command:', { device: deviceMac, image: imageName });
+  console.log('[Retry] Published retry command:', { device: normalizedMac, image: imageName });
 }
 
 /**
@@ -40,15 +48,22 @@ export async function handleRetryReceipt(
   console.log('[Retry] Processing retry for:', imageName);
 
   try {
+    // Normalize MAC address (remove separators, uppercase)
+    const normalizedMac = normalizeMacAddress(deviceMac);
+    if (!normalizedMac) {
+      console.error('[Retry] Invalid MAC address format:', deviceMac);
+      return;
+    }
+
     // First resolve device_mac to device_id (UUID)
     const { data: deviceData, error: deviceError } = await supabase
       .from('devices')
       .select('device_id')
-      .eq('device_mac', deviceMac)
+      .eq('device_mac', normalizedMac)
       .maybeSingle();
 
     if (deviceError || !deviceData) {
-      console.error('[Retry] Device not found:', deviceMac);
+      console.error('[Retry] Device not found:', normalizedMac);
       return;
     }
 
@@ -85,11 +100,12 @@ export async function handleRetryReceipt(
 
     // Log to async_error_logs
     try {
+      const normalizedMac = normalizeMacAddress(deviceMac);
       await supabase.from('async_error_logs').insert({
         table_name: 'device_images',
         trigger_name: 'edge_retry',
         function_name: 'handleRetryReceipt',
-        payload: { device_mac: deviceMac, image_name: imageName },
+        payload: { device_mac: normalizedMac || deviceMac, image_name: imageName },
         error_message: err instanceof Error ? err.message : String(err),
         error_details: { stack: err instanceof Error ? err.stack : null },
       });

@@ -161,6 +161,39 @@ async function logMqttMessage(
 }
 
 // ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+/**
+ * Normalizes MAC address to standard format: uppercase 12-character string without separators
+ *
+ * Examples:
+ *   "98:A3:16:F8:29:28" -> "98A316F82928"
+ *   "98-a3-16-f8-29-28" -> "98A316F82928"
+ *   "98A316F82928"      -> "98A316F82928"
+ *
+ * @param mac - MAC address in any common format
+ * @returns Normalized MAC address (12 uppercase hex chars) or null if invalid
+ */
+function normalizeMacAddress(mac: string | null | undefined): string | null {
+  if (!mac) {
+    return null;
+  }
+
+  // Remove all common separators (colons, hyphens, spaces)
+  const cleaned = mac.replace(/[:\-\s]/g, '').toUpperCase();
+
+  // Validate: must be exactly 12 hexadecimal characters
+  const hexPattern = /^[0-9A-F]{12}$/;
+  if (!hexPattern.test(cleaned)) {
+    console.warn(`Invalid MAC address format: "${mac}" (cleaned: "${cleaned}")`);
+    return null;
+  }
+
+  return cleaned;
+}
+
+// ============================================
 // CONFIGURATION
 // ============================================
 
@@ -510,12 +543,19 @@ async function handleHelloStatus(
 
   console.log('[Ingest] HELLO from device:', payload.device_id, 'MAC:', macAddress, 'pending:', pendingCount);
 
+  // Normalize MAC address (remove separators, uppercase)
+  const normalizedMac = normalizeMacAddress(macAddress);
+  if (!normalizedMac) {
+    console.error('[Ingest] Invalid MAC address format:', macAddress);
+    return;
+  }
+
   // Log MQTT message
   await logMqttMessage(
     supabase,
-    macAddress,
+    normalizedMac,
     'inbound',
-    PROTOCOL_TOPICS.STATUS(macAddress),
+    PROTOCOL_TOPICS.STATUS(normalizedMac),
     payload,
     'hello'
   );
@@ -523,7 +563,7 @@ async function handleHelloStatus(
   try {
     const { data: lineageData } = await supabase.rpc(
       'fn_resolve_device_lineage',
-      { p_device_mac: payload.device_mac || payload.device_id }
+      { p_device_mac: normalizedMac }
     );
 
     const deviceTimezone = lineageData?.timezone || 'America/New_York';
@@ -531,7 +571,7 @@ async function handleHelloStatus(
     const { data: existingDevice, error: queryError } = await supabase
       .from('devices')
       .select('device_id, device_mac, wake_schedule_cron, company_id')
-      .eq('device_mac', payload.device_mac || payload.device_id)
+      .eq('device_mac', normalizedMac)
       .maybeSingle();
 
     if (queryError) {
@@ -551,7 +591,7 @@ async function handleHelloStatus(
       await supabase
         .from('devices')
         .insert({
-          device_mac: payload.device_mac || payload.device_id,
+          device_mac: normalizedMac,
           device_code: deviceCode,
           mqtt_client_id: payload.device_id,
           device_name: `Device ${payload.device_id}`,
@@ -664,12 +704,19 @@ async function handleMetadata(
 ): Promise<void> {
   console.log('[Ingest] Metadata received:', payload.image_name, 'chunks:', payload.total_chunks_count);
 
+  // Normalize MAC address (remove separators, uppercase)
+  const normalizedMac = normalizeMacAddress(payload.device_id);
+  if (!normalizedMac) {
+    console.error('[Ingest] Invalid MAC address format:', payload.device_id);
+    return;
+  }
+
   // Log MQTT message
   await logMqttMessage(
     supabase,
-    payload.device_id,
+    normalizedMac,
     'inbound',
-    PROTOCOL_TOPICS.DATA(payload.device_id),
+    PROTOCOL_TOPICS.DATA(normalizedMac),
     payload,
     'metadata',
     null,
@@ -680,7 +727,7 @@ async function handleMetadata(
   try {
     const { data: lineageData, error: lineageError } = await supabase.rpc(
       'fn_resolve_device_lineage',
-      { p_device_mac: payload.device_id }
+      { p_device_mac: normalizedMac }
     );
 
     if (lineageError || !lineageData || lineageData.error) {
@@ -798,12 +845,19 @@ async function handleTelemetryOnly(
   const deviceMac = (payload as any).device_mac || payload.device_id;
   console.log('[Ingest] Telemetry-only from device:', deviceMac);
 
+  // Normalize MAC address (remove separators, uppercase)
+  const normalizedMac = normalizeMacAddress(deviceMac);
+  if (!normalizedMac) {
+    console.error('[Ingest] Invalid MAC address format:', deviceMac);
+    return;
+  }
+
   // Log MQTT message
   await logMqttMessage(
     supabase,
-    deviceMac,
+    normalizedMac,
     'inbound',
-    PROTOCOL_TOPICS.DATA(deviceMac),
+    PROTOCOL_TOPICS.DATA(normalizedMac),
     payload,
     'telemetry'
   );
@@ -811,7 +865,7 @@ async function handleTelemetryOnly(
   try {
     const { data: lineageData } = await supabase.rpc(
       'fn_resolve_device_lineage',
-      { p_device_mac: deviceMac }
+      { p_device_mac: normalizedMac }
     );
 
     if (!lineageData || lineageData.error) {
