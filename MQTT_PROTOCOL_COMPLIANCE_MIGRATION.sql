@@ -106,8 +106,8 @@ CREATE POLICY "Users can view mqtt_messages for their company"
   TO authenticated
   USING (
     company_id IN (
-      SELECT company_id FROM user_companies
-      WHERE user_id = auth.uid()
+      SELECT company_id FROM users
+      WHERE id = auth.uid()
     )
   );
 
