@@ -3,32 +3,55 @@
  */
 
 /**
- * Normalizes MAC address to standard format: uppercase 12-character string without separators
+ * Checks if the input is a valid MAC address pattern
+ *
+ * @param input - String to check
+ * @returns True if input matches MAC address pattern
+ */
+function isValidMacAddress(input: string): boolean {
+  // Remove common separators and check if result is 12 hex characters
+  const cleaned = input.replace(/[:\-\s]/g, '');
+  return /^[0-9A-Fa-f]{12}$/.test(cleaned);
+}
+
+/**
+ * Normalizes device identifier to standard format
+ *
+ * Handles both MAC addresses and special device identifiers:
+ * - MAC addresses: Converts to uppercase 12-character string without separators
+ * - Special identifiers: Preserves TEST-, SYSTEM:, VIRTUAL: prefixes
  *
  * Examples:
- *   "98:A3:16:F8:29:28" -> "98A316F82928"
- *   "98-a3-16-f8-29-28" -> "98A316F82928"
- *   "98A316F82928"      -> "98A316F82928"
+ *   "98:A3:16:F8:29:28"      -> "98A316F82928"
+ *   "98-a3-16-f8-29-28"      -> "98A316F82928"
+ *   "98A316F82928"           -> "98A316F82928"
+ *   "TEST-ESP32-002"         -> "TEST-ESP32-002"
+ *   "SYSTEM:AUTO:GENERATED"  -> "SYSTEM:AUTO:GENERATED"
+ *   "VIRTUAL:SIMULATOR:001"  -> "VIRTUAL:SIMULATOR:001"
  *
- * @param mac - MAC address in any common format
- * @returns Normalized MAC address (12 uppercase hex chars) or null if invalid
+ * @param identifier - Device identifier (MAC or special identifier)
+ * @returns Normalized identifier or null if invalid
  */
-export function normalizeMacAddress(mac: string | null | undefined): string | null {
-  if (!mac) {
+export function normalizeMacAddress(identifier: string | null | undefined): string | null {
+  if (!identifier) {
     return null;
   }
 
-  // Remove all common separators (colons, hyphens, spaces)
-  const cleaned = mac.replace(/[:\-\s]/g, '').toUpperCase();
+  const upper = identifier.toUpperCase();
 
-  // Validate: must be exactly 12 hexadecimal characters
-  const hexPattern = /^[0-9A-F]{12}$/;
-  if (!hexPattern.test(cleaned)) {
-    console.warn(`Invalid MAC address format: "${mac}" (cleaned: "${cleaned}")`);
+  // Check for special identifier prefixes - preserve as-is
+  if (upper.startsWith('TEST-') || upper.startsWith('SYSTEM:') || upper.startsWith('VIRTUAL:')) {
+    return upper;
+  }
+
+  // Check if it looks like a MAC address
+  if (!isValidMacAddress(identifier)) {
+    console.warn(`Invalid device identifier format: "${identifier}"`);
     return null;
   }
 
-  return cleaned;
+  // Normalize MAC address: remove separators and uppercase
+  return identifier.replace(/[:\-\s]/g, '').toUpperCase();
 }
 
 /**

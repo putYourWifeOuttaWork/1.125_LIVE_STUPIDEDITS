@@ -54,28 +54,47 @@ async function generateDeviceCode(hardwareVersion = 'ESP32-S3') {
 }
 
 /**
- * Normalize MAC address to standard format: XXXXXXXXXXXX (uppercase without separators)
- * Handles input formats: XXXXXXXXXXXX, XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX
+ * Checks if the input is a valid MAC address pattern
+ */
+function isValidMacAddress(input) {
+  if (!input) return false;
+  const cleaned = input.replace(/[:\-\s]/g, '');
+  return /^[0-9A-Fa-f]{12}$/.test(cleaned);
+}
+
+/**
+ * Normalize device identifier to standard format
+ *
+ * Handles both MAC addresses and special device identifiers:
+ * - MAC addresses: Converts to uppercase 12-character string without separators
+ * - Special identifiers: Preserves TEST-, SYSTEM:, VIRTUAL: prefixes
  *
  * Examples:
- *   "98:A3:16:F8:29:28" -> "98A316F82928"
- *   "98-a3-16-f8-29-28" -> "98A316F82928"
- *   "98A316F82928"      -> "98A316F82928"
+ *   "98:A3:16:F8:29:28"      -> "98A316F82928"
+ *   "98-a3-16-f8-29-28"      -> "98A316F82928"
+ *   "98A316F82928"           -> "98A316F82928"
+ *   "TEST-ESP32-002"         -> "TEST-ESP32-002"
+ *   "SYSTEM:AUTO:GENERATED"  -> "SYSTEM:AUTO:GENERATED"
+ *   "VIRTUAL:SIMULATOR:001"  -> "VIRTUAL:SIMULATOR:001"
  */
-function normalizeMacAddress(mac) {
-  if (!mac) return null;
+function normalizeMacAddress(identifier) {
+  if (!identifier) return null;
 
-  // Remove all separators (colons, hyphens, spaces)
-  const cleaned = mac.replace(/[:\-\s]/g, '').toUpperCase();
+  const upper = identifier.toUpperCase();
 
-  // Validate it's a 12-character hex string
-  if (!/^[0-9A-F]{12}$/.test(cleaned)) {
-    console.warn(`[MAC] Invalid MAC address format: ${mac}`);
+  // Check for special identifier prefixes - preserve as-is
+  if (upper.startsWith('TEST-') || upper.startsWith('SYSTEM:') || upper.startsWith('VIRTUAL:')) {
+    return upper;
+  }
+
+  // Check if it looks like a MAC address
+  if (!isValidMacAddress(identifier)) {
+    console.warn(`[MAC] Invalid device identifier format: ${identifier}`);
     return null;
   }
 
-  // Return uppercase 12-character format without separators
-  return cleaned;
+  // Normalize MAC address: remove separators and uppercase
+  return identifier.replace(/[:\-\s]/g, '').toUpperCase();
 }
 
 async function autoProvisionDevice(deviceMac) {
