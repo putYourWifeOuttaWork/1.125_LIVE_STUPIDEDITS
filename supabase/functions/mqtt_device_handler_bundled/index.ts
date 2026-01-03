@@ -84,6 +84,83 @@ interface EdgeConfig {
 }
 
 // ============================================
+// PROTOCOL MODULE (BrainlyTree ESP32-CAM Spec)
+// ============================================
+
+/**
+ * Protocol-compliant MQTT field names (EXACT as firmware expects)
+ */
+const PROTOCOL_FIELDS = {
+  DEVICE_ID: 'device_id',
+  STATUS: 'status',
+  PENDING_IMG: 'pendingImg',
+  CAPTURE_IMAGE: 'capture_image',
+  SEND_IMAGE: 'send_image',
+  NEXT_WAKE: 'next_wake',
+  CAPTURE_TIMESTAMP: 'capture_timestamp',
+  IMAGE_NAME: 'image_name',
+  IMAGE_SIZE: 'image_size',
+  MAX_CHUNK_SIZE: 'max_chunk_size',
+  TOTAL_CHUNKS_COUNT: 'total_chunks_count',
+  LOCATION: 'location',
+  ERROR: 'error',
+  TEMPERATURE: 'temperature',
+  HUMIDITY: 'humidity',
+  PRESSURE: 'pressure',
+  GAS_RESISTANCE: 'gas_resistance',
+  CHUNK_ID: 'chunk_id',
+  PAYLOAD: 'payload',
+  ACK_OK: 'ACK_OK',
+  NEXT_WAKE_TIME: 'next_wake_time',
+  MISSING_CHUNKS: 'missing_chunks',
+} as const;
+
+const PROTOCOL_TOPICS = {
+  STATUS: (macId: string) => `ESP32CAM/${macId}/status`,
+  DATA: (macId: string) => `ESP32CAM/${macId}/data`,
+  CMD: (macId: string) => `ESP32CAM/${macId}/cmd`,
+  ACK: (macId: string) => `ESP32CAM/${macId}/ack`,
+} as const;
+
+function formatNextWakeTime(timestamp: Date): string {
+  const hours = timestamp.getHours();
+  const minutes = timestamp.getMinutes();
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  const displayMinutes = minutes.toString().padStart(2, '0');
+  return `${displayHours}:${displayMinutes}${period}`;
+}
+
+async function logMqttMessage(
+  supabase: SupabaseClient,
+  macAddress: string,
+  direction: 'inbound' | 'outbound',
+  topic: string,
+  payload: any,
+  messageType: string,
+  sessionId?: string | null,
+  wakePayloadId?: string | null,
+  imageName?: string | null,
+  chunkId?: number | null
+): Promise<void> {
+  try {
+    await supabase.rpc('log_mqtt_message', {
+      p_mac_address: macAddress,
+      p_direction: direction,
+      p_topic: topic,
+      p_payload: payload,
+      p_message_type: messageType,
+      p_session_id: sessionId || null,
+      p_wake_payload_id: wakePayloadId || null,
+      p_image_name: imageName || null,
+      p_chunk_id: chunkId || null,
+    });
+  } catch (err) {
+    console.error('[Protocol] Failed to log MQTT message:', err);
+  }
+}
+
+// ============================================
 // CONFIGURATION
 // ============================================
 
@@ -428,7 +505,20 @@ async function handleHelloStatus(
   supabase: SupabaseClient,
   payload: DeviceStatusMessage
 ): Promise<void> {
-  console.log('[Ingest] HELLO from device:', payload.device_id, 'MAC:', payload.device_mac, 'pending:', payload.pending_count || 0);
+  const macAddress = payload.device_mac || payload.device_id;
+  const pendingCount = payload.pendingImg || payload.pending_count || 0;
+
+  console.log('[Ingest] HELLO from device:', payload.device_id, 'MAC:', macAddress, 'pending:', pendingCount);
+
+  // Log MQTT message
+  await logMqttMessage(
+    supabase,
+    macAddress,
+    'inbound',
+    PROTOCOL_TOPICS.STATUS(macAddress),
+    payload,
+    'hello'
+  );
 
   try {
     const { data: lineageData } = await supabase.rpc(
@@ -574,6 +664,19 @@ async function handleMetadata(
 ): Promise<void> {
   console.log('[Ingest] Metadata received:', payload.image_name, 'chunks:', payload.total_chunks_count);
 
+  // Log MQTT message
+  await logMqttMessage(
+    supabase,
+    payload.device_id,
+    'inbound',
+    PROTOCOL_TOPICS.DATA(payload.device_id),
+    payload,
+    'metadata',
+    null,
+    null,
+    payload.image_name
+  );
+
   try {
     const { data: lineageData, error: lineageError } = await supabase.rpc(
       'fn_resolve_device_lineage',
@@ -657,6 +760,20 @@ async function handleChunk(
   payload: ImageChunk
 ): Promise<void> {
   try {
+    // Log MQTT message
+    await logMqttMessage(
+      supabase,
+      payload.device_id,
+      'inbound',
+      PROTOCOL_TOPICS.DATA(payload.device_id),
+      payload,
+      'chunk',
+      null,
+      null,
+      payload.image_name,
+      payload.chunk_id
+    );
+
     const chunkData = new Uint8Array(payload.payload);
     const isFirstTime = await storeChunk(
       supabase,
@@ -680,6 +797,16 @@ async function handleTelemetryOnly(
 ): Promise<void> {
   const deviceMac = (payload as any).device_mac || payload.device_id;
   console.log('[Ingest] Telemetry-only from device:', deviceMac);
+
+  // Log MQTT message
+  await logMqttMessage(
+    supabase,
+    deviceMac,
+    'inbound',
+    PROTOCOL_TOPICS.DATA(deviceMac),
+    payload,
+    'telemetry'
+  );
 
   try {
     const { data: lineageData } = await supabase.rpc(
@@ -795,6 +922,29 @@ async function finalizeImage(
     }
 
     const nextWake = result.next_wake_at || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    const formattedNextWake = formatNextWakeTime(new Date(nextWake));
+
+    // Build protocol-compliant ACK_OK message
+    const ackPayload = {
+      [PROTOCOL_FIELDS.DEVICE_ID]: deviceMac,
+      [PROTOCOL_FIELDS.IMAGE_NAME]: imageName,
+      [PROTOCOL_FIELDS.ACK_OK]: {
+        [PROTOCOL_FIELDS.NEXT_WAKE_TIME]: formattedNextWake,
+      },
+    };
+
+    // Log MQTT message
+    await logMqttMessage(
+      supabase,
+      deviceMac,
+      'outbound',
+      PROTOCOL_TOPICS.ACK(deviceMac),
+      ackPayload,
+      'ack_ok',
+      null,
+      buffer.imageRecord.wake_payload_id,
+      imageName
+    );
 
     // Log successful completion (local MQTT service will send ACK)
     await logAckToAudit(
@@ -802,8 +952,8 @@ async function finalizeImage(
       deviceMac,
       imageName,
       'ACK_OK',
-      `ESP32CAM/${deviceMac}/ack`,
-      { next_wake_time: nextWake },
+      PROTOCOL_TOPICS.ACK(deviceMac),
+      ackPayload,
       true
     );
 

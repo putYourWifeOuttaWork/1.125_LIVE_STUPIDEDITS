@@ -69,8 +69,8 @@ CREATE TABLE IF NOT EXISTS mqtt_messages (
   )),
 
   -- Context
-  session_id uuid REFERENCES device_sessions(id) ON DELETE SET NULL,
-  wake_payload_id uuid REFERENCES wake_payloads(id) ON DELETE SET NULL,
+  session_id uuid REFERENCES site_device_sessions(session_id) ON DELETE SET NULL,
+  wake_payload_id uuid REFERENCES device_wake_payloads(payload_id) ON DELETE SET NULL,
   image_name text,
   chunk_id int,
 
