@@ -319,6 +319,9 @@ export type Device = {
   last_wake_at: string | null;
   next_wake_at: string | null;
   wake_schedule_cron: string | null;
+  manual_wake_override: boolean;
+  manual_wake_requested_by: string | null;
+  manual_wake_requested_at: string | null;
   battery_voltage: number | null;
   zone_id: string | null;
   zone_label: string | null;

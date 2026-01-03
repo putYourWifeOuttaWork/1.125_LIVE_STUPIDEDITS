@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit, Thermometer, Bell, Trash2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Battery, Wifi, Clock, Settings, XCircle, RefreshCw, FileText, Camera, AlertCircle, Image, Edit, Thermometer, Bell, Trash2, Zap } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -16,6 +16,7 @@ import DeviceProgramHistoryPanel from '../components/devices/DeviceProgramHistor
 import DeviceEditModal from '../components/devices/DeviceEditModal';
 import DeviceSettingsModal from '../components/devices/DeviceSettingsModal';
 import DeviceAlertThresholdsModal from '../components/devices/DeviceAlertThresholdsModal';
+import ManualWakeModal from '../components/devices/ManualWakeModal';
 import { useDevice, useDeviceImages } from '../hooks/useDevice';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
@@ -42,6 +43,7 @@ const DeviceDetailPage = () => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showAlertThresholdsModal, setShowAlertThresholdsModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showManualWakeModal, setShowManualWakeModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   if (isLoading) {
@@ -319,9 +321,21 @@ const DeviceDetailPage = () => {
                   </p>
                 </div>
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Clock className="h-4 w-4 text-gray-400" />
-                    <p className="text-sm text-gray-500">Next Wake</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-gray-400" />
+                      <p className="text-sm text-gray-500">Next Wake</p>
+                    </div>
+                    {isAdmin && (
+                      <button
+                        onClick={() => setShowManualWakeModal(true)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                        title="Schedule a one-time manual wake"
+                      >
+                        <Zap className="h-3 w-3" />
+                        Manual Wake
+                      </button>
+                    )}
                   </div>
                   <p className="font-medium">
                     {getNextWakeDisplay()}
@@ -329,6 +343,12 @@ const DeviceDetailPage = () => {
                   {device.next_wake_at && (
                     <p className="text-xs text-gray-500 mt-1">
                       {new Date(device.next_wake_at).toLocaleString()}
+                    </p>
+                  )}
+                  {device.manual_wake_override && (
+                    <p className="text-xs text-orange-600 mt-1 font-medium flex items-center gap-1">
+                      <Zap className="h-3 w-3" />
+                      Manual wake scheduled
                     </p>
                   )}
                 </div>
@@ -873,8 +893,23 @@ const DeviceDetailPage = () => {
           confirmLabel="Delete Device"
         />
       )}
+
+      {showManualWakeModal && (
+        <ManualWakeModal
+          isOpen={showManualWakeModal}
+          onClose={() => setShowManualWakeModal(false)}
+          deviceId={device.device_id}
+          deviceName={device.device_name || device.device_code}
+          currentNextWake={device.next_wake_at}
+          onSuccess={() => {
+            refetch();
+            setShowManualWakeModal(false);
+          }}
+        />
+      )}
     </div>
   );
 };
+
 
 export default DeviceDetailPage;

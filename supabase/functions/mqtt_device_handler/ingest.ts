@@ -84,7 +84,7 @@ export async function handleHelloStatus(
     // Check if device exists
     const { data: existingDevice, error: queryError } = await supabase
       .from('devices')
-      .select('device_id, device_mac, wake_schedule_cron, company_id')
+      .select('device_id, device_mac, wake_schedule_cron, company_id, manual_wake_override')
       .eq('device_mac', normalizedMac)
       .maybeSingle();
 
@@ -144,6 +144,15 @@ export async function handleHelloStatus(
         last_updated_by_user_id: SYSTEM_USER_UUID, // System update
       };
 
+      // Check if this was a manual wake override
+      const wasManualWake = existingDevice.manual_wake_override === true;
+      if (wasManualWake) {
+        console.log('[Ingest] Manual wake override detected - clearing flag and resuming schedule');
+        updateData.manual_wake_override = false;
+        updateData.manual_wake_requested_by = null;
+        updateData.manual_wake_requested_at = null;
+      }
+
       // Update battery voltage (trigger auto-calculates health_percent)
       if (payload.battery_voltage !== undefined) {
         updateData.battery_voltage = payload.battery_voltage;
@@ -162,12 +171,18 @@ export async function handleHelloStatus(
         updateData.hardware_version = payload.hardware_version;
       }
 
-      // Calculate next wake time based on THIS actual wake + schedule
+      // Calculate next wake time
+      // For manual wakes: Calculate from the PREVIOUS scheduled wake (before manual override)
+      // For normal wakes: Calculate from THIS wake
       if (existingDevice.wake_schedule_cron) {
+        // For manual wakes, we want to resume the regular schedule
+        // Use the schedule to find the next occurrence after now (not based on manual time)
+        const baseTime = wasManualWake ? now : now;
+
         const { data: nextWakeCalc, error: calcError } = await supabase.rpc(
           'fn_calculate_next_wake_time',
           {
-            p_last_wake_at: now,
+            p_last_wake_at: baseTime,
             p_cron_expression: existingDevice.wake_schedule_cron,
             p_timezone: deviceTimezone
           }
@@ -175,7 +190,12 @@ export async function handleHelloStatus(
 
         if (!calcError && nextWakeCalc) {
           updateData.next_wake_at = nextWakeCalc;
-          console.log('[Ingest] Next wake calculated:', nextWakeCalc, 'timezone:', deviceTimezone);
+          console.log(
+            wasManualWake ? '[Ingest] Resuming scheduled wake:' : '[Ingest] Next wake calculated:',
+            nextWakeCalc,
+            'timezone:',
+            deviceTimezone
+          );
         } else if (calcError) {
           console.error('[Ingest] Error calculating next wake:', calcError);
         }
