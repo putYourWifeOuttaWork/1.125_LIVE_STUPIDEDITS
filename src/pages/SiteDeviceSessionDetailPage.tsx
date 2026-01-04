@@ -31,6 +31,7 @@ import DeviceStatusBadge from '../components/devices/DeviceStatusBadge';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
 import { supabase } from '../lib/supabaseClient';
+import { parseDateOnly } from '../utils/timeFormatters';
 import { SiteDeviceSession } from '../hooks/useSiteDeviceSessions';
 import { useUserRole } from '../hooks/useUserRole';
 import { useSiteSnapshots } from '../hooks/useSiteSnapshots';
@@ -1046,7 +1047,7 @@ const SiteDeviceSessionDetailPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Device Session Details</h1>
             <p className="text-gray-600 mt-1">
-              {session.site_name} - {format(new Date(session.session_date), 'MMMM dd, yyyy')}
+              {session.site_name} - {format(parseDateOnly(session.session_date), 'MMMM dd, yyyy')}
             </p>
             {timeRemaining && (
               <p className={`text-sm mt-1 font-medium ${
@@ -1890,7 +1891,7 @@ const SiteDeviceSessionDetailPage = () => {
                     <Calendar className="h-4 w-4 mr-2" />
                     Session Date
                   </span>
-                  <span className="font-medium">{format(new Date(session.session_date), 'MMMM dd, yyyy')}</span>
+                  <span className="font-medium">{format(parseDateOnly(session.session_date), 'MMMM dd, yyyy')}</span>
                 </div>
 
                 <div className="flex items-center justify-between text-sm py-2 border-b">
