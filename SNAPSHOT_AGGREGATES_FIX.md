@@ -56,30 +56,31 @@ Updated the `generate_session_wake_snapshot()` function to:
 
 ## How to Apply
 
-### Step 1: Apply the Migration
+### Step 1: Apply the Function Migration
 
 Apply the SQL migration file through Supabase Dashboard:
 
 1. Go to Supabase Dashboard → SQL Editor
-2. Open the file `20260104_fix_snapshot_aggregates.sql`
-3. Copy and paste the entire SQL content
+2. Click "New Query"
+3. Copy and paste the contents of `20260104_fix_snapshot_aggregates.sql`
 4. Click "Run" to execute
 
 This will update the `generate_session_wake_snapshot()` function to properly calculate aggregates for all **future** snapshots.
 
 ### Step 2: Backfill Existing Snapshots
 
-Run the backfill script to update all existing snapshots that have NULL aggregate values:
+Apply the backfill SQL script through Supabase Dashboard:
 
-```bash
-node backfill-snapshot-aggregates.mjs
-```
+1. Go to Supabase Dashboard → SQL Editor
+2. Click "New Query"
+3. Copy and paste the contents of `20260104_backfill_snapshot_aggregates.sql`
+4. Click "Run" to execute
 
 This script will:
 - Find all snapshots with NULL aggregate data
 - Recalculate temperature, humidity, and MGI metrics for each snapshot's time window
 - Update the snapshot records with the calculated values
-- Display progress and completion statistics
+- Display a summary of results
 
 ## Files Created
 
@@ -87,9 +88,9 @@ This script will:
    - SQL migration to update the snapshot generation function
    - Apply through Supabase Dashboard SQL Editor
 
-2. **`backfill-snapshot-aggregates.mjs`**
-   - Node.js script to recalculate and update existing snapshots
-   - Run with: `node backfill-snapshot-aggregates.mjs`
+2. **`20260104_backfill_snapshot_aggregates.sql`**
+   - SQL script to recalculate and update existing snapshots
+   - Apply through Supabase Dashboard SQL Editor
 
 3. **`diagnose-snapshot-aggregation.mjs`**
    - Diagnostic script used to identify the problem
