@@ -76,8 +76,12 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
     setWakeTimesData(prev => ({ ...prev, loading: true, error: undefined }));
 
     try {
-      const result = await DeviceService.getNextWakeTimes({
-        deviceId: device.device_id,
+      // Use preview function to calculate with FORM's cron, not device's saved cron
+      const timezone = (device as any).device_site_assignments?.[0]?.sites?.timezone || 'UTC';
+
+      const result = await DeviceService.previewNextWakeTimes({
+        cronExpression: formData.wake_schedule_cron,
+        timezone,
         count: 3
       });
 

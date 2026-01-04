@@ -649,6 +649,64 @@ export class DeviceService {
   }
 
   /**
+   * Preview next wake times for any cron expression
+   * Used for showing preview before saving schedule changes
+   */
+  static async previewNextWakeTimes(params: {
+    cronExpression: string;
+    timezone?: string;
+    count?: number;
+  }): Promise<{
+    wake_times: string[];
+    timezone: string;
+    cron_expression: string;
+    error?: string;
+  }> {
+    try {
+      const { data, error } = await supabase.rpc('preview_next_wake_times', {
+        p_cron_expression: params.cronExpression,
+        p_timezone: params.timezone || 'UTC',
+        p_start_from: new Date().toISOString(),
+        p_count: params.count || 3
+      });
+
+      if (error) {
+        logger.error('Failed to preview wake times', error);
+        return {
+          wake_times: [],
+          timezone: params.timezone || 'UTC',
+          cron_expression: params.cronExpression,
+          error: error.message
+        };
+      }
+
+      if (!data) {
+        return {
+          wake_times: [],
+          timezone: params.timezone || 'UTC',
+          cron_expression: params.cronExpression,
+          error: 'No data returned'
+        };
+      }
+
+      return {
+        wake_times: data.wake_times || [],
+        timezone: data.timezone || 'UTC',
+        cron_expression: data.cron_expression || params.cronExpression,
+        error: data.error
+      };
+    } catch (error) {
+      logger.error('Error previewing wake times', error);
+      return {
+        wake_times: [],
+        timezone: params.timezone || 'UTC',
+        cron_expression: params.cronExpression,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
    * Get device setup progress
    */
   static calculateSetupProgress(device: Device): {
