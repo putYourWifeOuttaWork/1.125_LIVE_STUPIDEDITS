@@ -80,6 +80,8 @@ const SiteDeviceSessionDetailPage = () => {
   const [currentSnapshotIndex, setCurrentSnapshotIndex] = useState(0);
   const [transitionProgress, setTransitionProgress] = useState(1);
   const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
+  const [sessionAlerts, setSessionAlerts] = useState<any[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
 
   const { role } = useUserRole();
   const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
@@ -97,6 +99,48 @@ const SiteDeviceSessionDetailPage = () => {
       fetchDevicesData();
     }
   }, [sessionId]);
+
+  // Fetch session alerts
+  useEffect(() => {
+    const fetchSessionAlerts = async () => {
+      if (!session || !siteId) {
+        setAlertsLoading(false);
+        return;
+      }
+
+      try {
+        setAlertsLoading(true);
+
+        // Get device IDs from current session
+        const deviceIds = devices.map(d => d.device_id);
+
+        if (deviceIds.length === 0) {
+          setSessionAlerts([]);
+          setAlertsLoading(false);
+          return;
+        }
+
+        // Fetch alerts that occurred during this session timeframe
+        const { data, error } = await supabase
+          .from('device_alerts')
+          .select('*')
+          .in('device_id', deviceIds)
+          .gte('triggered_at', session.session_start_time)
+          .lte('triggered_at', session.session_end_time)
+          .order('triggered_at', { ascending: false });
+
+        if (error) throw error;
+
+        setSessionAlerts(data || []);
+      } catch (error: any) {
+        console.error('Error fetching session alerts:', error);
+      } finally {
+        setAlertsLoading(false);
+      }
+    };
+
+    fetchSessionAlerts();
+  }, [session, devices, siteId]);
 
   const fetchSessionData = async () => {
     try {
@@ -530,14 +574,40 @@ const SiteDeviceSessionDetailPage = () => {
 
   // Calculate alert statistics
   const alertStats = useMemo(() => {
-    // TODO: Fetch from device_alerts table filtered by session date range
+    const total = sessionAlerts.length;
+    const critical = sessionAlerts.filter(a => a.severity === 'critical').length;
+    const error = sessionAlerts.filter(a => a.severity === 'error').length;
+    const warning = sessionAlerts.filter(a => a.severity === 'warning').length;
+    const info = sessionAlerts.filter(a => a.severity === 'info').length;
+
+    // Group by category
+    const byCategory: Record<string, number> = {};
+    sessionAlerts.forEach(alert => {
+      const cat = alert.alert_category || 'other';
+      byCategory[cat] = (byCategory[cat] || 0) + 1;
+    });
+
+    // Group by device
+    const byDevice: Record<string, number> = {};
+    sessionAlerts.forEach(alert => {
+      const deviceId = alert.device_id;
+      byDevice[deviceId] = (byDevice[deviceId] || 0) + 1;
+    });
+
+    // Find device with most alerts
+    const deviceAlertCounts = Object.entries(byDevice).sort((a, b) => b[1] - a[1]);
+
     return {
-      total: 0,
-      critical: 0,
-      warning: 0,
-      info: 0,
+      total,
+      critical,
+      error,
+      warning,
+      info,
+      byCategory,
+      deviceAlertCounts,
+      topAlertDevice: deviceAlertCounts[0],
     };
-  }, [sessionId]);
+  }, [sessionAlerts]);
 
   // Calculate issue statistics
   const issueStats = useMemo(() => {
@@ -553,6 +623,300 @@ const SiteDeviceSessionDetailPage = () => {
       devicesWithIssues: devices.filter(d => d.failed_wakes > 0 || d.actual_wakes < d.expected_wakes_in_session).length,
     };
   }, [devices, totalExpectedWakes, totalCompletedWakes, totalFailedWakes]);
+
+  // Calculate environmental velocity metrics (rate of change between snapshots)
+  const velocityMetrics = useMemo(() => {
+    if (processedSnapshots.length < 2) return null;
+
+    const tempVelocities: number[] = [];
+    const humidityVelocities: number[] = [];
+    const batteryVelocities: number[] = [];
+
+    for (let i = 0; i < processedSnapshots.length - 1; i++) {
+      const current = processedSnapshots[i];
+      const next = processedSnapshots[i + 1];
+
+      // Calculate time diff in hours
+      const timeDiff = (new Date(next.wake_round_start).getTime() - new Date(current.wake_round_start).getTime()) / (1000 * 60 * 60);
+      if (timeDiff === 0) continue;
+
+      try {
+        const currentState = typeof current.site_state === 'string' ? JSON.parse(current.site_state) : current.site_state;
+        const nextState = typeof next.site_state === 'string' ? JSON.parse(next.site_state) : next.site_state;
+
+        const currentDevices = currentState?.devices || [];
+        const nextDevices = nextState?.devices || [];
+
+        // Match devices between snapshots
+        currentDevices.forEach((currDev: any) => {
+          const nextDev = nextDevices.find((d: any) => d.device_id === currDev.device_id);
+          if (!nextDev) return;
+
+          // Temperature velocity
+          const currTemp = currDev.telemetry?.latest_temperature;
+          const nextTemp = nextDev.telemetry?.latest_temperature;
+          if (currTemp != null && nextTemp != null) {
+            tempVelocities.push((nextTemp - currTemp) / timeDiff);
+          }
+
+          // Humidity velocity
+          const currHum = currDev.telemetry?.latest_humidity;
+          const nextHum = nextDev.telemetry?.latest_humidity;
+          if (currHum != null && nextHum != null) {
+            humidityVelocities.push((nextHum - currHum) / timeDiff);
+          }
+
+          // Battery velocity
+          const currBatt = currDev.battery_health_percent;
+          const nextBatt = nextDev.battery_health_percent;
+          if (currBatt != null && nextBatt != null) {
+            batteryVelocities.push((nextBatt - currBatt) / timeDiff);
+          }
+        });
+      } catch (error) {
+        console.error('Error calculating velocities:', error);
+      }
+    }
+
+    const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+    return {
+      temperature: {
+        avg: avg(tempVelocities),
+        max: tempVelocities.length ? Math.max(...tempVelocities) : null,
+        min: tempVelocities.length ? Math.min(...tempVelocities) : null,
+        samples: tempVelocities.length,
+      },
+      humidity: {
+        avg: avg(humidityVelocities),
+        max: humidityVelocities.length ? Math.max(...humidityVelocities) : null,
+        min: humidityVelocities.length ? Math.min(...humidityVelocities) : null,
+        samples: humidityVelocities.length,
+      },
+      battery: {
+        avg: avg(batteryVelocities),
+        max: batteryVelocities.length ? Math.max(...batteryVelocities) : null,
+        min: batteryVelocities.length ? Math.min(...batteryVelocities) : null,
+        samples: batteryVelocities.length,
+      },
+    };
+  }, [processedSnapshots]);
+
+  // Calculate snapshot deltas (significant changes between snapshots)
+  const snapshotDeltas = useMemo(() => {
+    if (processedSnapshots.length < 2) return [];
+
+    const deltas: any[] = [];
+
+    for (let i = 0; i < processedSnapshots.length - 1; i++) {
+      const current = processedSnapshots[i];
+      const next = processedSnapshots[i + 1];
+
+      try {
+        const currentState = typeof current.site_state === 'string' ? JSON.parse(current.site_state) : current.site_state;
+        const nextState = typeof next.site_state === 'string' ? JSON.parse(next.site_state) : next.site_state;
+
+        const currentDevices = currentState?.devices || [];
+        const nextDevices = nextState?.devices || [];
+
+        // Check for significant changes
+        currentDevices.forEach((currDev: any) => {
+          const nextDev = nextDevices.find((d: any) => d.device_id === currDev.device_id);
+
+          if (!nextDev) {
+            // Device went offline
+            deltas.push({
+              wakeFrom: current.wake_number,
+              wakeTo: next.wake_number,
+              type: 'device_offline',
+              deviceId: currDev.device_id,
+              deviceCode: currDev.device_code,
+              message: `Device ${currDev.device_code} went offline`,
+              severity: 'error',
+            });
+            return;
+          }
+
+          // Temperature jump (>5°F)
+          const currTemp = currDev.telemetry?.latest_temperature;
+          const nextTemp = nextDev.telemetry?.latest_temperature;
+          if (currTemp != null && nextTemp != null && Math.abs(nextTemp - currTemp) > 5) {
+            deltas.push({
+              wakeFrom: current.wake_number,
+              wakeTo: next.wake_number,
+              type: 'temperature_jump',
+              deviceId: currDev.device_id,
+              deviceCode: currDev.device_code,
+              message: `Temperature ${nextTemp > currTemp ? 'increased' : 'decreased'} by ${Math.abs(nextTemp - currTemp).toFixed(1)}°F at ${currDev.device_code}`,
+              severity: Math.abs(nextTemp - currTemp) > 10 ? 'warning' : 'info',
+              value: nextTemp - currTemp,
+            });
+          }
+
+          // Humidity jump (>10%)
+          const currHum = currDev.telemetry?.latest_humidity;
+          const nextHum = nextDev.telemetry?.latest_humidity;
+          if (currHum != null && nextHum != null && Math.abs(nextHum - currHum) > 10) {
+            deltas.push({
+              wakeFrom: current.wake_number,
+              wakeTo: next.wake_number,
+              type: 'humidity_jump',
+              deviceId: currDev.device_id,
+              deviceCode: currDev.device_code,
+              message: `Humidity ${nextHum > currHum ? 'increased' : 'decreased'} by ${Math.abs(nextHum - currHum).toFixed(1)}% at ${currDev.device_code}`,
+              severity: Math.abs(nextHum - currHum) > 20 ? 'warning' : 'info',
+              value: nextHum - currHum,
+            });
+          }
+
+          // MGI change (>10 points)
+          const currMGI = currDev.mgi_state?.latest_mgi_score;
+          const nextMGI = nextDev.mgi_state?.latest_mgi_score;
+          if (currMGI != null && nextMGI != null && Math.abs(nextMGI - currMGI) > 10) {
+            deltas.push({
+              wakeFrom: current.wake_number,
+              wakeTo: next.wake_number,
+              type: 'mgi_change',
+              deviceId: currDev.device_id,
+              deviceCode: currDev.device_code,
+              message: `MGI ${nextMGI > currMGI ? 'increased' : 'decreased'} by ${Math.abs(nextMGI - currMGI).toFixed(1)} at ${currDev.device_code}`,
+              severity: nextMGI > currMGI ? 'warning' : 'info',
+              value: nextMGI - currMGI,
+            });
+          }
+
+          // Battery drop (>5%)
+          const currBatt = currDev.battery_health_percent;
+          const nextBatt = nextDev.battery_health_percent;
+          if (currBatt != null && nextBatt != null && (currBatt - nextBatt) > 5) {
+            deltas.push({
+              wakeFrom: current.wake_number,
+              wakeTo: next.wake_number,
+              type: 'battery_drop',
+              deviceId: currDev.device_id,
+              deviceCode: currDev.device_code,
+              message: `Battery dropped ${(currBatt - nextBatt).toFixed(1)}% at ${currDev.device_code}`,
+              severity: (currBatt - nextBatt) > 10 ? 'warning' : 'info',
+              value: currBatt - nextBatt,
+            });
+          }
+        });
+
+        // Check for new devices that came online
+        nextDevices.forEach((nextDev: any) => {
+          const currDev = currentDevices.find((d: any) => d.device_id === nextDev.device_id);
+          if (!currDev) {
+            deltas.push({
+              wakeFrom: current.wake_number,
+              wakeTo: next.wake_number,
+              type: 'device_online',
+              deviceId: nextDev.device_id,
+              deviceCode: nextDev.device_code,
+              message: `Device ${nextDev.device_code} came online`,
+              severity: 'info',
+            });
+          }
+        });
+      } catch (error) {
+        console.error('Error calculating deltas:', error);
+      }
+    }
+
+    return deltas.sort((a, b) => a.wakeFrom - b.wakeFrom);
+  }, [processedSnapshots]);
+
+  // Calculate outlier detection using z-scores
+  const outlierDetection = useMemo(() => {
+    if (!environmentalAggregates) return null;
+
+    const outliers: any[] = [];
+
+    // Calculate z-scores for each device reading in each snapshot
+    processedSnapshots.forEach(snapshot => {
+      try {
+        const siteState = typeof snapshot.site_state === 'string' ? JSON.parse(snapshot.site_state) : snapshot.site_state;
+        const devices = siteState?.devices || [];
+
+        devices.forEach((device: any) => {
+          // Temperature outliers
+          const temp = device.telemetry?.latest_temperature;
+          if (temp != null && environmentalAggregates.temperature.avg != null && environmentalAggregates.temperature.stdDev != null) {
+            const zScore = (temp - environmentalAggregates.temperature.avg) / environmentalAggregates.temperature.stdDev;
+            if (Math.abs(zScore) > 2) {
+              outliers.push({
+                wakeNumber: snapshot.wake_number,
+                deviceId: device.device_id,
+                deviceCode: device.device_code,
+                metric: 'temperature',
+                value: temp,
+                zScore: zScore,
+                severity: Math.abs(zScore) > 3 ? 'extreme' : 'moderate',
+                message: `Temperature ${temp.toFixed(1)}°F is ${Math.abs(zScore).toFixed(1)}σ from mean at ${device.device_code}`,
+              });
+            }
+          }
+
+          // Humidity outliers
+          const humidity = device.telemetry?.latest_humidity;
+          if (humidity != null && environmentalAggregates.humidity.avg != null && environmentalAggregates.humidity.stdDev != null) {
+            const zScore = (humidity - environmentalAggregates.humidity.avg) / environmentalAggregates.humidity.stdDev;
+            if (Math.abs(zScore) > 2) {
+              outliers.push({
+                wakeNumber: snapshot.wake_number,
+                deviceId: device.device_id,
+                deviceCode: device.device_code,
+                metric: 'humidity',
+                value: humidity,
+                zScore: zScore,
+                severity: Math.abs(zScore) > 3 ? 'extreme' : 'moderate',
+                message: `Humidity ${humidity.toFixed(1)}% is ${Math.abs(zScore).toFixed(1)}σ from mean at ${device.device_code}`,
+              });
+            }
+          }
+
+          // MGI outliers
+          const mgiScore = device.mgi_state?.latest_mgi_score;
+          if (mgiScore != null && environmentalAggregates.mgi.avg != null && environmentalAggregates.mgi.stdDev != null) {
+            const zScore = (mgiScore - environmentalAggregates.mgi.avg) / environmentalAggregates.mgi.stdDev;
+            if (Math.abs(zScore) > 2) {
+              outliers.push({
+                wakeNumber: snapshot.wake_number,
+                deviceId: device.device_id,
+                deviceCode: device.device_code,
+                metric: 'mgi',
+                value: mgiScore,
+                zScore: zScore,
+                severity: Math.abs(zScore) > 3 ? 'extreme' : 'moderate',
+                message: `MGI score ${mgiScore.toFixed(1)} is ${Math.abs(zScore).toFixed(1)}σ from mean at ${device.device_code}`,
+              });
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Error detecting outliers:', error);
+      }
+    });
+
+    // Group outliers by device
+    const byDevice: Record<string, number> = {};
+    outliers.forEach(outlier => {
+      byDevice[outlier.deviceCode] = (byDevice[outlier.deviceCode] || 0) + 1;
+    });
+
+    // Group by metric
+    const byMetric: Record<string, number> = {};
+    outliers.forEach(outlier => {
+      byMetric[outlier.metric] = (byMetric[outlier.metric] || 0) + 1;
+    });
+
+    return {
+      outliers: outliers.sort((a, b) => Math.abs(b.zScore) - Math.abs(a.zScore)),
+      byDevice,
+      byMetric,
+      extremeCount: outliers.filter(o => o.severity === 'extreme').length,
+      moderateCount: outliers.filter(o => o.severity === 'moderate').length,
+    };
+  }, [processedSnapshots, environmentalAggregates]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -620,13 +984,6 @@ const SiteDeviceSessionDetailPage = () => {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="primary"
-            onClick={() => navigate(`/lab/sessions/${sessionId}/snapshots`)}
-            icon={<MapIcon size={16} />}
-          >
-            View Snapshot Map
-          </Button>
           <Button variant="outline" onClick={handleRefresh} icon={<RefreshCw size={16} />}>
             Refresh
           </Button>
@@ -1048,6 +1405,350 @@ const SiteDeviceSessionDetailPage = () => {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Session Alerts Analytics */}
+      <Card className="animate-fade-in" style={{ animationDelay: '0.6s' }}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <h3 className="text-md font-semibold flex items-center">
+              <AlertTriangle className="w-5 h-5 mr-2 text-red-500" />
+              Alerts Generated This Session
+            </h3>
+            {alertsLoading && (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600" />
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {alertsLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600" />
+            </div>
+          ) : alertStats.total === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
+              <p className="text-sm text-gray-600">No alerts generated during this session</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Alert Summary Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="bg-gray-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{alertStats.total}</p>
+                  <p className="text-xs text-gray-600">Total Alerts</p>
+                </div>
+                <div className="bg-red-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-red-600">{alertStats.critical}</p>
+                  <p className="text-xs text-gray-600">Critical</p>
+                </div>
+                <div className="bg-orange-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-orange-600">{alertStats.error}</p>
+                  <p className="text-xs text-gray-600">Error</p>
+                </div>
+                <div className="bg-yellow-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-yellow-600">{alertStats.warning}</p>
+                  <p className="text-xs text-gray-600">Warning</p>
+                </div>
+                <div className="bg-blue-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">{alertStats.info}</p>
+                  <p className="text-xs text-gray-600">Info</p>
+                </div>
+              </div>
+
+              {/* Alerts by Category */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Alerts by Category</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {Object.entries(alertStats.byCategory).map(([category, count]) => (
+                    <div key={category} className="flex items-center justify-between bg-gray-50 rounded px-3 py-2">
+                      <span className="text-sm text-gray-700 capitalize">{category.replace('_', ' ')}</span>
+                      <span className="text-sm font-bold text-gray-900">{count as number}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Top Alert Device */}
+              {alertStats.topAlertDevice && (
+                <div className="bg-orange-50 border border-orange-200 rounded p-3">
+                  <p className="text-xs text-orange-700 font-medium mb-1">Device with Most Alerts</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-orange-900">
+                      Device {devices.find(d => d.device_id === alertStats.topAlertDevice[0])?.device_code || alertStats.topAlertDevice[0]}
+                    </span>
+                    <span className="text-lg font-bold text-orange-600">{alertStats.topAlertDevice[1]} alerts</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Alerts List */}
+              <details className="border-t pt-3">
+                <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
+                  View All Alerts ({alertStats.total})
+                </summary>
+                <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
+                  {sessionAlerts.slice(0, 10).map((alert) => (
+                    <div key={alert.alert_id} className="text-xs bg-gray-50 rounded p-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mr-2 ${
+                            alert.severity === 'critical' ? 'bg-red-100 text-red-800' :
+                            alert.severity === 'error' ? 'bg-orange-100 text-orange-800' :
+                            alert.severity === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {alert.severity}
+                          </span>
+                          <span className="text-gray-900">{alert.message}</span>
+                        </div>
+                        <span className="text-gray-500 text-xs whitespace-nowrap ml-2">
+                          {format(new Date(alert.triggered_at), 'HH:mm')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Environmental Velocity Metrics */}
+      {velocityMetrics && (
+        <Card className="animate-fade-in" style={{ animationDelay: '0.7s' }}>
+          <CardHeader>
+            <h3 className="text-md font-semibold flex items-center">
+              <TrendingUp className="w-5 h-5 mr-2 text-blue-500" />
+              Environmental Velocity (Rate of Change)
+            </h3>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Temperature Velocity */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 flex items-center">
+                    <Thermometer className="w-4 h-4 mr-1 text-orange-500" />
+                    Temperature Velocity
+                  </span>
+                  <span className="text-xs text-gray-500">{velocityMetrics.temperature.samples} samples</span>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between bg-blue-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Average</span>
+                    <span className={`text-sm font-bold ${Math.abs(velocityMetrics.temperature.avg || 0) > 2 ? 'text-yellow-600' : 'text-green-600'}`}>
+                      {velocityMetrics.temperature.avg?.toFixed(2) || 0}°F/hr
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-red-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Max Increase</span>
+                    <span className="text-sm font-bold text-red-600">
+                      +{velocityMetrics.temperature.max?.toFixed(2) || 0}°F/hr
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-cyan-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Max Decrease</span>
+                    <span className="text-sm font-bold text-cyan-600">
+                      {velocityMetrics.temperature.min?.toFixed(2) || 0}°F/hr
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Humidity Velocity */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 flex items-center">
+                    <Droplets className="w-4 h-4 mr-1 text-blue-400" />
+                    Humidity Velocity
+                  </span>
+                  <span className="text-xs text-gray-500">{velocityMetrics.humidity.samples} samples</span>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between bg-blue-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Average</span>
+                    <span className={`text-sm font-bold ${Math.abs(velocityMetrics.humidity.avg || 0) > 5 ? 'text-yellow-600' : 'text-green-600'}`}>
+                      {velocityMetrics.humidity.avg?.toFixed(2) || 0}%/hr
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-indigo-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Max Increase</span>
+                    <span className="text-sm font-bold text-indigo-600">
+                      +{velocityMetrics.humidity.max?.toFixed(2) || 0}%/hr
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-sky-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Max Decrease</span>
+                    <span className="text-sm font-bold text-sky-600">
+                      {velocityMetrics.humidity.min?.toFixed(2) || 0}%/hr
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Battery Velocity */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 flex items-center">
+                    <Battery className="w-4 h-4 mr-1 text-green-500" />
+                    Battery Drain Rate
+                  </span>
+                  <span className="text-xs text-gray-500">{velocityMetrics.battery.samples} samples</span>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between bg-green-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Average</span>
+                    <span className={`text-sm font-bold ${Math.abs(velocityMetrics.battery.avg || 0) > 1 ? 'text-red-600' : 'text-green-600'}`}>
+                      {velocityMetrics.battery.avg?.toFixed(2) || 0}%/hr
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-emerald-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Best (slowest drain)</span>
+                    <span className="text-sm font-bold text-emerald-600">
+                      {velocityMetrics.battery.max?.toFixed(2) || 0}%/hr
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-red-50 rounded px-2 py-1">
+                    <span className="text-xs text-gray-600">Worst (fastest drain)</span>
+                    <span className="text-sm font-bold text-red-600">
+                      {velocityMetrics.battery.min?.toFixed(2) || 0}%/hr
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 p-2 bg-blue-50 rounded text-xs text-gray-700">
+              <strong>Note:</strong> Velocity shows rate of change per hour. Green indicates stable conditions, yellow indicates moderate change, red indicates rapid change requiring attention.
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Snapshot Delta Analysis */}
+      {snapshotDeltas.length > 0 && (
+        <Card className="animate-fade-in" style={{ animationDelay: '0.8s' }}>
+          <CardHeader>
+            <h3 className="text-md font-semibold flex items-center">
+              <Activity className="w-5 h-5 mr-2 text-teal-500" />
+              Snapshot Delta Timeline ({snapshotDeltas.length} significant changes)
+            </h3>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {snapshotDeltas.map((delta, idx) => (
+                <div key={idx} className={`flex items-start space-x-3 p-2 rounded border-l-4 ${
+                  delta.severity === 'error' ? 'border-red-500 bg-red-50' :
+                  delta.severity === 'warning' ? 'border-yellow-500 bg-yellow-50' :
+                  'border-blue-500 bg-blue-50'
+                }`}>
+                  <div className="flex-shrink-0 mt-0.5">
+                    {delta.type === 'device_offline' || delta.type === 'device_online' ? (
+                      delta.type === 'device_offline' ? <WifiOff className="w-4 h-4 text-red-600" /> : <Wifi className="w-4 h-4 text-green-600" />
+                    ) : delta.type === 'temperature_jump' ? (
+                      <Thermometer className="w-4 h-4 text-orange-600" />
+                    ) : delta.type === 'humidity_jump' ? (
+                      <Droplets className="w-4 h-4 text-blue-600" />
+                    ) : delta.type === 'mgi_change' ? (
+                      <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                    ) : (
+                      <Battery className="w-4 h-4 text-green-600" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-900">{delta.message}</span>
+                      <span className="text-xs text-gray-500">Wake {delta.wakeFrom} → {delta.wakeTo}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Outlier Variance Detection */}
+      {outlierDetection && outlierDetection.outliers.length > 0 && (
+        <Card className="animate-fade-in" style={{ animationDelay: '0.9s' }}>
+          <CardHeader>
+            <h3 className="text-md font-semibold flex items-center">
+              <AlertOctagon className="w-5 h-5 mr-2 text-orange-500" />
+              Outlier Variance Detection
+            </h3>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Outlier Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-gray-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{outlierDetection.outliers.length}</p>
+                  <p className="text-xs text-gray-600">Total Outliers</p>
+                </div>
+                <div className="bg-red-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-red-600">{outlierDetection.extremeCount}</p>
+                  <p className="text-xs text-gray-600">Extreme (3σ)</p>
+                </div>
+                <div className="bg-orange-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-orange-600">{outlierDetection.moderateCount}</p>
+                  <p className="text-xs text-gray-600">Moderate (2σ)</p>
+                </div>
+                <div className="bg-yellow-50 rounded p-3 text-center">
+                  <p className="text-2xl font-bold text-yellow-600">{Object.keys(outlierDetection.byDevice).length}</p>
+                  <p className="text-xs text-gray-600">Devices Affected</p>
+                </div>
+              </div>
+
+              {/* Outliers by Metric */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Outliers by Metric</h4>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(outlierDetection.byMetric).map(([metric, count]) => (
+                    <div key={metric} className="bg-gray-100 rounded px-3 py-1">
+                      <span className="text-sm capitalize">{metric}: </span>
+                      <span className="text-sm font-bold">{count as number}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Top Outliers List */}
+              <details className="border-t pt-3">
+                <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
+                  View Top Outliers (sorted by z-score)
+                </summary>
+                <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
+                  {outlierDetection.outliers.slice(0, 20).map((outlier, idx) => (
+                    <div key={idx} className={`text-xs rounded p-2 ${
+                      outlier.severity === 'extreme' ? 'bg-red-50 border border-red-200' : 'bg-orange-50 border border-orange-200'
+                    }`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mr-2 ${
+                            outlier.severity === 'extreme' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
+                          }`}>
+                            {outlier.severity === 'extreme' ? '3σ' : '2σ'}
+                          </span>
+                          <span className="text-gray-900">{outlier.message}</span>
+                        </div>
+                        <span className="text-gray-500 text-xs whitespace-nowrap ml-2">
+                          Wake {outlier.wakeNumber}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+
+              <div className="p-2 bg-blue-50 rounded text-xs text-gray-700">
+                <strong>Outlier Detection:</strong> Values are flagged as outliers when they deviate significantly from the session mean.
+                2σ (moderate) = 2 standard deviations, 3σ (extreme) = 3 standard deviations.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <Card>
