@@ -13,7 +13,7 @@ interface DeviceEnvironmentalPanelProps {
 }
 
 interface TelemetryReading {
-  telemetry_id: string;
+  image_id: string;
   captured_at: string;
   temperature: number | null;
   humidity: number | null;
@@ -24,6 +24,8 @@ interface TelemetryReading {
   program_id: string | null;
   site_id: string | null;
   site_device_session_id: string | null;
+  wake_payload_id: string | null;
+  status: string;
 }
 
 type TimeFramePreset = '1h' | '6h' | '24h' | '7d' | '30d' | 'session' | 'custom';
@@ -89,9 +91,23 @@ const DeviceEnvironmentalPanel = ({ deviceId }: DeviceEnvironmentalPanelProps) =
     setLoading(true);
     try {
       let query = supabase
-        .from('device_telemetry')
-        .select('*')
-        .eq('device_id', deviceId);
+        .from('device_images')
+        .select(`
+          image_id,
+          captured_at,
+          temperature,
+          humidity,
+          pressure,
+          gas_resistance,
+          metadata,
+          program_id,
+          site_id,
+          site_device_session_id,
+          wake_payload_id,
+          status
+        `)
+        .eq('device_id', deviceId)
+        .eq('status', 'complete');  // Only use complete images with valid data
 
       // Apply time-frame filter
       if (timeFrame === 'session' && currentSessionId) {
@@ -107,7 +123,15 @@ const DeviceEnvironmentalPanel = ({ deviceId }: DeviceEnvironmentalPanelProps) =
       const { data, error } = await query;
 
       if (error) throw error;
-      setTelemetry(data || []);
+
+      // Transform data to extract wifi_rssi and battery_voltage from metadata
+      const transformedData = (data || []).map(row => ({
+        ...row,
+        wifi_rssi: row.metadata?.wifi_rssi || null,
+        battery_voltage: row.metadata?.battery_voltage || null
+      }));
+
+      setTelemetry(transformedData);
     } catch (error) {
       console.error('Error fetching telemetry:', error);
       toast.error('Failed to load environmental data');
@@ -639,7 +663,7 @@ const DeviceEnvironmentalPanel = ({ deviceId }: DeviceEnvironmentalPanelProps) =
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {telemetry.map((reading) => (
-                  <tr key={reading.telemetry_id} className="hover:bg-gray-50">
+                  <tr key={reading.image_id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {format(new Date(reading.captured_at), 'MMM d, yyyy HH:mm:ss')}
                     </td>

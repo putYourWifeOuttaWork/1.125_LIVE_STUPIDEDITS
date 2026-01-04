@@ -71,11 +71,12 @@ export default function SessionDetailsPanel({
 
       const deviceIds = (devicesData || []).map(d => d.device_id);
 
-      // Fetch latest telemetry for these devices
+      // Fetch latest environmental data from device_images (single source of truth)
       const { data: telemetryData } = await supabase
-        .from('device_telemetry')
+        .from('device_images')
         .select('device_id, temperature, humidity, captured_at')
         .in('device_id', deviceIds)
+        .eq('status', 'complete')  // Only complete images with valid data
         .gte('captured_at', selectedSession.session_date)
         .order('captured_at', { ascending: false });
 
