@@ -181,27 +181,32 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Tier 2: Active Alerts (Full Width) - MOST PROMINENT */}
-      <ActiveAlertsPanel />
-
-      {/* Tier 3: Active Sessions + Session Details/Map (50/50 Split) */}
+      {/* Tier 2: Active Sessions + Session Details/Map (50/50 Split) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left Column: Active Sessions List */}
-        <div className="max-h-[800px] overflow-y-auto">
-          <Card>
-            <CardHeader>
-              <h2 className="text-lg font-semibold">Active Sessions Today</h2>
-              <p className="text-sm text-gray-600 mt-1">Real-time device session monitoring</p>
-            </CardHeader>
-            <CardContent>
-              <ActiveSessionsGrid
-                limit={20}
-                companyFilter={activeCompanyId}
-                onSessionSelect={handleSessionSelect}
-                selectedSessionId={selectedSessionId}
-              />
-            </CardContent>
-          </Card>
+        {/* Left Column: Active Alerts + Active Sessions List */}
+        <div className="space-y-4">
+          {/* Active Alerts - Top 50% */}
+          <div className="max-h-[400px]">
+            <ActiveAlertsPanel />
+          </div>
+
+          {/* Active Sessions List - Bottom 50% */}
+          <div className="max-h-[400px] overflow-y-auto">
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold">Active Sessions Today</h2>
+                <p className="text-sm text-gray-600 mt-1">Real-time device session monitoring</p>
+              </CardHeader>
+              <CardContent>
+                <ActiveSessionsGrid
+                  limit={20}
+                  companyFilter={activeCompanyId}
+                  onSessionSelect={handleSessionSelect}
+                  selectedSessionId={selectedSessionId}
+                />
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Right Column: Session Details + Map */}

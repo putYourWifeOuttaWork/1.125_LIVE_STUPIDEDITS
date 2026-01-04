@@ -292,7 +292,8 @@ const ActiveAlertsPanel = () => {
                         <CheckCircle className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {alert.session_id && alert.program_id && alert.site_id ? (
+                    {/* Always prefer session link over device link */}
+                    {alert.session_id && alert.program_id && alert.site_id && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -300,22 +301,11 @@ const ActiveAlertsPanel = () => {
                           navigate(url);
                         }}
                         className="p-1.5 border border-gray-400 rounded hover:bg-white transition-colors"
-                        title="View Session Timeline"
+                        title="View Device Session Detail"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                       </button>
-                    ) : alert.device_id ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/devices/${alert.device_id}`);
-                        }}
-                        className="p-1.5 border border-gray-400 rounded hover:bg-white transition-colors"
-                        title="View Device"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </button>
-                    ) : null}
+                    )}
                   </div>
                 </div>
 
