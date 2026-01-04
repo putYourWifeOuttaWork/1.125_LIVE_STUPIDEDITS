@@ -274,13 +274,24 @@ async function handleStatusMessage(payload, client) {
   // Send any pending commands to the device
   await sendPendingCommands(device, client);
 
-  // Per ESP32-CAM architecture: Send ACK_OK with next_wake_time for HELLO messages
-  // If device has no pending images, it expects an ACK to know when to wake next
+  // Per ESP32-CAM architecture: Handle pending images status
   const pendingCount = payload.pendingImg || payload.pending_count || 0;
 
   if (pendingCount === 0) {
+    // Device has NO pending images - request a new capture
     try {
-      // Get next wake time in simplified format (e.g., "1:57AM")
+      const captureCmd = {
+        device_id: deviceMac,
+        capture_image: true,
+      };
+      client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(captureCmd));
+      console.log(`[CMD] Device has no pending images - sent capture_image command to ${deviceMac}`);
+    } catch (cmdError) {
+      console.error(`[ERROR] Failed to send capture_image command:`, cmdError);
+    }
+  } else {
+    // Device HAS pending images - send ACK to proceed with transmission
+    try {
       const nextWakeTime = await calculateNextWakeTime(device.device_id);
       const ackMessage = {
         device_id: deviceMac,
@@ -291,7 +302,7 @@ async function handleStatusMessage(payload, client) {
 
       const ackTopic = `ESP32CAM/${deviceMac}/ack`;
       client.publish(ackTopic, JSON.stringify(ackMessage));
-      console.log(`[ACK] Sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeTime}`);
+      console.log(`[ACK] Device has ${pendingCount} pending images - sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeTime}`);
     } catch (ackError) {
       console.error(`[ERROR] Failed to send ACK_OK:`, ackError);
     }
@@ -1000,15 +1011,8 @@ function connectToMQTT() {
             await commandQueueProcessor.handleCommandAck(deviceMac, payload);
           }
         } else if (topic.includes('/status')) {
-          const result = await handleStatusMessage(payload, client);
-          if (result && result.pendingCount > 0) {
-            const captureCmd = {
-              device_id: payload.device_id,
-              capture_image: true,
-            };
-            client.publish(`ESP32CAM/${payload.device_id}/cmd`, JSON.stringify(captureCmd));
-            console.log(`[CMD] Sent capture command to ${payload.device_id}`);
-          }
+          // Handle status message - logic is now inside handleStatusMessage()
+          await handleStatusMessage(payload, client);
         } else if (topic.includes('/data')) {
           if (payload.total_chunks_count !== undefined && payload.chunk_id === undefined) {
             await handleMetadataMessage(payload, client);
