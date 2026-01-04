@@ -211,15 +211,17 @@ BEGIN
               'alert_id', alert_id,
               'alert_type', alert_type,
               'severity', severity,
-              'threshold_value', threshold_value,
-              'actual_value', actual_value,
-              'triggered_at', triggered_at
+              'message', message,
+              'threshold_value', metadata->>'threshold_value',
+              'actual_value', metadata->>'actual_value',
+              'triggered_at', triggered_at,
+              'metadata', metadata
             )
           )
           FROM device_alerts da
           WHERE da.device_id = d.device_id
             AND da.triggered_at BETWEEN p_wake_round_start AND p_wake_round_end
-            AND da.is_acknowledged = false
+            AND da.resolved_at IS NULL
         ),
 
         'display', jsonb_build_object(
