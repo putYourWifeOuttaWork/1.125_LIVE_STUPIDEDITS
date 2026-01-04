@@ -1,23 +1,19 @@
-/*
-  # Fix get_next_wake_times Function for Cron Schema
-
-  1. Changes
-    - Rewrite function to use wake_schedule_cron (TEXT) instead of wake_schedule_config (JSONB)
-    - Use existing fn_calculate_next_wake_time() function for cron parsing
-    - Query last_wake_at from devices table as starting point
-    - Loop to generate N wake times by repeatedly calling calculation function
-
-  2. Schema Alignment
-    - devices.wake_schedule_cron → TEXT cron expression (e.g., "0 */6 * * *")
-    - devices.last_wake_at → Starting point for calculations
-    - Uses site timezone for proper time calculations
-
-  3. Security
-    - Maintains SECURITY DEFINER for RLS bypass
-    - Grants execute to authenticated users
-
-  APPLY THIS IN SUPABASE SQL EDITOR
-*/
+-- Fix get_next_wake_times Function for Cron Schema
+--
+-- 1. Changes
+--    - Rewrite function to use wake_schedule_cron (TEXT) instead of wake_schedule_config (JSONB)
+--    - Use existing fn_calculate_next_wake_time() function for cron parsing
+--    - Query last_wake_at from devices table as starting point
+--    - Loop to generate N wake times by repeatedly calling calculation function
+--
+-- 2. Schema Alignment
+--    - devices.wake_schedule_cron = TEXT cron expression (e.g., every 6 hours)
+--    - devices.last_wake_at = Starting point for calculations
+--    - Uses site timezone for proper time calculations
+--
+-- 3. Security
+--    - Maintains SECURITY DEFINER for RLS bypass
+--    - Grants execute to authenticated users
 
 -- Drop existing function
 DROP FUNCTION IF EXISTS get_next_wake_times(uuid, integer);

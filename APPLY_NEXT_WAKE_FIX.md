@@ -14,19 +14,25 @@ The function has been rewritten to:
 - Leverage the existing `fn_calculate_next_wake_time()` function for proper cron parsing
 - Calculate next wake times based on `last_wake_at`
 
-## How to Apply
+## ⚡ How to Apply (REQUIRED)
 
-### Option 1: Supabase SQL Editor (Recommended)
-1. Go to your Supabase Dashboard
-2. Navigate to: **SQL Editor → New Query**
-3. Copy the entire contents of `fix-get-next-wake-times-cron.sql`
-4. Paste into the SQL Editor
-5. Click **Run**
+**You must apply this SQL migration manually in Supabase:**
 
-### Option 2: Direct Link
-Visit: https://supabase.com/dashboard/project/jycxolmevsvrxmeinxff/sql/new
+1. **Open Supabase SQL Editor:**
 
-Then follow steps 3-5 above.
+   https://supabase.com/dashboard/project/jycxolmevsvrxmeinxff/sql/new
+
+2. **Copy the SQL:**
+   - Open the file: `fix-get-next-wake-times-cron.sql`
+   - Select all and copy (Ctrl+A, Ctrl+C or Cmd+A, Cmd+C)
+
+3. **Paste and Run:**
+   - Paste into the SQL Editor
+   - Click the green **"Run"** button
+
+4. **Verify Success:**
+   - You should see "Success. No rows returned"
+   - Refresh your browser
 
 ## What This Fixes
 After applying this migration:
@@ -35,9 +41,13 @@ After applying this migration:
 - ✅ Times will be calculated in the correct site timezone
 - ✅ The refresh button will work correctly
 
-## Files Created
-- `fix-get-next-wake-times-cron.sql` - The migration SQL to apply
+## Files
+- `fix-get-next-wake-times-cron.sql` - **← APPLY THIS SQL FILE**
 - `APPLY_NEXT_WAKE_FIX.md` - This instruction file
+- `test-next-wake-times.mjs` - Optional test script
 
 ## After Applying
-Refresh your browser to see the fix take effect. The error should be gone and the Next Wake Times section should show upcoming wake times.
+1. Refresh your browser
+2. Navigate to a device detail page
+3. The "Next Wake Times" section should now work without errors
+4. You can run `node test-next-wake-times.mjs` to verify the function works
