@@ -236,11 +236,29 @@ export default function SiteMapAnalyticsViewer({
         return;
       }
 
-      // Create a small range around the single value to avoid min === max
-      const minValue = value - 5;
-      const maxValue = value + 5;
+      // Use meaningful ranges for each metric type so colors are appropriate
+      let minValue: number;
+      let maxValue: number;
 
-      // Create color scale
+      if (mode === 'temperature') {
+        // Temperature range: 32°F to 100°F
+        minValue = 32;
+        maxValue = 100;
+      } else if (mode === 'humidity') {
+        // Humidity range: 0% to 100%
+        minValue = 0;
+        maxValue = 100;
+      } else if (mode === 'battery') {
+        // Battery range: 0% to 100%
+        minValue = 0;
+        maxValue = 100;
+      } else {
+        // Fallback: create a small range around the value
+        minValue = value - 5;
+        maxValue = value + 5;
+      }
+
+      // Create color scale with appropriate domain
       let colorScale;
       if (mode === 'humidity') {
         colorScale = scaleSequential(interpolateYlGnBu).domain([minValue, maxValue]);
