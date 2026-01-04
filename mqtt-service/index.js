@@ -312,7 +312,18 @@ async function handleStatusMessage(payload, client) {
 }
 
 async function handleMetadataMessage(payload, client) {
-  const deviceMac = payload.device_mac || payload.device_id;
+  // Normalize field names from device format to server format
+  const normalizedPayload = {
+    ...payload,
+    // Handle timestamp field variations
+    capture_timestamp: payload.capture_timestamp || payload.capture_timeStamp,
+    // Handle chunk count field variations
+    total_chunks_count: payload.total_chunks_count || payload.total_chunk_count,
+  };
+
+  console.log(`[METADATA] Normalized payload fields - timestamp: ${normalizedPayload.capture_timestamp}, chunks: ${normalizedPayload.total_chunks_count}`);
+
+  const deviceMac = normalizedPayload.device_mac || normalizedPayload.device_id;
   const normalizedMac = normalizeMacAddress(deviceMac);
 
   if (!normalizedMac) {
@@ -320,7 +331,7 @@ async function handleMetadataMessage(payload, client) {
     return;
   }
 
-  console.log(`[METADATA] Received for image ${payload.image_name} from ${payload.device_id} (MAC: ${normalizedMac})`);
+  console.log(`[METADATA] Received for image ${normalizedPayload.image_name} from ${normalizedPayload.device_id} (MAC: ${normalizedMac})`);
 
   const { data: device, error: deviceError } = await supabase
     .from('devices')
@@ -334,20 +345,20 @@ async function handleMetadataMessage(payload, client) {
   }
 
   if (!device) {
-    console.error(`[ERROR] Device ${payload.device_id} not found`);
+    console.error(`[ERROR] Device ${normalizedPayload.device_id} not found`);
     return;
   }
 
-  const imageKey = getImageKey(payload.device_id, payload.image_name);
+  const imageKey = getImageKey(normalizedPayload.device_id, normalizedPayload.image_name);
 
   // Build metadata object with all sensor data
   const metadataObj = {
-    location: payload.location || 'Unknown',
-    temperature: payload.temperature,
-    humidity: payload.humidity,
-    pressure: payload.pressure,
-    gas_resistance: payload.gas_resistance,
-    error: payload.error || 0,
+    location: normalizedPayload.location || 'Unknown',
+    temperature: normalizedPayload.temperature,
+    humidity: normalizedPayload.humidity,
+    pressure: normalizedPayload.pressure,
+    gas_resistance: normalizedPayload.gas_resistance,
+    error: normalizedPayload.error || 0,
   };
 
   console.log(`[METADATA] Inserting image record with metadata:`, JSON.stringify(metadataObj));
@@ -356,13 +367,13 @@ async function handleMetadataMessage(payload, client) {
     .from('device_images')
     .insert({
       device_id: device.device_id,
-      image_name: payload.image_name,
-      image_size: payload.image_size || 0,
-      captured_at: payload.capture_timestamp,
-      total_chunks: payload.total_chunks_count,
+      image_name: normalizedPayload.image_name,
+      image_size: normalizedPayload.image_size || 0,
+      captured_at: normalizedPayload.capture_timestamp,
+      total_chunks: normalizedPayload.total_chunks_count,
       received_chunks: 0,
       status: 'receiving',
-      error_code: payload.error || 0,
+      error_code: normalizedPayload.error || 0,
       metadata: metadataObj,
     })
     .select()
@@ -370,21 +381,21 @@ async function handleMetadataMessage(payload, client) {
 
   if (imageError) {
     console.error(`[ERROR] Failed to create image record:`, imageError);
-    console.error(`[ERROR] Payload was:`, JSON.stringify(payload));
+    console.error(`[ERROR] Payload was:`, JSON.stringify(normalizedPayload));
     return;
   }
 
   console.log(`[SUCCESS] Created image record ${imageRecord.image_id}`);
 
   // Create telemetry record if we have sensor data
-  if (payload.temperature !== undefined) {
+  if (normalizedPayload.temperature !== undefined) {
     const { error: telemetryError } = await supabase.from('device_telemetry').insert({
       device_id: device.device_id,
-      captured_at: payload.capture_timestamp,
-      temperature: payload.temperature,
-      humidity: payload.humidity,
-      pressure: payload.pressure,
-      gas_resistance: payload.gas_resistance,
+      captured_at: normalizedPayload.capture_timestamp,
+      temperature: normalizedPayload.temperature,
+      humidity: normalizedPayload.humidity,
+      pressure: normalizedPayload.pressure,
+      gas_resistance: normalizedPayload.gas_resistance,
       battery_voltage: device.battery_voltage,
     });
 
@@ -397,22 +408,22 @@ async function handleMetadataMessage(payload, client) {
 
   // Store in memory buffer for chunk reassembly
   imageBuffers.set(imageKey, {
-    metadata: payload,
+    metadata: normalizedPayload,
     chunks: new Map(),
-    totalChunks: payload.total_chunks_count,
+    totalChunks: normalizedPayload.total_chunks_count,
     imageRecord,
     device,
   });
 
-  console.log(`[METADATA] Ready to receive ${payload.total_chunks_count} chunks for ${payload.image_name}`);
+  console.log(`[METADATA] Ready to receive ${normalizedPayload.total_chunks_count} chunks for ${normalizedPayload.image_name}`);
 
   // Send send_image command to request chunks (per PDF spec page 3, step 11)
   const sendImageCmd = {
     device_id: deviceMac,
-    send_image: payload.image_name
+    send_image: normalizedPayload.image_name
   };
   client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(sendImageCmd));
-  console.log(`[CMD] Sent send_image command for ${payload.image_name} to ${deviceMac}`);
+  console.log(`[CMD] Sent send_image command for ${normalizedPayload.image_name} to ${deviceMac}`);
 }
 
 async function handleChunkMessage(payload, client) {
@@ -1014,7 +1025,11 @@ function connectToMQTT() {
           // Handle status message - logic is now inside handleStatusMessage()
           await handleStatusMessage(payload, client);
         } else if (topic.includes('/data')) {
-          if (payload.total_chunks_count !== undefined && payload.chunk_id === undefined) {
+          // Check for metadata message - handle both field name variations
+          const hasMetadata = (payload.total_chunks_count !== undefined || payload.total_chunk_count !== undefined)
+                           && payload.chunk_id === undefined;
+
+          if (hasMetadata) {
             await handleMetadataMessage(payload, client);
           } else if (payload.chunk_id !== undefined) {
             await handleChunkMessage(payload, client);
