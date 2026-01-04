@@ -262,13 +262,13 @@ export default function SessionDetailsPanel({
         </Card>
 
         {/* Temperature Card */}
-        {metrics?.avgTemperature !== null && (
+        {metrics && metrics.avgTemperature !== null && (
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <Thermometer className="w-5 h-5 text-orange-600" />
                 <span className="text-2xl font-bold text-gray-900">
-                  {metrics.avgTemperature?.toFixed(1)}°
+                  {metrics.avgTemperature.toFixed(1)}°
                 </span>
               </div>
               <p className="text-xs text-gray-600 font-medium">Avg Temperature</p>
@@ -277,13 +277,13 @@ export default function SessionDetailsPanel({
         )}
 
         {/* Humidity Card */}
-        {metrics?.avgHumidity !== null && (
+        {metrics && metrics.avgHumidity !== null && (
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <Droplets className="w-5 h-5 text-blue-600" />
                 <span className="text-2xl font-bold text-gray-900">
-                  {metrics.avgHumidity?.toFixed(1)}%
+                  {metrics.avgHumidity.toFixed(1)}%
                 </span>
               </div>
               <p className="text-xs text-gray-600 font-medium">Avg Humidity</p>
@@ -292,13 +292,13 @@ export default function SessionDetailsPanel({
         )}
 
         {/* MGI Score Card */}
-        {metrics?.avgMgiScore !== null && (
+        {metrics && metrics.avgMgiScore !== null && (
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <TrendingUp className="w-5 h-5 text-green-600" />
                 <span className="text-2xl font-bold text-gray-900">
-                  {metrics.avgMgiScore?.toFixed(1)}
+                  {metrics.avgMgiScore.toFixed(1)}
                 </span>
               </div>
               <p className="text-xs text-gray-600 font-medium">Avg MGI Score</p>
