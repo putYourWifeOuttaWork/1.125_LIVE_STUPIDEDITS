@@ -180,10 +180,10 @@ BEGIN
             dwp.battery_voltage,
             dwp.wifi_rssi
           FROM device_images di
-          JOIN device_wake_payloads dwp ON di.image_id = dwp.image_id
-          WHERE dwp.device_id = d.device_id
-          AND dwp.site_device_session_id = p_session_id
-          ORDER BY di.image_id, dwp.captured_at DESC
+          LEFT JOIN device_wake_payloads dwp ON di.wake_payload_id = dwp.payload_id
+          WHERE di.device_id = d.device_id
+          AND di.site_device_session_id = p_session_id
+          ORDER BY di.image_id, di.captured_at DESC
         ) as image_data
       ) as images
 
@@ -229,4 +229,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_session_devices_with_wakes IS
-'Get all devices in a session with wake payloads, images, and statistics. Images now include all MGI fields (mgi_score, mgi_velocity, mgi_speed) and environmental data (temperature, humidity from device_images computed columns, battery_voltage from wake_payloads).';
+'Get all devices in a session with images and statistics. Images include MGI fields (mgi_score, mgi_velocity, mgi_speed) and environmental data (temperature, humidity from device_images computed columns). Battery_voltage and wifi_rssi from wake_payloads when available. Uses LEFT JOIN to include all images regardless of wake_payload_id.';
