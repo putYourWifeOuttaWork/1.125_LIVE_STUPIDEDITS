@@ -450,6 +450,14 @@ const SiteDeviceSessionDetailPage = () => {
     const checkSessionExpiration = () => {
       if (!session?.session_end_time) return;
 
+      // Check if session is locked
+      if (session.status === 'locked') {
+        setIsSessionExpired(true);
+        setIsSessionExpiring(false);
+        setTimeRemaining('Session locked');
+        return;
+      }
+
       const sessionEnd = new Date(session.session_end_time);
       const now = new Date();
       const secondsRemaining = Math.floor((sessionEnd.getTime() - now.getTime()) / 1000);
