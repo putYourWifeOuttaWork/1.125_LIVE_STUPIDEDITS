@@ -101,8 +101,8 @@ BEGIN
       'program_name', pp.name,
       'program_start_date', pp.start_date,
       'program_end_date', pp.end_date,
-      'program_day', DATE_PART('day', p_wake_round_end - pp.start_date)::integer,
-      'total_days', DATE_PART('day', pp.end_date - pp.start_date)::integer
+      'program_day', (p_wake_round_end::date - pp.start_date::date),
+      'total_days', (pp.end_date::date - pp.start_date::date)
     ) AS program_context
     FROM pilot_programs pp WHERE pp.program_id = v_program_id
   ),
