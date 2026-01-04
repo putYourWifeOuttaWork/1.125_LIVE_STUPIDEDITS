@@ -746,19 +746,104 @@ export type SessionWakeSnapshot = {
   program_id: string;
   company_id: string;
   wake_number: number;
-  wake_time: string;
+  wake_round_start: string;
+  wake_round_end: string;
   site_state: {
-    devices: DeviceSnapshotData[];
-    zones: ZoneSnapshotData[];
-    site_layout: SiteLayoutData;
-    session_summary: {
-      total_devices: number;
-      active_devices: number;
-      avg_mgi: number | null;
-      avg_temperature: number | null;
-      avg_humidity: number | null;
-      high_risk_device_count: number;
+    snapshot_metadata?: {
+      wake_number: number;
+      wake_round_start: string;
+      wake_round_end: string;
+      session_id: string;
+    };
+    site_metadata?: {
+      site_id: string;
+      site_name: string;
+      site_code: string;
+      site_type: string;
+      dimensions: {
+        length: number;
+        width: number;
+        height: number;
+      };
+      wall_details: any[];
+      door_details: any[];
+      platform_details: any[];
+      timezone: string;
+    };
+    program_context?: {
+      program_id: string;
+      program_name: string;
+      program_start_date: string;
+      program_end_date: string;
+      program_day: number;
+      total_days: number;
+    };
+    devices: Array<{
+      device_id: string;
+      device_code: string;
+      device_name: string;
+      device_mac: string;
+      position: { x: number; y: number };
+      zone_id?: string;
+      zone_label?: string;
+      status: string;
+      battery_voltage?: number;
+      battery_health_percent?: number;
+      last_seen_at?: string;
+      telemetry?: {
+        temperature?: number;
+        humidity?: number;
+        pressure?: number;
+        wifi_rssi?: number;
+        captured_at: string;
+        is_current?: boolean;
+        data_freshness?: string;
+        hours_since_last?: number;
+      };
+      mgi_state?: {
+        current_mgi?: number;
+        captured_at?: string;
+        is_current?: boolean;
+        data_freshness?: string;
+        hours_since_last?: number;
+        mgi_velocity?: {
+          per_hour?: number;
+        };
+      };
+      images_this_round?: any[];
+      alerts?: any[];
+      display?: {
+        color: string;
+        shape: string;
+        size: string;
+      };
+    }>;
+    environmental_zones?: Array<{
+      zone_id: string;
+      device_id: string;
+      device_code: string;
+      center_x: number;
+      center_y: number;
+      radius: number;
+      bounds: {
+        min_x: number;
+        max_x: number;
+        min_y: number;
+        max_y: number;
+      };
+    }>;
+    session_metrics?: {
+      active_devices_count: number;
+      new_images_this_round: number;
+      new_alerts_this_round: number;
     };
   };
+  active_devices_count?: number;
+  new_images_this_round?: number;
+  new_alerts_this_round?: number;
+  avg_temperature?: number | null;
+  avg_humidity?: number | null;
+  avg_mgi?: number | null;
+  max_mgi?: number | null;
   created_at: string;
 };
