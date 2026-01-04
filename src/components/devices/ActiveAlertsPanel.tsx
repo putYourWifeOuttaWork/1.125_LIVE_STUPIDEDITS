@@ -32,6 +32,11 @@ interface DeviceAlert {
   company_id: string | null;
   company_name: string | null;
   metadata: any;
+
+  // Session context (new)
+  session_id: string | null;
+  snapshot_id: string | null;
+  wake_number: number | null;
 }
 
 const ActiveAlertsPanel = () => {
@@ -277,22 +282,40 @@ const ActiveAlertsPanel = () => {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {!alert.resolved_at && (
                       <button
-                        onClick={() => acknowledgeAlert(alert.alert_id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          acknowledgeAlert(alert.alert_id);
+                        }}
                         className="p-1.5 border border-gray-400 rounded hover:bg-white transition-colors"
                         title="Acknowledge"
                       >
                         <CheckCircle className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {alert.device_id && (
-                      <a
-                        href={`/devices/${alert.device_id}`}
+                    {alert.session_id && alert.program_id && alert.site_id ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const url = `/programs/${alert.program_id}/sites/${alert.site_id}/device-sessions/${alert.session_id}`;
+                          navigate(url);
+                        }}
+                        className="p-1.5 border border-gray-400 rounded hover:bg-white transition-colors"
+                        title="View Session Timeline"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    ) : alert.device_id ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/devices/${alert.device_id}`);
+                        }}
                         className="p-1.5 border border-gray-400 rounded hover:bg-white transition-colors"
                         title="View Device"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
