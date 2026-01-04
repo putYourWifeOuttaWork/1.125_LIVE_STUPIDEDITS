@@ -34,7 +34,7 @@ import { supabase } from '../lib/supabaseClient';
 import { parseDateOnly } from '../utils/timeFormatters';
 import { SiteDeviceSession } from '../hooks/useSiteDeviceSessions';
 import { useUserRole } from '../hooks/useUserRole';
-import { useSiteSnapshots } from '../hooks/useSiteSnapshots';
+import { useSessionSnapshots } from '../hooks/useSessionSnapshots';
 import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
 import { TimelineController } from '../components/lab/TimelineController';
 import ZoneAnalytics from '../components/lab/ZoneAnalytics';
@@ -94,10 +94,9 @@ const SiteDeviceSessionDetailPage = () => {
   const isSuperAdmin = role === 'super_admin';
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch ALL snapshots for this site (site-wide, session-agnostic)
-  const { snapshots: allSiteSnapshots, loading: snapshotsLoading, refetch: refetchSnapshots } = useSiteSnapshots(
-    siteId || null,
-    session?.program_id || null
+  // Fetch snapshots for this specific session
+  const { snapshots: sessionSnapshots, loading: snapshotsLoading, refetch: refetchSnapshots } = useSessionSnapshots(
+    sessionId || null
   );
 
   useEffect(() => {
@@ -244,9 +243,9 @@ const SiteDeviceSessionDetailPage = () => {
     return start + (end - start) * easedProgress;
   };
 
-  // Filter to only session's snapshots and process with site-wide LOCF
+  // Process session snapshots with LOCF (Last Observation Carried Forward)
   const processedSnapshots = useMemo(() => {
-    if (allSiteSnapshots.length === 0) return [];
+    if (sessionSnapshots.length === 0) return [];
 
     const processed: any[] = [];
     const deviceStateCache = new Map<string, any>(); // device_id -> last known state
@@ -272,9 +271,9 @@ const SiteDeviceSessionDetailPage = () => {
       return mgi && (mgi.current_mgi !== null || mgi.mgi_velocity?.per_hour !== null);
     };
 
-    // Process ALL site snapshots (already sorted by wake_round_start)
-    for (let i = 0; i < allSiteSnapshots.length; i++) {
-      const snapshot = allSiteSnapshots[i];
+    // Process session snapshots (already sorted by wake_round_start)
+    for (let i = 0; i < sessionSnapshots.length; i++) {
+      const snapshot = sessionSnapshots[i];
 
       try {
         const siteState = typeof snapshot.site_state === 'string'
@@ -340,11 +339,9 @@ const SiteDeviceSessionDetailPage = () => {
       }
     }
 
-    // Filter to only this session's snapshots
-    const filtered = processed.filter(s => s.session_id === sessionId);
-    console.log(`[SiteDeviceSessionDetail] Filtered to ${filtered.length} snapshots for session ${sessionId} (from ${processed.length} total processed)`);
-    return filtered;
-  }, [allSiteSnapshots, sessionId]);
+    console.log(`[SiteDeviceSessionDetail] Processed ${processed.length} snapshots for session ${sessionId} with LOCF`);
+    return processed;
+  }, [sessionSnapshots, sessionId]);
 
   // Transform snapshot data with smooth transitions
   const displayDevices = useMemo(() => {

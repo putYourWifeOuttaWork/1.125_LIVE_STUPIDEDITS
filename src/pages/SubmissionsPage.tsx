@@ -63,8 +63,8 @@ const SubmissionsPage = () => {
   const [transitionProgress, setTransitionProgress] = useState(1); // 0 = start of transition, 1 = end
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  // Load all wake snapshots for this site + program (across all daily sessions)
-  const { snapshots, loading: snapshotsLoading } = useSiteSnapshots(siteId || null, programId || null);
+  // Load aggregated wake snapshots for this site + program (4 per day max to prevent performance issues)
+  const { snapshots, loading: snapshotsLoading } = useSiteSnapshots(siteId || null, programId || null, { aggregated: true, snapshotsPerDay: 4 });
 
   // Easing function for smooth transitions (ease-in-out)
   const easeInOutCubic = (t: number): number => {
