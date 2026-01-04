@@ -144,30 +144,47 @@ BEGIN
       ) as wake_payloads,
 
       -- Get images as JSON array - FIXED: Now includes all MGI fields and environmental data
+      -- Uses DISTINCT ON to prevent duplicate images when multiple wake_payloads reference the same image
       (
         SELECT COALESCE(jsonb_agg(
           jsonb_build_object(
-            'image_id', di.image_id,
-            'captured_at', di.captured_at,
-            'image_url', di.image_url,
-            'image_status', di.status,
-            'wake_window_index', dwp.wake_window_index,
-            'wake_number', dwp.wake_window_index,
+            'image_id', image_data.image_id,
+            'captured_at', image_data.captured_at,
+            'image_url', image_data.image_url,
+            'image_status', image_data.status,
+            'wake_window_index', image_data.wake_window_index,
+            'wake_number', image_data.wake_window_index,
             -- MGI Fields
-            'mgi_score', di.mgi_score,
-            'mold_growth_velocity', di.mold_growth_velocity,
-            'mold_growth_speed', di.mold_growth_speed,
+            'mgi_score', image_data.mgi_score,
+            'mold_growth_velocity', image_data.mold_growth_velocity,
+            'mold_growth_speed', image_data.mold_growth_speed,
             -- Environmental data from wake payload
-            'temperature', dwp.temperature,
-            'humidity', dwp.humidity,
-            'battery_voltage', dwp.battery_voltage,
-            'wifi_rssi', dwp.wifi_rssi
-          ) ORDER BY di.captured_at
+            'temperature', image_data.temperature,
+            'humidity', image_data.humidity,
+            'battery_voltage', image_data.battery_voltage,
+            'wifi_rssi', image_data.wifi_rssi
+          ) ORDER BY image_data.captured_at
         ), '[]'::jsonb)
-        FROM device_images di
-        JOIN device_wake_payloads dwp ON di.image_id = dwp.image_id
-        WHERE dwp.device_id = d.device_id
-        AND dwp.site_device_session_id = p_session_id
+        FROM (
+          SELECT DISTINCT ON (di.image_id)
+            di.image_id,
+            di.captured_at,
+            di.image_url,
+            di.status,
+            dwp.wake_window_index,
+            di.mgi_score,
+            di.mold_growth_velocity,
+            di.mold_growth_speed,
+            dwp.temperature,
+            dwp.humidity,
+            dwp.battery_voltage,
+            dwp.wifi_rssi
+          FROM device_images di
+          JOIN device_wake_payloads dwp ON di.image_id = dwp.image_id
+          WHERE dwp.device_id = d.device_id
+          AND dwp.site_device_session_id = p_session_id
+          ORDER BY di.image_id, dwp.captured_at DESC
+        ) as image_data
       ) as images
 
     FROM devices d

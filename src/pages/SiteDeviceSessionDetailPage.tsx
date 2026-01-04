@@ -41,6 +41,7 @@ import ZoneAnalytics from '../components/lab/ZoneAnalytics';
 import { SessionWakeSnapshot } from '../lib/types';
 import TimeSeriesChart from '../components/lab/TimeSeriesChart';
 import HistogramChart from '../components/lab/HistogramChart';
+import DeviceImageLightbox from '../components/devices/DeviceImageLightbox';
 
 interface DeviceSessionData {
   device_id: string;
@@ -88,6 +89,12 @@ const SiteDeviceSessionDetailPage = () => {
   const [sessionAlerts, setSessionAlerts] = useState<any[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [lightboxState, setLightboxState] = useState<{
+    isOpen: boolean;
+    images: any[];
+    currentIndex: number;
+    deviceInfo: { device_code: string; device_name?: string };
+  } | null>(null);
 
   const { role } = useUserRole();
   const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
@@ -453,6 +460,23 @@ const SiteDeviceSessionDetailPage = () => {
   const handleEditDevice = (deviceId: string) => {
     // Navigate to device edit or show modal
     navigate(`/devices/${deviceId}`);
+  };
+
+  const openLightbox = (image: any, allImages: any[], device: DeviceSessionData) => {
+    const imageIndex = allImages.findIndex((img: any) => img.image_id === image.image_id);
+    setLightboxState({
+      isOpen: true,
+      images: allImages,
+      currentIndex: Math.max(0, imageIndex),
+      deviceInfo: {
+        device_code: device.device_code,
+        device_name: device.device_name
+      }
+    });
+  };
+
+  const closeLightbox = () => {
+    setLightboxState(null);
   };
 
   // Handle session expiration checking with countdown
@@ -2579,11 +2603,14 @@ const SiteDeviceSessionDetailPage = () => {
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         {device.images.map((image: any, idx: number) => (
                           <div
-                            key={image.image_id || idx}
+                            key={`${device.device_id}-${image.image_id}-${idx}`}
                             className="group relative bg-gray-100 rounded-lg overflow-hidden hover:shadow-lg transition-all duration-200"
                           >
                             {/* Image */}
-                            <div className="aspect-square relative bg-gray-200">
+                            <div
+                              className="aspect-square relative bg-gray-200 cursor-pointer"
+                              onClick={() => openLightbox(image, device.images, device)}
+                            >
                               {image.image_url ? (
                                 <img
                                   src={image.image_url}
@@ -2619,7 +2646,13 @@ const SiteDeviceSessionDetailPage = () => {
 
                               {/* Hover Overlay */}
                               <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                <button className="px-4 py-2 bg-white text-gray-900 rounded font-medium text-sm hover:bg-gray-100 transition-colors">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openLightbox(image, device.images, device);
+                                  }}
+                                  className="px-4 py-2 bg-white text-gray-900 rounded font-medium text-sm hover:bg-gray-100 transition-colors"
+                                >
                                   View Full Size
                                 </button>
                               </div>
@@ -2739,6 +2772,20 @@ const SiteDeviceSessionDetailPage = () => {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Image Lightbox Modal */}
+      {lightboxState && (
+        <DeviceImageLightbox
+          isOpen={lightboxState.isOpen}
+          onClose={closeLightbox}
+          images={lightboxState.images}
+          currentIndex={lightboxState.currentIndex}
+          deviceInfo={lightboxState.deviceInfo}
+          onNavigate={(newIndex) => {
+            setLightboxState(prev => prev ? { ...prev, currentIndex: newIndex } : null);
+          }}
+        />
       )}
     </div>
   );
