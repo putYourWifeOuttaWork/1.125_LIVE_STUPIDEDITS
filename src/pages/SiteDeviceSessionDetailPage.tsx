@@ -31,6 +31,7 @@ import DeviceStatusBadge from '../components/devices/DeviceStatusBadge';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
 import { supabase } from '../lib/supabaseClient';
+import { parseDateOnly } from '../utils/timeFormatters';
 import { SiteDeviceSession } from '../hooks/useSiteDeviceSessions';
 import { useUserRole } from '../hooks/useUserRole';
 import { useSiteSnapshots } from '../hooks/useSiteSnapshots';
@@ -1046,7 +1047,7 @@ const SiteDeviceSessionDetailPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Device Session Details</h1>
             <p className="text-gray-600 mt-1">
-              {session.site_name} - {format(new Date(session.session_date), 'MMMM dd, yyyy')}
+              {session.site_name} - {format(parseDateOnly(session.session_date), 'MMMM dd, yyyy')}
             </p>
             {timeRemaining && (
               <p className={`text-sm mt-1 font-medium ${
@@ -1153,7 +1154,7 @@ const SiteDeviceSessionDetailPage = () => {
       {activeTab === 'overview' && (
         <>
       {/* Site Map with Timeline - MOVED TO TOP */}
-      {siteData && processedSnapshots.length > 0 && displayDevices.length > 0 && (
+      {siteData && siteData.length > 0 && siteData.width > 0 && processedSnapshots.length > 0 && displayDevices.length > 0 && (
         <Card className="animate-fade-in">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -1206,6 +1207,29 @@ const SiteDeviceSessionDetailPage = () => {
               {zoneMode !== 'none' && displayDevices.length >= 2 && (
                 <ZoneAnalytics devices={displayDevices} zoneMode={zoneMode} />
               )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Missing Site Dimensions Warning */}
+      {siteData && (!siteData.length || !siteData.width) && processedSnapshots.length > 0 && (
+        <Card className="animate-fade-in border-yellow-300 bg-yellow-50">
+          <CardContent className="pt-6">
+            <div className="flex items-start space-x-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-yellow-900 mb-1">Site Map Unavailable</h3>
+                <p className="text-sm text-yellow-800 mb-3">
+                  The site map and timeline visualization cannot be displayed because site dimensions are missing.
+                </p>
+                <button
+                  onClick={() => navigate(`/sites`)}
+                  className="text-sm font-medium text-yellow-900 hover:text-yellow-700 underline"
+                >
+                  Go to Sites page to add dimensions
+                </button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1890,7 +1914,7 @@ const SiteDeviceSessionDetailPage = () => {
                     <Calendar className="h-4 w-4 mr-2" />
                     Session Date
                   </span>
-                  <span className="font-medium">{format(new Date(session.session_date), 'MMMM dd, yyyy')}</span>
+                  <span className="font-medium">{format(parseDateOnly(session.session_date), 'MMMM dd, yyyy')}</span>
                 </div>
 
                 <div className="flex items-center justify-between text-sm py-2 border-b">
