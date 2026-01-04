@@ -1,27 +1,21 @@
 /*
-  # Add Get Next Wake Times Function
+  # Fix get_next_wake_times Column References
 
-  1. New Functions
-    - `get_next_wake_times(device_id, count)` - Calculate the next N wake times for a device
-      - Takes device UUID and count of wake times to return
-      - Returns array of timestamps based on device's wake_schedule_config
-      - Handles cron-style schedules and custom patterns
-      - Defaults to returning 3 wake times if count not specified
+  1. Changes
+    - Fix incorrect column references in get_next_wake_times function
+    - Change `s.id` to `s.site_id` (sites table primary key)
+    - Change `d.id` to `d.device_id` (devices table primary key)
 
-  2. Purpose
-    - Enable UI to display upcoming wake times for devices
-    - Support manual refresh of wake time predictions
-    - Help users understand device wake schedules
+  2. Security
+    - Maintains existing SECURITY DEFINER
+    - No changes to permissions
 
-  3. Security
-    - Function uses SECURITY DEFINER to access device data
-    - Returns data only for devices user has access to via RLS
+  APPLY THIS IN SUPABASE SQL EDITOR
 */
 
--- Drop function if exists
+-- Drop and recreate function with correct column names
 DROP FUNCTION IF EXISTS get_next_wake_times(uuid, integer);
 
--- Create function to calculate next wake times
 CREATE OR REPLACE FUNCTION get_next_wake_times(
   p_device_id uuid,
   p_count integer DEFAULT 3
@@ -49,8 +43,8 @@ BEGIN
     v_config,
     v_timezone
   FROM devices d
-  LEFT JOIN sites s ON d.site_id = s.site_id
-  WHERE d.device_id = p_device_id;
+  LEFT JOIN sites s ON d.site_id = s.site_id  -- ✅ Fixed: was s.id
+  WHERE d.device_id = p_device_id;            -- ✅ Fixed: was d.id
 
   -- If device not found or no config, return empty array
   IF v_config IS NULL THEN
@@ -122,4 +116,4 @@ $$;
 GRANT EXECUTE ON FUNCTION get_next_wake_times(uuid, integer) TO authenticated;
 
 -- Add helpful comment
-COMMENT ON FUNCTION get_next_wake_times IS 'Calculate the next N wake times for a device based on its wake schedule configuration';
+COMMENT ON FUNCTION get_next_wake_times IS 'Calculate the next N wake times for a device based on its wake schedule configuration. Fixed to use correct column names: site_id and device_id.';
