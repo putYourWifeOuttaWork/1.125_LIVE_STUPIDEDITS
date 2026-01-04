@@ -70,6 +70,7 @@ export function useSiteDeviceSessions(siteId?: string) {
               )
             `)
             .eq('site_id', siteId)
+            .in('status', ['pending', 'in_progress']) // Only show active sessions, not locked ones
             .order('session_date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(10)
