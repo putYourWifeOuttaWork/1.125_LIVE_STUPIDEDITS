@@ -2674,13 +2674,13 @@ const SiteDeviceSessionDetailPage = () => {
                               </div>
 
                               {/* MGI Metrics */}
-                              {(image.mold_growth_velocity != null || image.mold_growth_speed != null) && (
+                              {(image.mgi_velocity != null || image.mgi_speed != null) && (
                                 <div className="pt-2 border-t border-gray-100 space-y-1">
                                   <div className="text-xs font-medium text-gray-700 mb-1">MGI Growth</div>
-                                  {image.mold_growth_velocity != null && (
+                                  {image.mgi_velocity != null && (
                                     <div className="flex items-center justify-between text-xs">
                                       <span className="flex items-center text-gray-600">
-                                        {image.mold_growth_velocity >= 0 ? (
+                                        {image.mgi_velocity >= 0 ? (
                                           <TrendingUp className="w-3 h-3 mr-1 text-red-500" />
                                         ) : (
                                           <TrendingDown className="w-3 h-3 mr-1 text-green-500" />
@@ -2690,21 +2690,21 @@ const SiteDeviceSessionDetailPage = () => {
                                       <span
                                         className="font-medium"
                                         style={{
-                                          color: image.mold_growth_velocity >= 0 ? '#dc2626' : '#10b981'
+                                          color: image.mgi_velocity >= 0 ? '#dc2626' : '#10b981'
                                         }}
                                       >
-                                        {image.mold_growth_velocity >= 0 ? '+' : ''}{(image.mold_growth_velocity * 100).toFixed(1)}%
+                                        {image.mgi_velocity >= 0 ? '+' : ''}{(image.mgi_velocity * 100).toFixed(1)}%
                                       </span>
                                     </div>
                                   )}
-                                  {image.mold_growth_speed != null && (
+                                  {image.mgi_speed != null && (
                                     <div className="flex items-center justify-between text-xs">
                                       <span className="flex items-center text-gray-600">
                                         <Activity className="w-3 h-3 mr-1 text-blue-500" />
                                         Speed
                                       </span>
                                       <span className="font-medium text-gray-700">
-                                        {image.mold_growth_speed >= 0 ? '+' : ''}{(image.mold_growth_speed * 100).toFixed(2)}%/day
+                                        {image.mgi_speed >= 0 ? '+' : ''}{(image.mgi_speed * 100).toFixed(2)}%/day
                                       </span>
                                     </div>
                                   )}

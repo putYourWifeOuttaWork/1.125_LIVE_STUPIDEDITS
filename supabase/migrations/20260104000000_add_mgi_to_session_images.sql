@@ -7,7 +7,7 @@
     - Frontend checks for img.mgi_score != null but the field is missing from the query
 
   2. Solution
-    - Add mgi_score, mold_growth_velocity, mold_growth_speed to images subquery
+    - Add mgi_score, mgi_velocity, mgi_speed to images subquery
     - Add temperature, humidity, battery_voltage from wake_payloads for environmental context
     - These fields exist in tables but weren't being selected together
 
@@ -156,8 +156,8 @@ BEGIN
             'wake_number', image_data.wake_window_index,
             -- MGI Fields
             'mgi_score', image_data.mgi_score,
-            'mold_growth_velocity', image_data.mold_growth_velocity,
-            'mold_growth_speed', image_data.mold_growth_speed,
+            'mgi_velocity', image_data.mgi_velocity,
+            'mgi_speed', image_data.mgi_speed,
             -- Environmental data from wake payload
             'temperature', image_data.temperature,
             'humidity', image_data.humidity,
@@ -173,8 +173,8 @@ BEGIN
             di.status,
             dwp.wake_window_index,
             di.mgi_score,
-            di.mold_growth_velocity,
-            di.mold_growth_speed,
+            di.mgi_velocity,
+            di.mgi_speed,
             di.temperature,
             di.humidity,
             dwp.battery_voltage,
@@ -229,4 +229,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_session_devices_with_wakes IS
-'Get all devices in a session with wake payloads, images, and statistics. Images now include all MGI fields (score, velocity, speed) and environmental data (temperature, humidity from device_images computed columns, battery_voltage from wake_payloads).';
+'Get all devices in a session with wake payloads, images, and statistics. Images now include all MGI fields (mgi_score, mgi_velocity, mgi_speed) and environmental data (temperature, humidity from device_images computed columns, battery_voltage from wake_payloads).';

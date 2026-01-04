@@ -11,8 +11,8 @@ interface DeviceImageData {
   captured_at: string;
   wake_number?: number;
   mgi_score?: number | null;
-  mold_growth_velocity?: number | null;
-  mold_growth_speed?: number | null;
+  mgi_velocity?: number | null;
+  mgi_speed?: number | null;
   temperature?: number | null;
   humidity?: number | null;
   battery_voltage?: number | null;
@@ -336,9 +336,9 @@ const DeviceImageLightbox = ({
                 {/* MGI Velocity with Trend */}
                 <div className="flex items-center justify-between text-sm bg-white bg-opacity-70 rounded px-3 py-2">
                   <span className="flex items-center text-gray-600">
-                    {currentImage.mold_growth_velocity != null && currentImage.mold_growth_velocity >= 0 ? (
+                    {currentImage.mgi_velocity != null && currentImage.mgi_velocity >= 0 ? (
                       <TrendingUp className="w-4 h-4 mr-2 text-red-500" />
-                    ) : currentImage.mold_growth_velocity != null && currentImage.mold_growth_velocity < 0 ? (
+                    ) : currentImage.mgi_velocity != null && currentImage.mgi_velocity < 0 ? (
                       <TrendingDown className="w-4 h-4 mr-2 text-green-500" />
                     ) : (
                       <Activity className="w-4 h-4 mr-2 text-gray-400" />
@@ -348,13 +348,13 @@ const DeviceImageLightbox = ({
                   <span
                     className="font-medium"
                     style={{
-                      color: currentImage.mold_growth_velocity != null
-                        ? (currentImage.mold_growth_velocity >= 0 ? '#dc2626' : '#10b981')
+                      color: currentImage.mgi_velocity != null
+                        ? (currentImage.mgi_velocity >= 0 ? '#dc2626' : '#10b981')
                         : '#9ca3af'
                     }}
                   >
-                    {currentImage.mold_growth_velocity != null
-                      ? `${currentImage.mold_growth_velocity >= 0 ? '+' : ''}${(currentImage.mold_growth_velocity * 100).toFixed(1)}%`
+                    {currentImage.mgi_velocity != null
+                      ? `${currentImage.mgi_velocity >= 0 ? '+' : ''}${(currentImage.mgi_velocity * 100).toFixed(1)}%`
                       : 'N/A'}
                   </span>
                 </div>
