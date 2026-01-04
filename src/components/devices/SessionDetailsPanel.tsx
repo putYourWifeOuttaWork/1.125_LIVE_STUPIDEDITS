@@ -15,7 +15,6 @@ import {
 import Card, { CardHeader, CardContent } from '../common/Card';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabaseClient';
-import { parseDateOnly } from '../../utils/timeFormatters';
 import { ActiveSession } from './ActiveSessionsGrid';
 import { useActiveCompany } from '../../hooks/useActiveCompany';
 
@@ -187,7 +186,7 @@ export default function SessionDetailsPanel({
             <div className="text-right">
               <div className="flex items-center gap-1 text-sm text-gray-600">
                 <Calendar className="w-4 h-4" />
-                {format(parseDateOnly(selectedSession.session_date), 'MMM d, yyyy')}
+                {format(new Date(selectedSession.session_date), 'MMM d, yyyy')}
               </div>
             </div>
           </div>

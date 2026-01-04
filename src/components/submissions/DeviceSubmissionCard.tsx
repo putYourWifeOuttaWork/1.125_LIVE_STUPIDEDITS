@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { parseDateOnly } from '../../utils/timeFormatters';
 import {
   Calendar,
   Clock,
@@ -106,7 +105,7 @@ const DeviceSubmissionCard = ({
           </div>
           <div className="flex items-center text-xs text-gray-600 space-x-2 flex-shrink-0">
             <Calendar className="h-3 w-3" />
-            <span>{format(parseDateOnly(submission.session_date), 'MMM dd, yyyy')}</span>
+            <span>{format(new Date(submission.session_date), 'MMM dd, yyyy')}</span>
             <Clock className="h-3 w-3 ml-2" />
             <span>{format(new Date(submission.session_start_time), 'HH:mm')} - {format(new Date(submission.session_end_time), 'HH:mm')}</span>
           </div>

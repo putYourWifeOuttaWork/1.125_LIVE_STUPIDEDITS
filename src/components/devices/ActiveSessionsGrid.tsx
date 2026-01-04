@@ -5,7 +5,6 @@ import { Clock, AlertTriangle, CheckCircle, Loader, MapPin, Building, ExternalLi
 import Card, { CardContent } from '../common/Card';
 import { useActiveCompany } from '../../hooks/useActiveCompany';
 import { format } from 'date-fns';
-import { parseDateOnly } from '../../utils/timeFormatters';
 
 export interface ActiveSession {
   session_id: string;
@@ -340,7 +339,7 @@ export default function ActiveSessionsGrid({
               {/* Date */}
               <div className="flex items-center gap-1 text-xs text-gray-500 mt-2">
                 <Clock className="w-3 h-3" />
-                {format(parseDateOnly(session.session_date), 'MMM d, yyyy')}
+                {format(new Date(session.session_date), 'MMM d, yyyy')}
               </div>
             </CardContent>
           </Card>

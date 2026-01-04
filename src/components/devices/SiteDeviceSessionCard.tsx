@@ -19,7 +19,6 @@ import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
 import { format } from 'date-fns';
 import { SiteDeviceSession } from '../../hooks/useSiteDeviceSessions';
-import { parseDateOnly } from '../../utils/timeFormatters';
 
 interface SiteDeviceSessionCardProps {
   session: SiteDeviceSession;
@@ -90,7 +89,7 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
             <div className="flex-grow">
               <div className="flex items-center space-x-2">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {format(parseDateOnly(session.session_date), 'MMM dd, yyyy')}
+                  {format(new Date(session.session_date), 'MMM dd, yyyy')}
                 </h3>
                 <span
                   className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
@@ -195,7 +194,7 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Session Date</span>
                   <span className="font-medium">
-                    {format(parseDateOnly(session.session_date), 'MMM dd, yyyy')}
+                    {format(new Date(session.session_date), 'MMM dd, yyyy')}
                   </span>
                 </div>
 
