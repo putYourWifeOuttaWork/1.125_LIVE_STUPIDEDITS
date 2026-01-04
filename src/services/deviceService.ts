@@ -600,6 +600,55 @@ export class DeviceService {
   }
 
   /**
+   * Get next wake times for a device
+   */
+  static async getNextWakeTimes(params: {
+    deviceId: string;
+    count?: number;
+  }): Promise<{
+    wake_times: string[];
+    timezone: string;
+    error?: string;
+  }> {
+    try {
+      const { data, error } = await supabase.rpc('get_next_wake_times', {
+        p_device_id: params.deviceId,
+        p_count: params.count || 3
+      });
+
+      if (error) {
+        logger.error('Failed to get next wake times', error);
+        return {
+          wake_times: [],
+          timezone: 'UTC',
+          error: error.message
+        };
+      }
+
+      if (!data) {
+        return {
+          wake_times: [],
+          timezone: 'UTC',
+          error: 'No data returned'
+        };
+      }
+
+      return {
+        wake_times: data.wake_times || [],
+        timezone: data.timezone || 'UTC',
+        error: data.error
+      };
+    } catch (error) {
+      logger.error('Error getting next wake times', error);
+      return {
+        wake_times: [],
+        timezone: 'UTC',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
    * Get device setup progress
    */
   static calculateSetupProgress(device: Device): {

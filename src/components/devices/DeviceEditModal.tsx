@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
-import { X, Clock, Info } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Clock, Info, RefreshCw } from 'lucide-react';
 import Button from '../common/Button';
 import Input from '../common/Input';
 import Modal from '../common/Modal';
 import { Device } from '../../lib/types';
 import { DeviceService } from '../../services/deviceService';
+import { formatWakeTimes, FormattedWakeTime } from '../../utils/timeFormatters';
 
 interface DeviceEditModalProps {
   isOpen: boolean;
@@ -44,6 +45,16 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [wakeTimesData, setWakeTimesData] = useState<{
+    times: FormattedWakeTime[];
+    timezone: string;
+    error?: string;
+    loading: boolean;
+  }>({
+    times: [],
+    timezone: 'UTC',
+    loading: false
+  });
 
   const validateCronExpression = (cron: string): boolean => {
     if (!cron) return true; // Allow empty
@@ -51,6 +62,56 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
     const parts = cron.trim().split(/\s+/);
     return parts.length === 5;
   };
+
+  const loadNextWakeTimes = async () => {
+    if (!formData.wake_schedule_cron || !validateCronExpression(formData.wake_schedule_cron)) {
+      setWakeTimesData({
+        times: [],
+        timezone: 'UTC',
+        loading: false
+      });
+      return;
+    }
+
+    setWakeTimesData(prev => ({ ...prev, loading: true, error: undefined }));
+
+    try {
+      const result = await DeviceService.getNextWakeTimes({
+        deviceId: device.device_id,
+        count: 3
+      });
+
+      if (result.error) {
+        setWakeTimesData({
+          times: [],
+          timezone: result.timezone,
+          error: result.error,
+          loading: false
+        });
+        return;
+      }
+
+      const formattedTimes = formatWakeTimes(result.wake_times, result.timezone);
+      setWakeTimesData({
+        times: formattedTimes,
+        timezone: result.timezone,
+        loading: false
+      });
+    } catch (error) {
+      setWakeTimesData({
+        times: [],
+        timezone: 'UTC',
+        error: error instanceof Error ? error.message : 'Failed to load wake times',
+        loading: false
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && formData.wake_schedule_cron) {
+      loadNextWakeTimes();
+    }
+  }, [isOpen, formData.wake_schedule_cron]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,14 +178,6 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
     { label: 'Daily at midnight', value: '0 0 * * *' },
     { label: 'Twice daily (6am, 6pm)', value: '0 6,18 * * *' },
   ];
-
-  // Calculate next wake time if schedule is valid
-  const nextWakeTime = useMemo(() => {
-    if (!formData.wake_schedule_cron || !validateCronExpression(formData.wake_schedule_cron)) {
-      return null;
-    }
-    return DeviceService.calculateNextWake(formData.wake_schedule_cron);
-  }, [formData.wake_schedule_cron]);
 
   const isScheduleChanged = formData.wake_schedule_cron !== device.wake_schedule_cron;
 
@@ -202,19 +255,60 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
               </div>
             </div>
 
-            {/* Next Wake Time Display */}
-            {nextWakeTime && (
-              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-start">
-                  <Clock size={16} className="text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm">
-                    <p className="font-medium text-blue-900">Next Wake Time</p>
-                    <p className="text-blue-700 mt-1">{nextWakeTime.toLocaleString()}</p>
-                    <p className="text-xs text-blue-600 mt-1">
-                      {Math.round((nextWakeTime.getTime() - Date.now()) / (1000 * 60))} minutes from now
+            {/* Next Wake Times Display */}
+            {formData.wake_schedule_cron && validateCronExpression(formData.wake_schedule_cron) && (
+              <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center">
+                    <Clock size={16} className="text-blue-600 mr-2 flex-shrink-0" />
+                    <p className="font-medium text-blue-900">Next Wake Times</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadNextWakeTimes}
+                    disabled={wakeTimesData.loading}
+                    className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title="Refresh wake times"
+                  >
+                    <RefreshCw
+                      size={14}
+                      className={wakeTimesData.loading ? 'animate-spin' : ''}
+                    />
+                    Refresh
+                  </button>
+                </div>
+
+                {wakeTimesData.loading && (
+                  <p className="text-sm text-blue-700">Loading wake times...</p>
+                )}
+
+                {wakeTimesData.error && (
+                  <p className="text-sm text-red-600">{wakeTimesData.error}</p>
+                )}
+
+                {!wakeTimesData.loading && !wakeTimesData.error && wakeTimesData.times.length > 0 && (
+                  <div className="space-y-2">
+                    {wakeTimesData.times.map((wakeTime, index) => (
+                      <div
+                        key={wakeTime.timestamp}
+                        className="text-sm border-l-2 border-blue-400 pl-3"
+                      >
+                        <p className="font-medium text-blue-900">
+                          Wake {index + 1}
+                        </p>
+                        <p className="text-blue-800 mt-0.5">
+                          {wakeTime.local}
+                        </p>
+                        <p className="text-xs text-blue-600 mt-0.5">
+                          {wakeTime.utc}
+                        </p>
+                      </div>
+                    ))}
+                    <p className="text-xs text-blue-600 mt-2 pt-2 border-t border-blue-200">
+                      Timezone: {wakeTimesData.timezone}
                     </p>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
