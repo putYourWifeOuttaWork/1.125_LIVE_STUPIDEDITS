@@ -442,12 +442,17 @@ CREATE TABLE public.devices (
   latest_mgi_velocity numeric,
   latest_mgi_at timestamp with time zone,
   fall_back_wake_time time without time zone DEFAULT '00:00:00'::time without time zone,
+  protocol_version text DEFAULT '1.0'::text,
+  manual_wake_override boolean DEFAULT false,
+  manual_wake_requested_by uuid,
+  manual_wake_requested_at timestamp with time zone,
   CONSTRAINT devices_pkey PRIMARY KEY (device_id),
   CONSTRAINT devices_mapped_by_user_id_fkey FOREIGN KEY (mapped_by_user_id) REFERENCES public.users(id),
   CONSTRAINT devices_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT devices_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
   CONSTRAINT devices_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id),
   CONSTRAINT devices_provisioned_by_user_id_fkey FOREIGN KEY (provisioned_by_user_id) REFERENCES public.users(id),
+  CONSTRAINT devices_manual_wake_requested_by_fkey FOREIGN KEY (manual_wake_requested_by) REFERENCES auth.users(id),
   CONSTRAINT devices_next_program_id_fkey FOREIGN KEY (next_program_id) REFERENCES public.pilot_programs(program_id),
   CONSTRAINT devices_next_site_id_fkey FOREIGN KEY (next_site_id) REFERENCES public.sites(site_id)
 );
@@ -513,6 +518,49 @@ CREATE TABLE public.mcp_context_tracking (
   planning_doc text,
   context_and_plan_progress_with_timestamps text,
   CONSTRAINT mcp_context_tracking_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.mqtt_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  device_id uuid,
+  mac_address text NOT NULL,
+  direction text NOT NULL CHECK (direction = ANY (ARRAY['inbound'::text, 'outbound'::text])),
+  topic text NOT NULL,
+  payload jsonb NOT NULL,
+  payload_size integer,
+  message_type text NOT NULL CHECK (message_type = ANY (ARRAY['hello'::text, 'capture_image'::text, 'send_image'::text, 'next_wake'::text, 'metadata'::text, 'chunk'::text, 'ack_ok'::text, 'missing_chunks'::text, 'ping'::text, 'telemetry'::text, 'other'::text])),
+  session_id uuid,
+  wake_payload_id uuid,
+  image_name text,
+  chunk_id integer,
+  company_id uuid NOT NULL,
+  site_id uuid,
+  pilot_program_id uuid,
+  protocol_version text DEFAULT '1.0'::text,
+  firmware_version text,
+  error_message text,
+  retry_count integer DEFAULT 0,
+  CONSTRAINT mqtt_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT mqtt_messages_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
+  CONSTRAINT mqtt_messages_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.site_device_sessions(session_id),
+  CONSTRAINT mqtt_messages_wake_payload_id_fkey FOREIGN KEY (wake_payload_id) REFERENCES public.device_wake_payloads(payload_id),
+  CONSTRAINT mqtt_messages_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
+  CONSTRAINT mqtt_messages_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(site_id),
+  CONSTRAINT mqtt_messages_pilot_program_id_fkey FOREIGN KEY (pilot_program_id) REFERENCES public.pilot_programs(program_id)
+);
+CREATE TABLE public.mqtt_protocol_fields (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  mqtt_field_name text NOT NULL,
+  database_field_name text,
+  data_type text NOT NULL,
+  message_type text NOT NULL,
+  direction text NOT NULL CHECK (direction = ANY (ARRAY['device_to_server'::text, 'server_to_device'::text, 'both'::text])),
+  description text,
+  example_value text,
+  required boolean DEFAULT false,
+  validation_rule text,
+  CONSTRAINT mqtt_protocol_fields_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.petri_observations (
   observation_id uuid NOT NULL DEFAULT gen_random_uuid(),
