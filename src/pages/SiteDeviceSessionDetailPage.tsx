@@ -1154,7 +1154,7 @@ const SiteDeviceSessionDetailPage = () => {
       {activeTab === 'overview' && (
         <>
       {/* Site Map with Timeline - MOVED TO TOP */}
-      {siteData && processedSnapshots.length > 0 && displayDevices.length > 0 && (
+      {siteData && siteData.length > 0 && siteData.width > 0 && processedSnapshots.length > 0 && displayDevices.length > 0 && (
         <Card className="animate-fade-in">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -1207,6 +1207,29 @@ const SiteDeviceSessionDetailPage = () => {
               {zoneMode !== 'none' && displayDevices.length >= 2 && (
                 <ZoneAnalytics devices={displayDevices} zoneMode={zoneMode} />
               )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Missing Site Dimensions Warning */}
+      {siteData && (!siteData.length || !siteData.width) && processedSnapshots.length > 0 && (
+        <Card className="animate-fade-in border-yellow-300 bg-yellow-50">
+          <CardContent className="pt-6">
+            <div className="flex items-start space-x-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-yellow-900 mb-1">Site Map Unavailable</h3>
+                <p className="text-sm text-yellow-800 mb-3">
+                  The site map and timeline visualization cannot be displayed because site dimensions are missing.
+                </p>
+                <button
+                  onClick={() => navigate(`/sites`)}
+                  className="text-sm font-medium text-yellow-900 hover:text-yellow-700 underline"
+                >
+                  Go to Sites page to add dimensions
+                </button>
+              </div>
             </div>
           </CardContent>
         </Card>
