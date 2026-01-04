@@ -436,31 +436,63 @@ async function handleChunkMessage(payload, client) {
     return;
   }
 
-  // Convert payload to Uint8Array
-  const chunkBytes = new Uint8Array(payload.payload);
-  buffer.chunks.set(payload.chunk_id, chunkBytes);
+  try {
+    // Decode base64 payload to binary data
+    const chunkBytes = Buffer.from(payload.payload, 'base64');
 
-  const receivedCount = buffer.chunks.size;
-  const progress = ((receivedCount / buffer.totalChunks) * 100).toFixed(1);
-  console.log(`[CHUNK] Received chunk ${payload.chunk_id + 1}/${buffer.totalChunks} for ${payload.image_name} (${receivedCount} total, ${progress}% complete)`);
+    // Validate chunk size
+    if (chunkBytes.length === 0) {
+      console.error(`[ERROR] Chunk ${payload.chunk_id} has zero length after decoding`);
+      return;
+    }
 
-  // Update progress in database
-  const { error: updateError } = await supabase
-    .from('device_images')
-    .update({
-      received_chunks: receivedCount,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('image_id', buffer.imageRecord.image_id);
+    // For first chunk, verify JPEG header
+    if (payload.chunk_id === 0) {
+      const jpegHeader = chunkBytes.slice(0, 3);
+      if (jpegHeader[0] === 0xFF && jpegHeader[1] === 0xD8 && jpegHeader[2] === 0xFF) {
+        console.log(`[CHUNK] ✅ Valid JPEG header detected in first chunk`);
+      } else {
+        console.warn(`[CHUNK] ⚠️  Warning: First chunk may not have valid JPEG header`);
+      }
+    }
 
-  if (updateError) {
-    console.error(`[ERROR] Failed to update chunk count:`, updateError);
-  }
+    console.log(`[CHUNK] Decoded chunk ${payload.chunk_id}: ${chunkBytes.length} bytes (from ${payload.payload.length} base64 chars)`);
 
-  // Check if all chunks received
-  if (receivedCount === buffer.totalChunks) {
-    console.log(`[COMPLETE] All ${buffer.totalChunks} chunks received for ${payload.image_name}`);
-    await reassembleAndUploadImage(payload.device_id, payload.image_name, buffer, client);
+    buffer.chunks.set(payload.chunk_id, chunkBytes);
+
+    const receivedCount = buffer.chunks.size;
+    const progress = ((receivedCount / buffer.totalChunks) * 100).toFixed(1);
+    console.log(`[CHUNK] Received chunk ${payload.chunk_id + 1}/${buffer.totalChunks} for ${payload.image_name} (${receivedCount} total, ${progress}% complete)`);
+
+    // Update progress in database
+    const { error: updateError } = await supabase
+      .from('device_images')
+      .update({
+        received_chunks: receivedCount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('image_id', buffer.imageRecord.image_id);
+
+    if (updateError) {
+      console.error(`[ERROR] Failed to update chunk count:`, updateError);
+    }
+
+    // Check if all chunks received
+    if (receivedCount === buffer.totalChunks) {
+      console.log(`[COMPLETE] All ${buffer.totalChunks} chunks received for ${payload.image_name}`);
+      await reassembleAndUploadImage(payload.device_id, payload.image_name, buffer, client);
+    }
+  } catch (error) {
+    console.error(`[ERROR] Failed to decode chunk ${payload.chunk_id}:`, error.message);
+    console.error(`[ERROR] Payload preview:`, payload.payload?.substring(0, 50));
+
+    // Request retransmission of this chunk
+    const retryRequest = {
+      device_id: payload.device_id,
+      image_name: payload.image_name,
+      missing_chunks: [payload.chunk_id],
+    };
+    client.publish(`ESP32CAM/${payload.device_id}/ack`, JSON.stringify(retryRequest));
   }
 }
 
@@ -517,6 +549,25 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
       mergedImage.set(chunk, offset);
       offset += chunk.length;
     }
+
+    // Verify JPEG integrity
+    console.log(`[REASSEMBLE] Verifying JPEG integrity...`);
+    const jpegStart = mergedImage.slice(0, 3);
+    const jpegEnd = mergedImage.slice(-2);
+
+    if (jpegStart[0] === 0xFF && jpegStart[1] === 0xD8 && jpegStart[2] === 0xFF) {
+      console.log(`[REASSEMBLE] ✅ Valid JPEG start marker (FF D8 FF)`);
+    } else {
+      console.error(`[REASSEMBLE] ❌ Invalid JPEG start marker: ${Array.from(jpegStart).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+    }
+
+    if (jpegEnd[0] === 0xFF && jpegEnd[1] === 0xD9) {
+      console.log(`[REASSEMBLE] ✅ Valid JPEG end marker (FF D9)`);
+    } else {
+      console.warn(`[REASSEMBLE] ⚠️  Warning: JPEG end marker may be invalid: ${Array.from(jpegEnd).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+    }
+
+    console.log(`[REASSEMBLE] Final image size: ${totalLength} bytes (expected: ${buffer.metadata.image_size || 'unknown'})`);
 
     // Upload to Supabase Storage
     const timestamp = Date.now();
