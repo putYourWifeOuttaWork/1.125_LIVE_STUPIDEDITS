@@ -219,7 +219,86 @@ export default function SiteMapAnalyticsViewer({
   }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode, pulseFrame]);
 
   const drawVoronoiZones = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, mode: ZoneMode) => {
-    if (devices.length < 2) return;
+    if (devices.length < 1) return;
+
+    // Handle single device - fill entire canvas with one color
+    if (devices.length === 1) {
+      const device = devices[0];
+      let value: number | null = null;
+      if (mode === 'temperature') value = device.temperature;
+      else if (mode === 'humidity') value = device.humidity;
+      else if (mode === 'battery') value = device.battery_level;
+
+      if (value === null) {
+        // No data - use light gray
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+
+      // Create a small range around the single value to avoid min === max
+      const minValue = value - 5;
+      const maxValue = value + 5;
+
+      // Create color scale
+      let colorScale;
+      if (mode === 'humidity') {
+        colorScale = scaleSequential(interpolateYlGnBu).domain([minValue, maxValue]);
+      } else {
+        // Temperature and battery: Red (hot/low) to Blue (cold/high)
+        colorScale = scaleSequential(interpolateRdYlBu).domain([maxValue, minValue]);
+      }
+
+      // Fill entire canvas with the color
+      const color = colorScale(value);
+      if (color && typeof color === 'string') {
+        if (color.startsWith('#')) {
+          // Hex to rgba
+          const r = parseInt(color.slice(1, 3), 16);
+          const g = parseInt(color.slice(3, 5), 16);
+          const b = parseInt(color.slice(5, 7), 16);
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
+        } else if (color.startsWith('rgb')) {
+          // rgb to rgba
+          ctx.fillStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
+        } else {
+          ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
+        }
+      } else {
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
+      }
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw value label at device position
+      const pixelX = (device.x / siteLength) * canvas.width;
+      const pixelY = (device.y / siteWidth) * canvas.height;
+
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      let label = '';
+      if (mode === 'temperature') label = `${value.toFixed(1)}°F`;
+      else if (mode === 'humidity') label = `${value.toFixed(0)}%`;
+      else if (mode === 'battery') label = `${value}%`;
+
+      // Draw label background
+      const metrics = ctx.measureText(label);
+      const padding = 4;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillRect(
+        pixelX - metrics.width / 2 - padding,
+        pixelY - 30,
+        metrics.width + padding * 2,
+        20
+      );
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillText(label, pixelX, pixelY - 20);
+
+      return; // Skip Voronoi rendering for single device
+    }
 
     // Convert device positions to pixel coordinates
     const points: [number, number][] = devices.map(device => [
