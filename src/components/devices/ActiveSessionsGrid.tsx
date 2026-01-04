@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
-import { Clock, AlertTriangle, CheckCircle, Loader, MapPin, Building } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle, Loader, MapPin, Building, ExternalLink } from 'lucide-react';
 import Card, { CardContent } from '../common/Card';
 import { useActiveCompany } from '../../hooks/useActiveCompany';
 import { format } from 'date-fns';
 
-interface ActiveSession {
+export interface ActiveSession {
   session_id: string;
   site_name: string;
   site_id: string;
@@ -28,12 +28,16 @@ interface ActiveSessionsGridProps {
   limit?: number;
   showViewAll?: boolean;
   companyFilter?: string | null;
+  onSessionSelect?: (session: ActiveSession) => void;
+  selectedSessionId?: string | null;
 }
 
 export default function ActiveSessionsGrid({
   limit = 10,
   showViewAll = true,
-  companyFilter
+  companyFilter,
+  onSessionSelect,
+  selectedSessionId
 }: ActiveSessionsGridProps) {
   const navigate = useNavigate();
   const { activeCompanyId, isSuperAdmin } = useActiveCompany();
@@ -170,6 +174,18 @@ export default function ActiveSessionsGrid({
   };
 
   const getCardColorClass = (session: ActiveSession) => {
+    const isSelected = selectedSessionId === session.session_id;
+
+    if (isSelected) {
+      if (session.critical_alert_count > 0) {
+        return 'border-red-500 bg-red-100 shadow-lg scale-[1.02]';
+      }
+      if (session.warning_alert_count > 0 || session.completed_wake_count < session.expected_wake_count) {
+        return 'border-yellow-500 bg-yellow-100 shadow-lg scale-[1.02]';
+      }
+      return 'border-green-500 bg-green-100 shadow-lg scale-[1.02]';
+    }
+
     if (session.critical_alert_count > 0) {
       return 'border-red-300 bg-red-50';
     }
@@ -228,18 +244,41 @@ export default function ActiveSessionsGrid({
     );
   }
 
+  const handleCardClick = (session: ActiveSession) => {
+    if (onSessionSelect) {
+      onSessionSelect(session);
+    } else {
+      // Fallback to navigation if no selection handler
+      navigate(`/programs/${session.program_id}/sites/${session.site_id}/device-sessions/${session.session_id}`);
+    }
+  };
+
+  const handleVisitClick = (e: React.MouseEvent, session: ActiveSession) => {
+    e.stopPropagation();
+    navigate(`/programs/${session.program_id}/sites/${session.site_id}/device-sessions/${session.session_id}`);
+  };
+
   return (
     <div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {sessions.map((session) => (
           <Card
             key={session.session_id}
-            className={`cursor-pointer hover:shadow-lg transition-all border-2 ${getCardColorClass(session)}`}
-            onClick={() => navigate(`/programs/${session.program_id}/sites/${session.site_id}/device-sessions/${session.session_id}`)}
+            className={`cursor-pointer hover:shadow-lg transition-all border-2 relative ${getCardColorClass(session)}`}
+            onClick={() => handleCardClick(session)}
           >
             <CardContent className="p-4">
+              {/* Visit Button */}
+              <button
+                onClick={(e) => handleVisitClick(e, session)}
+                className="absolute top-2 right-2 p-1.5 bg-white/90 hover:bg-white border border-gray-300 rounded-full shadow-sm hover:shadow-md transition-all z-10"
+                title="Visit session details page"
+              >
+                <ExternalLink className="w-4 h-4 text-gray-700" />
+              </button>
+
               {/* Header */}
-              <div className="flex items-start justify-between mb-3">
+              <div className="flex items-start justify-between mb-3 pr-8">
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-gray-900 truncate">{session.site_name}</h3>
                   {isSuperAdmin && (
