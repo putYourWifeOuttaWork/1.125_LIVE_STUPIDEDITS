@@ -186,7 +186,7 @@ const HomePage = () => {
         {/* Left Column: Active Alerts + Active Sessions List */}
         <div className="space-y-4">
           {/* Active Alerts - Top 50% */}
-          <div className="max-h-[400px]">
+          <div className="max-h-[400px] overflow-hidden">
             <ActiveAlertsPanel />
           </div>
 
