@@ -175,8 +175,8 @@ BEGIN
             di.mgi_score,
             di.mold_growth_velocity,
             di.mold_growth_speed,
-            dwp.temperature,
-            dwp.humidity,
+            di.temperature,
+            di.humidity,
             dwp.battery_voltage,
             dwp.wifi_rssi
           FROM device_images di
@@ -229,4 +229,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_session_devices_with_wakes IS
-'Get all devices in a session with wake payloads, images, and statistics. Images now include all MGI fields (score, velocity, speed) and environmental data (temperature, humidity, battery_voltage).';
+'Get all devices in a session with wake payloads, images, and statistics. Images now include all MGI fields (score, velocity, speed) and environmental data (temperature, humidity from device_images computed columns, battery_voltage from wake_payloads).';

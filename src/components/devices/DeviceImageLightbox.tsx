@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Download, Share2, Maximize, ChevronLeft, ChevronRight, Thermometer, Droplets, Battery, Activity, TrendingUp, TrendingDown, Clock } from 'lucide-react';
+import { X, Download, Share2, Maximize, ChevronLeft, ChevronRight, Thermometer, Droplets, Battery, Activity, TrendingUp, TrendingDown, Clock, AlertTriangle } from 'lucide-react';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
 import { toast } from 'react-toastify';
@@ -30,6 +30,32 @@ interface DeviceImageLightboxProps {
   };
   onNavigate?: (newIndex: number) => void;
 }
+
+// Helper function to convert Celsius to Fahrenheit
+const celsiusToFahrenheit = (celsius: number): number => {
+  return (celsius * 9/5) + 32;
+};
+
+// Helper function to get temperature color based on Fahrenheit value
+const getTemperatureColor = (tempF: number): string => {
+  if (tempF > 80) return '#ef4444'; // Hot red
+  if (tempF >= 75) return '#f59e0b'; // Warm orange
+  if (tempF >= 70) return '#6b7280'; // Neutral gray
+  return '#3b82f6'; // Cool blue
+};
+
+// Helper function to get humidity color
+const getHumidityColor = (humidity: number): string => {
+  if (humidity > 70) return '#1e40af'; // Dark blue
+  if (humidity >= 60) return '#3b82f6'; // Medium blue
+  return '#60a5fa'; // Light blue
+};
+
+// Helper function to determine if conditions are extreme
+const hasExtremeConditions = (tempF: number | null, humidity: number | null): boolean => {
+  if (tempF === null || humidity === null) return false;
+  return tempF > 80 && humidity > 70;
+};
 
 const DeviceImageLightbox = ({
   isOpen,
@@ -281,95 +307,142 @@ const DeviceImageLightbox = ({
               </div>
             </div>
 
-            {/* MGI Metrics */}
-            {(currentImage.mgi_score != null || currentImage.mold_growth_velocity != null || currentImage.mold_growth_speed != null) && (
-              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200 p-4">
-                <h3 className="text-sm font-medium mb-3 text-gray-700">MGI Metrics</h3>
-                <div className="space-y-3">
-                  {currentImage.mgi_score != null && (
-                    <div className="text-center py-3 bg-white bg-opacity-60 rounded">
-                      <p className="text-3xl font-bold text-purple-600">
-                        {(currentImage.mgi_score * 100).toFixed(1)}%
-                      </p>
-                      <p className="text-xs text-gray-600 mt-1">MGI Score</p>
-                    </div>
-                  )}
+            {/* Unified Conditions Snapshot - Multivariate Analysis */}
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200 p-4">
+              <h3 className="text-sm font-medium mb-3 text-gray-700 flex items-center justify-between">
+                <span>Conditions Snapshot</span>
+                {hasExtremeConditions(
+                  currentImage.temperature ? celsiusToFahrenheit(currentImage.temperature) : null,
+                  currentImage.humidity
+                ) && (
+                  <span className="flex items-center text-xs text-red-600 font-semibold bg-red-100 px-2 py-1 rounded">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    HIGH RISK
+                  </span>
+                )}
+              </h3>
 
-                  {currentImage.mold_growth_velocity != null && (
-                    <div className="flex items-center justify-between text-sm bg-white bg-opacity-60 rounded px-3 py-2">
-                      <span className="flex items-center text-gray-600">
-                        {currentImage.mold_growth_velocity >= 0 ? (
-                          <TrendingUp className="w-4 h-4 mr-2 text-red-500" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 mr-2 text-green-500" />
-                        )}
-                        Velocity
-                      </span>
-                      <span
-                        className="font-medium"
-                        style={{
-                          color: currentImage.mold_growth_velocity >= 0 ? '#dc2626' : '#10b981'
-                        }}
-                      >
-                        {currentImage.mold_growth_velocity >= 0 ? '+' : ''}
-                        {(currentImage.mold_growth_velocity * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  )}
-
-                  {currentImage.mold_growth_speed != null && (
-                    <div className="flex items-center justify-between text-sm bg-white bg-opacity-60 rounded px-3 py-2">
-                      <span className="flex items-center text-gray-600">
-                        <Activity className="w-4 h-4 mr-2 text-blue-500" />
-                        Speed
-                      </span>
-                      <span className="font-medium text-gray-700">
-                        {currentImage.mold_growth_speed >= 0 ? '+' : ''}
-                        {(currentImage.mold_growth_speed * 100).toFixed(2)}%/day
-                      </span>
-                    </div>
-                  )}
+              <div className="space-y-3">
+                {/* MGI Score - Large and Prominent */}
+                <div className="text-center py-3 bg-white bg-opacity-70 rounded">
+                  <p className="text-3xl font-bold text-purple-600">
+                    {currentImage.mgi_score != null
+                      ? `${(currentImage.mgi_score * 100).toFixed(1)}%`
+                      : 'N/A'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">MGI Score</p>
                 </div>
-              </div>
-            )}
 
-            {/* Environmental Data */}
-            {(currentImage.temperature != null || currentImage.humidity != null || currentImage.battery_voltage != null) && (
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h3 className="text-sm font-medium mb-3 text-gray-700">Environmental Data</h3>
-                <div className="space-y-2">
-                  {currentImage.temperature != null && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="flex items-center text-gray-600">
-                        <Thermometer className="w-4 h-4 mr-2 text-orange-500" />
-                        Temperature
-                      </span>
-                      <span className="font-medium">{currentImage.temperature.toFixed(1)}°F</span>
-                    </div>
-                  )}
-
-                  {currentImage.humidity != null && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="flex items-center text-gray-600">
-                        <Droplets className="w-4 h-4 mr-2 text-blue-500" />
-                        Humidity
-                      </span>
-                      <span className="font-medium">{currentImage.humidity.toFixed(1)}%</span>
-                    </div>
-                  )}
-
-                  {currentImage.battery_voltage != null && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="flex items-center text-gray-600">
-                        <Battery className="w-4 h-4 mr-2 text-green-500" />
-                        Battery
-                      </span>
-                      <span className="font-medium">{currentImage.battery_voltage.toFixed(2)}V</span>
-                    </div>
-                  )}
+                {/* MGI Velocity with Trend */}
+                <div className="flex items-center justify-between text-sm bg-white bg-opacity-70 rounded px-3 py-2">
+                  <span className="flex items-center text-gray-600">
+                    {currentImage.mold_growth_velocity != null && currentImage.mold_growth_velocity >= 0 ? (
+                      <TrendingUp className="w-4 h-4 mr-2 text-red-500" />
+                    ) : currentImage.mold_growth_velocity != null && currentImage.mold_growth_velocity < 0 ? (
+                      <TrendingDown className="w-4 h-4 mr-2 text-green-500" />
+                    ) : (
+                      <Activity className="w-4 h-4 mr-2 text-gray-400" />
+                    )}
+                    MGI Velocity
+                  </span>
+                  <span
+                    className="font-medium"
+                    style={{
+                      color: currentImage.mold_growth_velocity != null
+                        ? (currentImage.mold_growth_velocity >= 0 ? '#dc2626' : '#10b981')
+                        : '#9ca3af'
+                    }}
+                  >
+                    {currentImage.mold_growth_velocity != null
+                      ? `${currentImage.mold_growth_velocity >= 0 ? '+' : ''}${(currentImage.mold_growth_velocity * 100).toFixed(1)}%`
+                      : 'N/A'}
+                  </span>
                 </div>
+
+                {/* Temperature with Color Coding */}
+                <div className="flex items-center justify-between text-sm bg-white bg-opacity-70 rounded px-3 py-2">
+                  <span className="flex items-center text-gray-600">
+                    <Thermometer className="w-4 h-4 mr-2" style={{
+                      color: currentImage.temperature != null
+                        ? getTemperatureColor(celsiusToFahrenheit(currentImage.temperature))
+                        : '#9ca3af'
+                    }} />
+                    Temperature
+                  </span>
+                  <div className="flex items-center">
+                    <span
+                      className="font-medium"
+                      style={{
+                        color: currentImage.temperature != null
+                          ? getTemperatureColor(celsiusToFahrenheit(currentImage.temperature))
+                          : '#9ca3af'
+                      }}
+                    >
+                      {currentImage.temperature != null
+                        ? `${celsiusToFahrenheit(currentImage.temperature).toFixed(1)}°F`
+                        : 'N/A'}
+                    </span>
+                    {currentImage.temperature != null && celsiusToFahrenheit(currentImage.temperature) > 80 && (
+                      <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">
+                        HIGH
+                      </span>
+                    )}
+                    {currentImage.temperature != null && celsiusToFahrenheit(currentImage.temperature) >= 75 && celsiusToFahrenheit(currentImage.temperature) <= 80 && (
+                      <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">
+                        MOD
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Humidity with Color Coding */}
+                <div className="flex items-center justify-between text-sm bg-white bg-opacity-70 rounded px-3 py-2">
+                  <span className="flex items-center text-gray-600">
+                    <Droplets className="w-4 h-4 mr-2" style={{
+                      color: currentImage.humidity != null
+                        ? getHumidityColor(currentImage.humidity)
+                        : '#9ca3af'
+                    }} />
+                    Humidity
+                  </span>
+                  <div className="flex items-center">
+                    <span
+                      className="font-medium"
+                      style={{
+                        color: currentImage.humidity != null
+                          ? getHumidityColor(currentImage.humidity)
+                          : '#9ca3af'
+                      }}
+                    >
+                      {currentImage.humidity != null
+                        ? `${currentImage.humidity.toFixed(1)}%`
+                        : 'N/A'}
+                    </span>
+                    {currentImage.humidity != null && currentImage.humidity > 70 && (
+                      <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">
+                        HIGH
+                      </span>
+                    )}
+                    {currentImage.humidity != null && currentImage.humidity >= 60 && currentImage.humidity <= 70 && (
+                      <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">
+                        MOD
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Battery - Separate small section */}
+                {currentImage.battery_voltage != null && (
+                  <div className="flex items-center justify-between text-xs bg-white bg-opacity-50 rounded px-3 py-1.5 mt-2 border-t border-purple-100">
+                    <span className="flex items-center text-gray-500">
+                      <Battery className="w-3 h-3 mr-1.5 text-green-500" />
+                      Battery
+                    </span>
+                    <span className="font-medium text-gray-600">{currentImage.battery_voltage.toFixed(2)}V</span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Device Info */}
             <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
