@@ -38,6 +38,8 @@ import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
 import { TimelineController } from '../components/lab/TimelineController';
 import ZoneAnalytics from '../components/lab/ZoneAnalytics';
 import { SessionWakeSnapshot } from '../lib/types';
+import TimeSeriesChart from '../components/lab/TimeSeriesChart';
+import HistogramChart from '../components/lab/HistogramChart';
 
 interface DeviceSessionData {
   device_id: string;
@@ -61,6 +63,8 @@ interface DeviceSessionData {
   added_mid_session?: boolean;
 }
 
+type TabType = 'overview' | 'analytics' | 'images';
+
 const SiteDeviceSessionDetailPage = () => {
   const { programId, siteId, sessionId } = useParams<{
     programId: string;
@@ -82,9 +86,11 @@ const SiteDeviceSessionDetailPage = () => {
   const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
   const [sessionAlerts, setSessionAlerts] = useState<any[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const { role } = useUserRole();
   const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
+  const isSuperAdmin = role === 'super_admin';
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch ALL snapshots for this site (site-wide, session-agnostic)
@@ -918,6 +924,67 @@ const SiteDeviceSessionDetailPage = () => {
     };
   }, [processedSnapshots, environmentalAggregates]);
 
+  // Prepare time series data for D3 charts
+  const timeSeriesData = useMemo(() => {
+    if (!processedSnapshots || processedSnapshots.length === 0) return null;
+
+    const temperatureData: Array<{ timestamp: Date; value: number | null; deviceCode?: string }> = [];
+    const humidityData: Array<{ timestamp: Date; value: number | null; deviceCode?: string }> = [];
+    const batteryData: Array<{ timestamp: Date; value: number | null; deviceCode?: string }> = [];
+    const mgiData: Array<{ timestamp: Date; value: number | null; deviceCode?: string }> = [];
+
+    processedSnapshots.forEach(snapshot => {
+      try {
+        const siteState = typeof snapshot.site_state === 'string'
+          ? JSON.parse(snapshot.site_state)
+          : snapshot.site_state;
+        const devices = siteState?.devices || [];
+        const timestamp = new Date(snapshot.wake_round_start);
+
+        devices.forEach((device: any) => {
+          const temp = device.telemetry?.latest_temperature;
+          const humidity = device.telemetry?.latest_humidity;
+          const battery = device.battery_health_percent;
+          const mgi = device.mgi_state?.latest_mgi_score;
+
+          if (temp !== null && temp !== undefined) {
+            temperatureData.push({ timestamp, value: temp, deviceCode: device.device_code });
+          }
+          if (humidity !== null && humidity !== undefined) {
+            humidityData.push({ timestamp, value: humidity, deviceCode: device.device_code });
+          }
+          if (battery !== null && battery !== undefined) {
+            batteryData.push({ timestamp, value: battery, deviceCode: device.device_code });
+          }
+          if (mgi !== null && mgi !== undefined) {
+            mgiData.push({ timestamp, value: mgi, deviceCode: device.device_code });
+          }
+        });
+      } catch (error) {
+        console.error('Error processing snapshot for time series:', error);
+      }
+    });
+
+    return {
+      temperature: temperatureData,
+      humidity: humidityData,
+      battery: batteryData,
+      mgi: mgiData,
+    };
+  }, [processedSnapshots]);
+
+  // Prepare histogram data (all values as flat arrays)
+  const histogramData = useMemo(() => {
+    if (!timeSeriesData) return null;
+
+    return {
+      temperature: timeSeriesData.temperature.map(d => d.value).filter(v => v !== null) as number[],
+      humidity: timeSeriesData.humidity.map(d => d.value).filter(v => v !== null) as number[],
+      battery: timeSeriesData.battery.map(d => d.value).filter(v => v !== null) as number[],
+      mgi: timeSeriesData.mgi.map(d => d.value).filter(v => v !== null) as number[],
+    };
+  }, [timeSeriesData]);
+
   if (loading) {
     return <LoadingScreen />;
   }
@@ -1026,6 +1093,55 @@ const SiteDeviceSessionDetailPage = () => {
         </div>
       )}
 
+      {/* Tab Navigation */}
+      <Card className="animate-fade-in">
+        <CardContent className="pt-4">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`${
+                  activeTab === 'overview'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-all duration-200`}
+              >
+                <MapIcon className="inline w-5 h-5 mr-2" />
+                Overview & Map
+              </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`${
+                  activeTab === 'analytics'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-all duration-200`}
+              >
+                <Activity className="inline w-5 h-5 mr-2" />
+                Analytics & Insights
+              </button>
+              <button
+                onClick={() => setActiveTab('images')}
+                className={`${
+                  activeTab === 'images'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-all duration-200`}
+              >
+                <ImageIcon className="inline w-5 h-5 mr-2" />
+                Images & MGI Scores
+                <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
+                  {totalImages}
+                </span>
+              </button>
+            </nav>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Overview Tab */}
+      {activeTab === 'overview' && (
+        <>
       {/* Site Map with Timeline - MOVED TO TOP */}
       {siteData && processedSnapshots.length > 0 && displayDevices.length > 0 && (
         <Card className="animate-fade-in">
@@ -1987,6 +2103,529 @@ const SiteDeviceSessionDetailPage = () => {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
+
+      {/* Analytics Tab */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Time Series Analysis */}
+          {timeSeriesData && (
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold flex items-center">
+                  <Activity className="w-5 h-5 mr-2 text-blue-500" />
+                  Time Series Analysis
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Environmental and device metrics over the entire session timeline
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Temperature Time Series */}
+                  <div className="bg-gradient-to-br from-orange-50 to-red-50 p-4 rounded-lg">
+                    <TimeSeriesChart
+                      data={timeSeriesData.temperature}
+                      title="Temperature Over Time"
+                      yAxisLabel="Temperature (°F)"
+                      unit="°F"
+                      color="#f97316"
+                      height={300}
+                      thresholds={[
+                        { value: 85, label: 'High Alert', color: '#dc2626' },
+                        { value: 65, label: 'Low Alert', color: '#2563eb' },
+                      ]}
+                    />
+                  </div>
+
+                  {/* Humidity Time Series */}
+                  <div className="bg-gradient-to-br from-blue-50 to-cyan-50 p-4 rounded-lg">
+                    <TimeSeriesChart
+                      data={timeSeriesData.humidity}
+                      title="Humidity Over Time"
+                      yAxisLabel="Humidity (%)"
+                      unit="%"
+                      color="#06b6d4"
+                      height={300}
+                      thresholds={[
+                        { value: 70, label: 'High Alert', color: '#dc2626' },
+                      ]}
+                    />
+                  </div>
+
+                  {/* Battery Time Series */}
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-lg">
+                    <TimeSeriesChart
+                      data={timeSeriesData.battery}
+                      title="Battery Health Over Time"
+                      yAxisLabel="Battery Level (%)"
+                      unit="%"
+                      color="#10b981"
+                      height={300}
+                      thresholds={[
+                        { value: 20, label: 'Critical', color: '#dc2626' },
+                        { value: 50, label: 'Low', color: '#f59e0b' },
+                      ]}
+                    />
+                  </div>
+
+                  {/* MGI Time Series */}
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-4 rounded-lg">
+                    <TimeSeriesChart
+                      data={timeSeriesData.mgi}
+                      title="MGI Score Over Time"
+                      yAxisLabel="MGI Score"
+                      unit=""
+                      color="#a855f7"
+                      height={300}
+                      thresholds={[
+                        { value: 70, label: 'High Growth', color: '#dc2626' },
+                      ]}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Distribution Analysis */}
+          {histogramData && (
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2 text-teal-500" />
+                  Distribution Analysis
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Statistical distribution of metrics across all devices and time points
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Temperature Distribution */}
+                  <div className="bg-gradient-to-br from-orange-50 to-yellow-50 p-4 rounded-lg">
+                    <HistogramChart
+                      data={histogramData.temperature}
+                      title="Temperature Distribution"
+                      xAxisLabel="Temperature (°F)"
+                      unit="°F"
+                      color="#f97316"
+                      height={250}
+                      bins={15}
+                    />
+                  </div>
+
+                  {/* Humidity Distribution */}
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg">
+                    <HistogramChart
+                      data={histogramData.humidity}
+                      title="Humidity Distribution"
+                      xAxisLabel="Humidity (%)"
+                      unit="%"
+                      color="#3b82f6"
+                      height={250}
+                      bins={15}
+                    />
+                  </div>
+
+                  {/* Battery Distribution */}
+                  <div className="bg-gradient-to-br from-green-50 to-teal-50 p-4 rounded-lg">
+                    <HistogramChart
+                      data={histogramData.battery}
+                      title="Battery Health Distribution"
+                      xAxisLabel="Battery Level (%)"
+                      unit="%"
+                      color="#10b981"
+                      height={250}
+                      bins={15}
+                    />
+                  </div>
+
+                  {/* MGI Distribution */}
+                  <div className="bg-gradient-to-br from-purple-50 to-violet-50 p-4 rounded-lg">
+                    <HistogramChart
+                      data={histogramData.mgi}
+                      title="MGI Score Distribution"
+                      xAxisLabel="MGI Score"
+                      unit=""
+                      color="#a855f7"
+                      height={250}
+                      bins={15}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Keep existing analytics sections in Analytics tab too */}
+          {environmentalAggregates && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Environmental Aggregates */}
+              <Card>
+                <CardHeader>
+                  <h3 className="text-md font-semibold flex items-center">
+                    <Thermometer className="w-5 h-5 mr-2 text-orange-500" />
+                    Environmental Summary Statistics
+                  </h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Temperature */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">Temperature</span>
+                        <span className="text-xs text-gray-500">{environmentalAggregates.temperature.samples} samples</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-blue-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Avg</p>
+                          <p className="text-sm font-bold text-blue-600">
+                            {environmentalAggregates.temperature.avg?.toFixed(1)}°F
+                          </p>
+                        </div>
+                        <div className="bg-red-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Max</p>
+                          <p className="text-sm font-bold text-red-600">
+                            {environmentalAggregates.temperature.max?.toFixed(1)}°F
+                          </p>
+                        </div>
+                        <div className="bg-cyan-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Min</p>
+                          <p className="text-sm font-bold text-cyan-600">
+                            {environmentalAggregates.temperature.min?.toFixed(1)}°F
+                          </p>
+                        </div>
+                      </div>
+                      {environmentalAggregates.temperature.stdDev && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Std Dev: ±{environmentalAggregates.temperature.stdDev.toFixed(2)}°F
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Humidity */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700 flex items-center">
+                          <Droplets className="w-4 h-4 mr-1 text-blue-400" />
+                          Humidity
+                        </span>
+                        <span className="text-xs text-gray-500">{environmentalAggregates.humidity.samples} samples</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-blue-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Avg</p>
+                          <p className="text-sm font-bold text-blue-600">
+                            {environmentalAggregates.humidity.avg?.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className="bg-indigo-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Max</p>
+                          <p className="text-sm font-bold text-indigo-600">
+                            {environmentalAggregates.humidity.max?.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className="bg-sky-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Min</p>
+                          <p className="text-sm font-bold text-sky-600">
+                            {environmentalAggregates.humidity.min?.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Battery */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700 flex items-center">
+                          <Battery className="w-4 h-4 mr-1 text-green-500" />
+                          Battery Health
+                        </span>
+                        <span className="text-xs text-gray-500">{environmentalAggregates.battery.samples} samples</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-green-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Avg</p>
+                          <p className="text-sm font-bold text-green-600">
+                            {environmentalAggregates.battery.avg?.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className="bg-emerald-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Max</p>
+                          <p className="text-sm font-bold text-emerald-600">
+                            {environmentalAggregates.battery.max?.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className="bg-yellow-50 rounded p-2">
+                          <p className="text-xs text-gray-600">Min</p>
+                          <p className="text-sm font-bold text-yellow-600">
+                            {environmentalAggregates.battery.min?.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* MGI Summary Statistics */}
+              <Card>
+                <CardHeader>
+                  <h3 className="text-md font-semibold flex items-center">
+                    <Camera className="w-5 h-5 mr-2 text-purple-500" />
+                    MGI Summary Statistics
+                  </h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="text-center py-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
+                      <p className="text-5xl font-bold text-purple-600">
+                        {environmentalAggregates.mgi.avg?.toFixed(1) || 'N/A'}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-2">Average MGI Score</p>
+                      <p className="text-xs text-gray-500 mt-1">{environmentalAggregates.mgi.samples} samples</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-red-50 rounded p-3 text-center">
+                        <div className="flex items-center justify-center mb-1">
+                          <TrendingUp className="w-4 h-4 mr-1 text-red-500" />
+                          <p className="text-xs text-gray-600">Maximum</p>
+                        </div>
+                        <p className="text-2xl font-bold text-red-600">
+                          {environmentalAggregates.mgi.max?.toFixed(1) || '-'}
+                        </p>
+                      </div>
+
+                      <div className="bg-green-50 rounded p-3 text-center">
+                        <div className="flex items-center justify-center mb-1">
+                          <TrendingDown className="w-4 h-4 mr-1 text-green-500" />
+                          <p className="text-xs text-gray-600">Minimum</p>
+                        </div>
+                        <p className="text-2xl font-bold text-green-600">
+                          {environmentalAggregates.mgi.min?.toFixed(1) || '-'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {environmentalAggregates.mgi.stdDev && (
+                      <div className="bg-gray-50 rounded p-3">
+                        <p className="text-xs text-gray-600 text-center">Standard Deviation</p>
+                        <p className="text-lg font-bold text-gray-700 text-center mt-1">
+                          ±{environmentalAggregates.mgi.stdDev.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-gray-500 text-center mt-1">Variability across session</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Images Tab */}
+      {activeTab === 'images' && (
+        <div className="space-y-6 animate-fade-in">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">Session Images & MGI Scores</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {totalImages} images captured across {devices.length} devices
+                  </p>
+                </div>
+                {isSuperAdmin && (
+                  <span className="px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded">
+                    Super Admin: Edit Mode Available
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Image Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-purple-50 rounded p-4 text-center">
+                  <p className="text-3xl font-bold text-purple-600">{totalImages}</p>
+                  <p className="text-xs text-gray-600 mt-1">Total Images</p>
+                </div>
+                <div className="bg-green-50 rounded p-4 text-center">
+                  <p className="text-3xl font-bold text-green-600">
+                    {devices.filter(d => (d.images?.length || 0) > 0).length}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">Devices with Images</p>
+                </div>
+                <div className="bg-blue-50 rounded p-4 text-center">
+                  <p className="text-3xl font-bold text-blue-600">
+                    {devices.length > 0 ? (totalImages / devices.length).toFixed(1) : '0'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">Avg Images/Device</p>
+                </div>
+                <div className="bg-orange-50 rounded p-4 text-center">
+                  <p className="text-3xl font-bold text-orange-600">
+                    {(() => {
+                      const imagesWithMGI = devices.reduce((count, d) => {
+                        return count + (d.images?.filter((img: any) => img.mgi_score != null).length || 0);
+                      }, 0);
+                      return imagesWithMGI;
+                    })()}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">Images with MGI Scores</p>
+                </div>
+              </div>
+
+              {/* Images Grid by Device */}
+              <div className="space-y-6">
+                {devices.map(device => {
+                  if (!device.images || device.images.length === 0) return null;
+
+                  return (
+                    <div key={device.device_id} className="border border-gray-200 rounded-lg p-4">
+                      {/* Device Header */}
+                      <div className="flex items-center justify-between mb-4 pb-3 border-b">
+                        <div className="flex items-center space-x-3">
+                          <Camera className="w-5 h-5 text-purple-500" />
+                          <div>
+                            <h3 className="font-semibold text-gray-900">
+                              {device.device_name || device.device_code}
+                            </h3>
+                            <p className="text-xs text-gray-500">{device.device_code}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-4 text-sm">
+                          <div className="flex items-center space-x-1">
+                            <ImageIcon className="w-4 h-4 text-purple-500" />
+                            <span className="font-medium">{device.images.length}</span>
+                            <span className="text-gray-500">images</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <Camera className="w-4 h-4 text-teal-500" />
+                            <span className="font-medium">
+                              {device.images.filter((img: any) => img.mgi_score != null).length}
+                            </span>
+                            <span className="text-gray-500">with MGI</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Images Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {device.images.map((image: any, idx: number) => (
+                          <div
+                            key={image.image_id || idx}
+                            className="group relative bg-gray-100 rounded-lg overflow-hidden hover:shadow-lg transition-all duration-200"
+                          >
+                            {/* Image */}
+                            <div className="aspect-square relative bg-gray-200">
+                              {image.storage_path ? (
+                                <img
+                                  src={image.storage_path}
+                                  alt={`Device ${device.device_code} - Image ${idx + 1}`}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23e5e7eb" width="200" height="200"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="14" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <ImageIcon className="w-12 h-12 text-gray-400" />
+                                </div>
+                              )}
+
+                              {/* MGI Score Badge */}
+                              {image.mgi_score != null && (
+                                <div className="absolute top-2 right-2">
+                                  <div
+                                    className="px-2 py-1 rounded text-xs font-bold text-white shadow-lg"
+                                    style={{
+                                      backgroundColor:
+                                        image.mgi_score >= 70 ? '#dc2626' :
+                                        image.mgi_score >= 40 ? '#f59e0b' :
+                                        '#10b981'
+                                    }}
+                                  >
+                                    MGI: {image.mgi_score.toFixed(0)}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Hover Overlay */}
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                <button className="px-4 py-2 bg-white text-gray-900 rounded font-medium text-sm hover:bg-gray-100 transition-colors">
+                                  View Full Size
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Image Metadata */}
+                            <div className="p-2 bg-white">
+                              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                <span className="flex items-center">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  {image.captured_at ? format(new Date(image.captured_at), 'HH:mm') : 'Unknown'}
+                                </span>
+                                {image.wake_number && (
+                                  <span className="text-gray-500">Wake #{image.wake_number}</span>
+                                )}
+                              </div>
+
+                              {/* Super Admin Edit Button */}
+                              {isSuperAdmin && (
+                                <button
+                                  className="w-full mt-2 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-xs font-medium transition-colors flex items-center justify-center"
+                                  onClick={() => {
+                                    toast.info('MGI Score editing coming soon...');
+                                  }}
+                                >
+                                  <ImageIcon className="w-3 h-3 mr-1" />
+                                  Edit MGI Score
+                                </button>
+                              )}
+
+                              {/* Image Details */}
+                              {image.image_metadata && (
+                                <details className="mt-2 text-xs">
+                                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+                                    Details
+                                  </summary>
+                                  <div className="mt-1 p-2 bg-gray-50 rounded text-gray-600 space-y-1">
+                                    {image.image_metadata.width && (
+                                      <div>Size: {image.image_metadata.width}×{image.image_metadata.height}</div>
+                                    )}
+                                    {image.image_metadata.format && (
+                                      <div>Format: {image.image_metadata.format}</div>
+                                    )}
+                                  </div>
+                                </details>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* No Images State */}
+                {devices.every(d => !d.images || d.images.length === 0) && (
+                  <div className="text-center py-12">
+                    <ImageIcon className="mx-auto h-16 w-16 text-gray-300" />
+                    <h3 className="mt-4 text-lg font-medium text-gray-900">No images captured yet</h3>
+                    <p className="mt-2 text-sm text-gray-500">
+                      Images will appear here as devices capture them during the session.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
