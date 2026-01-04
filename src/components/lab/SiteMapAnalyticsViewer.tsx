@@ -221,7 +221,9 @@ export default function SiteMapAnalyticsViewer({
   const drawVoronoiZones = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, mode: ZoneMode) => {
     if (devices.length < 1) return;
 
-    // Handle single device - fill entire canvas with one color
+    console.log(`[SiteMapAnalytics] drawVoronoiZones - Mode: ${mode}, Device count: ${devices.length}`);
+
+    // Handle single device - radial gradient heatmap
     if (devices.length === 1) {
       const device = devices[0];
       let value: number | null = null;
@@ -229,8 +231,11 @@ export default function SiteMapAnalyticsViewer({
       else if (mode === 'humidity') value = device.humidity;
       else if (mode === 'battery') value = device.battery_level;
 
+      console.log(`[SiteMapAnalytics] Single device - ID: ${device.device_id}, Code: ${device.device_code}, ${mode}: ${value}`);
+
       if (value === null) {
         // No data - use light gray
+        console.log(`[SiteMapAnalytics] No ${mode} data available, using gray background`);
         ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         return;
@@ -258,6 +263,8 @@ export default function SiteMapAnalyticsViewer({
         maxValue = value + 5;
       }
 
+      console.log(`[SiteMapAnalytics] Value range - Min: ${minValue}, Max: ${maxValue}, Current: ${value}`);
+
       // Create color scale with appropriate domain
       let colorScale;
       if (mode === 'humidity') {
@@ -267,30 +274,65 @@ export default function SiteMapAnalyticsViewer({
         colorScale = scaleSequential(interpolateRdYlBu).domain([maxValue, minValue]);
       }
 
-      // Fill entire canvas with the color
+      // Get the base color for this value
       const color = colorScale(value);
-      if (color && typeof color === 'string') {
-        if (color.startsWith('#')) {
-          // Hex to rgba
-          const r = parseInt(color.slice(1, 3), 16);
-          const g = parseInt(color.slice(3, 5), 16);
-          const b = parseInt(color.slice(5, 7), 16);
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
-        } else if (color.startsWith('rgb')) {
-          // rgb to rgba
-          ctx.fillStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
-        } else {
-          ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
-        }
-      } else {
-        ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
-      }
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      console.log(`[SiteMapAnalytics] Color scale output: ${color}`);
 
-      // Draw value label at device position
+      // Calculate device position in pixels
       const pixelX = (device.x / siteLength) * canvas.width;
       const pixelY = (device.y / siteWidth) * canvas.height;
 
+      // Calculate radius for ~2000 sq ft coverage
+      // 2000 sq ft circle has radius ≈ 25.23 ft
+      const coverageRadiusFt = Math.sqrt(2000 / Math.PI);
+
+      // Convert to pixel radius based on site dimensions
+      const pixelsPerFootX = canvas.width / siteLength;
+      const pixelsPerFootY = canvas.height / siteWidth;
+      const pixelsPerFoot = (pixelsPerFootX + pixelsPerFootY) / 2; // Average
+      const radiusPixels = coverageRadiusFt * pixelsPerFoot;
+
+      console.log(`[SiteMapAnalytics] Radial gradient - Center: (${pixelX.toFixed(1)}, ${pixelY.toFixed(1)}), Radius: ${radiusPixels.toFixed(1)}px (${coverageRadiusFt.toFixed(1)}ft)`);
+
+      // Parse color to RGB components
+      let r = 200, g = 200, b = 200;
+      if (color && typeof color === 'string') {
+        if (color.startsWith('#')) {
+          r = parseInt(color.slice(1, 3), 16);
+          g = parseInt(color.slice(3, 5), 16);
+          b = parseInt(color.slice(5, 7), 16);
+        } else if (color.startsWith('rgb')) {
+          const match = color.match(/\d+/g);
+          if (match && match.length >= 3) {
+            r = parseInt(match[0]);
+            g = parseInt(match[1]);
+            b = parseInt(match[2]);
+          }
+        }
+      }
+
+      console.log(`[SiteMapAnalytics] RGB components - R: ${r}, G: ${g}, B: ${b}`);
+
+      // Create radial gradient centered on device
+      const gradient = ctx.createRadialGradient(
+        pixelX, pixelY, 0,           // Inner circle (at device center)
+        pixelX, pixelY, radiusPixels  // Outer circle (2000 sq ft radius)
+      );
+
+      // Add color stops - intensity decreases with distance
+      gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.7)`);     // Strong at center
+      gradient.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, 0.5)`);   // Medium-strong
+      gradient.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.25)`);  // Medium-weak
+      gradient.addColorStop(0.85, `rgba(${r}, ${g}, ${b}, 0.1)`);  // Weak
+      gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.02)`);    // Very weak at edge
+
+      // Fill canvas with gradient
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      console.log(`[SiteMapAnalytics] Radial gradient applied successfully`);
+
+      // Draw value label at device position
       ctx.font = 'bold 14px sans-serif';
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
       ctx.textAlign = 'center';
