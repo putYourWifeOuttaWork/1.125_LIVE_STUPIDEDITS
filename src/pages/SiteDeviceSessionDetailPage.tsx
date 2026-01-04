@@ -216,6 +216,7 @@ const SiteDeviceSessionDetailPage = () => {
           .single();
 
         if (siteError) throw siteError;
+        console.log('[SiteDeviceSessionDetail] Site data loaded:', site);
         setSiteData(site);
       } catch (error: any) {
         console.error('Error fetching site data:', error);
@@ -340,15 +341,23 @@ const SiteDeviceSessionDetailPage = () => {
     }
 
     // Filter to only this session's snapshots
-    return processed.filter(s => s.session_id === sessionId);
+    const filtered = processed.filter(s => s.session_id === sessionId);
+    console.log(`[SiteDeviceSessionDetail] Filtered to ${filtered.length} snapshots for session ${sessionId} (from ${processed.length} total processed)`);
+    return filtered;
   }, [allSiteSnapshots, sessionId]);
 
   // Transform snapshot data with smooth transitions
   const displayDevices = useMemo(() => {
-    if (processedSnapshots.length === 0) return [];
+    if (processedSnapshots.length === 0) {
+      console.log('[SiteDeviceSessionDetail] No processed snapshots available');
+      return [];
+    }
 
     const currentSnapshot = processedSnapshots[currentSnapshotIndex];
-    if (!currentSnapshot || !currentSnapshot.site_state) return [];
+    if (!currentSnapshot || !currentSnapshot.site_state) {
+      console.log('[SiteDeviceSessionDetail] Current snapshot has no site_state');
+      return [];
+    }
 
     try {
       const currentState = typeof currentSnapshot.site_state === 'string'
@@ -356,6 +365,7 @@ const SiteDeviceSessionDetailPage = () => {
         : currentSnapshot.site_state;
 
       const currentDevices = currentState.devices || [];
+      console.log(`[SiteDeviceSessionDetail] Current snapshot has ${currentDevices.length} devices`);
 
       // Get next snapshot for interpolation
       const nextSnapshot = processedSnapshots[currentSnapshotIndex + 1];
@@ -371,44 +381,46 @@ const SiteDeviceSessionDetailPage = () => {
         nextDevices.map((d: any) => [d.device_id, d])
       );
 
-      const transformedDevices = currentDevices
-        .filter((d: any) => d.position && d.position.x !== null && d.position.y !== null)
-        .map((d: any) => {
-          const nextDevice = nextDeviceMap.get(d.device_id);
+      const devicesWithPositions = currentDevices.filter((d: any) => d.position && d.position.x !== null && d.position.y !== null);
+      console.log(`[SiteDeviceSessionDetail] ${devicesWithPositions.length} devices have valid positions (out of ${currentDevices.length})`);
 
-          // Interpolate values if we're transitioning and next device exists
-          const temperature = transitionProgress < 1 && nextDevice
-            ? lerp(d.telemetry?.latest_temperature, nextDevice.telemetry?.latest_temperature, transitionProgress)
-            : d.telemetry?.latest_temperature ?? null;
+      const transformedDevices = devicesWithPositions.map((d: any) => {
+        const nextDevice = nextDeviceMap.get(d.device_id);
 
-          const humidity = transitionProgress < 1 && nextDevice
-            ? lerp(d.telemetry?.latest_humidity, nextDevice.telemetry?.latest_humidity, transitionProgress)
-            : d.telemetry?.latest_humidity ?? null;
+        // Interpolate values if we're transitioning and next device exists
+        const temperature = transitionProgress < 1 && nextDevice
+          ? lerp(d.telemetry?.latest_temperature, nextDevice.telemetry?.latest_temperature, transitionProgress)
+          : d.telemetry?.latest_temperature ?? null;
 
-          const mgi_score = transitionProgress < 1 && nextDevice
-            ? lerp(d.mgi_state?.latest_mgi_score, nextDevice.mgi_state?.latest_mgi_score, transitionProgress)
-            : d.mgi_state?.latest_mgi_score ?? null;
+        const humidity = transitionProgress < 1 && nextDevice
+          ? lerp(d.telemetry?.latest_humidity, nextDevice.telemetry?.latest_humidity, transitionProgress)
+          : d.telemetry?.latest_humidity ?? null;
 
-          const battery_level = transitionProgress < 1 && nextDevice
-            ? lerp(d.battery_health_percent, nextDevice.battery_health_percent, transitionProgress)
-            : d.battery_health_percent ?? null;
+        const mgi_score = transitionProgress < 1 && nextDevice
+          ? lerp(d.mgi_state?.latest_mgi_score, nextDevice.mgi_state?.latest_mgi_score, transitionProgress)
+          : d.mgi_state?.latest_mgi_score ?? null;
 
-          return {
-            device_id: d.device_id,
-            device_code: d.device_code,
-            device_name: d.device_name || d.device_code,
-            x: d.position.x,
-            y: d.position.y,
-            battery_level,
-            status: d.status || 'active',
-            last_seen: d.last_seen_at || null,
-            temperature,
-            humidity,
-            mgi_score,
-            mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
-          };
-        });
+        const battery_level = transitionProgress < 1 && nextDevice
+          ? lerp(d.battery_health_percent, nextDevice.battery_health_percent, transitionProgress)
+          : d.battery_health_percent ?? null;
 
+        return {
+          device_id: d.device_id,
+          device_code: d.device_code,
+          device_name: d.device_name || d.device_code,
+          x: d.position.x,
+          y: d.position.y,
+          battery_level,
+          status: d.status || 'active',
+          last_seen: d.last_seen_at || null,
+          temperature,
+          humidity,
+          mgi_score,
+          mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
+        };
+      });
+
+      console.log(`[SiteDeviceSessionDetail] Returning ${transformedDevices.length} display devices`);
       return transformedDevices;
     } catch (error) {
       console.error('Error parsing snapshot data:', error);
@@ -1221,14 +1233,34 @@ const SiteDeviceSessionDetailPage = () => {
               <div className="flex-1">
                 <h3 className="font-semibold text-yellow-900 mb-1">Site Map Unavailable</h3>
                 <p className="text-sm text-yellow-800 mb-3">
-                  The site map and timeline visualization cannot be displayed because site dimensions are missing.
+                  The site map and timeline visualization cannot be displayed because site dimensions are missing (length: {siteData.length || 'not set'}, width: {siteData.width || 'not set'}).
                 </p>
                 <button
-                  onClick={() => navigate(`/sites`)}
+                  onClick={() => navigate(`/programs/${programId}/sites`)}
                   className="text-sm font-medium text-yellow-900 hover:text-yellow-700 underline"
                 >
                   Go to Sites page to add dimensions
                 </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No Device Position Data Warning */}
+      {siteData && siteData.length > 0 && siteData.width > 0 && processedSnapshots.length > 0 && displayDevices.length === 0 && (
+        <Card className="animate-fade-in border-yellow-300 bg-yellow-50">
+          <CardContent className="pt-6">
+            <div className="flex items-start space-x-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-yellow-900 mb-1">No Device Position Data</h3>
+                <p className="text-sm text-yellow-800 mb-3">
+                  The site map cannot be displayed because no devices have position data for this session. Devices must be placed on the site map to enable visualization.
+                </p>
+                <p className="text-xs text-yellow-700">
+                  Session has {processedSnapshots.length} snapshot(s), but no devices with valid x/y coordinates.
+                </p>
               </div>
             </div>
           </CardContent>

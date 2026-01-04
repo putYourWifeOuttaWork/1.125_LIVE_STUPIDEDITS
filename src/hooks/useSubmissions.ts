@@ -41,21 +41,29 @@ export function useSubmissions(siteId?: string) {
         // Use the RPC function with pagination and filtering
         const { data, error } = await withRetry(() => supabase
           .rpc('fetch_submissions_for_site', { p_site_id: siteId }));
-        
+
         if (error) {
           console.error('Error fetching submissions:', error);
           throw error;
         }
-        
+
         console.log(`Successfully fetched ${data?.length || 0} submissions`);
-        
-        // Format the data
-        return data?.map(sub => ({
+
+        // Format the data and filter out legacy device-generated submissions
+        const filteredData = (data || []).filter((sub: any) => {
+          // Exclude legacy device-generated submissions
+          // These are now handled by the device sessions system
+          return !sub.is_device_generated && !sub.created_by_device_id;
+        });
+
+        console.log(`After filtering legacy device submissions: ${filteredData.length} manual submissions`);
+
+        return filteredData.map(sub => ({
           ...sub,
           petri_count: Number(sub.petri_count) || 0,
           gasifier_count: Number(sub.gasifier_count) || 0,
           global_submission_id: Number(sub.global_submission_id) || 0
-        })) || [];
+        }));
       } catch (err) {
         console.error('Error in submissions query:', err);
         throw err;
