@@ -263,11 +263,11 @@ const SiteDeviceSessionDetailPage = () => {
     };
 
     const hasValidTelemetry = (tel: any) => {
-      return tel && (tel.latest_temperature !== null || tel.latest_humidity !== null);
+      return tel && (tel.temperature !== null || tel.humidity !== null);
     };
 
     const hasValidMGI = (mgi: any) => {
-      return mgi && (mgi.latest_mgi_score !== null || mgi.mgi_velocity !== null);
+      return mgi && (mgi.current_mgi !== null || mgi.mgi_velocity?.per_hour !== null);
     };
 
     // Process ALL site snapshots (already sorted by wake_round_start)
@@ -279,7 +279,8 @@ const SiteDeviceSessionDetailPage = () => {
           ? JSON.parse(snapshot.site_state)
           : snapshot.site_state;
 
-        const currentDevices = siteState?.devices || [];
+        // Handle both array format (direct device array) and object format (with devices property)
+        const currentDevices = Array.isArray(siteState) ? siteState : (siteState?.devices || []);
 
         // Update cache with new data from this snapshot
         currentDevices.forEach((device: any) => {
@@ -293,12 +294,13 @@ const SiteDeviceSessionDetailPage = () => {
             : (hasValidPosition(device.position) ? device.position : null); // Set initial position
 
           const newTelemetry = hasValidTelemetry(device.telemetry) ? {
-            latest_temperature: carryForward(device.telemetry.latest_temperature, cachedState.telemetry?.latest_temperature),
-            latest_humidity: carryForward(device.telemetry.latest_humidity, cachedState.telemetry?.latest_humidity),
+            latest_temperature: carryForward(device.telemetry.temperature, cachedState.telemetry?.latest_temperature),
+            latest_humidity: carryForward(device.telemetry.humidity, cachedState.telemetry?.latest_humidity),
+            latest_pressure: carryForward(device.telemetry.pressure, cachedState.telemetry?.latest_pressure),
           } : cachedState.telemetry || {};
           const newMGI = hasValidMGI(device.mgi_state) ? {
-            latest_mgi_score: carryForward(device.mgi_state.latest_mgi_score, cachedState.mgi_state?.latest_mgi_score),
-            mgi_velocity: carryForward(device.mgi_state.mgi_velocity, cachedState.mgi_state?.mgi_velocity),
+            latest_mgi_score: carryForward(device.mgi_state.current_mgi, cachedState.mgi_state?.latest_mgi_score),
+            mgi_velocity: carryForward(device.mgi_state.mgi_velocity?.per_hour, cachedState.mgi_state?.mgi_velocity),
           } : cachedState.mgi_state || {};
 
           deviceStateCache.set(deviceId, {
@@ -2521,9 +2523,9 @@ const SiteDeviceSessionDetailPage = () => {
                           >
                             {/* Image */}
                             <div className="aspect-square relative bg-gray-200">
-                              {image.storage_path ? (
+                              {image.image_url ? (
                                 <img
-                                  src={image.storage_path}
+                                  src={image.image_url}
                                   alt={`Device ${device.device_code} - Image ${idx + 1}`}
                                   className="w-full h-full object-cover"
                                   loading="lazy"
