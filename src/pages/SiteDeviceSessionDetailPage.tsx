@@ -2607,12 +2607,12 @@ const SiteDeviceSessionDetailPage = () => {
                                     className="px-2 py-1 rounded text-xs font-bold text-white shadow-lg"
                                     style={{
                                       backgroundColor:
-                                        image.mgi_score >= 70 ? '#dc2626' :
-                                        image.mgi_score >= 40 ? '#f59e0b' :
+                                        image.mgi_score >= 0.7 ? '#dc2626' :
+                                        image.mgi_score >= 0.4 ? '#f59e0b' :
                                         '#10b981'
                                     }}
                                   >
-                                    MGI: {image.mgi_score.toFixed(0)}
+                                    {(image.mgi_score * 100).toFixed(1)}%
                                   </div>
                                 </div>
                               )}
@@ -2626,16 +2626,84 @@ const SiteDeviceSessionDetailPage = () => {
                             </div>
 
                             {/* Image Metadata */}
-                            <div className="p-2 bg-white">
-                              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                            <div className="p-3 bg-white space-y-2">
+                              {/* Time & Wake Number */}
+                              <div className="flex items-center justify-between text-xs text-gray-600">
                                 <span className="flex items-center">
                                   <Clock className="w-3 h-3 mr-1" />
                                   {image.captured_at ? format(new Date(image.captured_at), 'HH:mm') : 'Unknown'}
                                 </span>
                                 {image.wake_number && (
-                                  <span className="text-gray-500">Wake #{image.wake_number}</span>
+                                  <span className="px-2 py-0.5 bg-gray-100 rounded text-gray-700 font-medium">
+                                    Wake #{image.wake_number}
+                                  </span>
                                 )}
                               </div>
+
+                              {/* MGI Metrics */}
+                              {(image.mold_growth_velocity != null || image.mold_growth_speed != null) && (
+                                <div className="pt-2 border-t border-gray-100 space-y-1">
+                                  <div className="text-xs font-medium text-gray-700 mb-1">MGI Growth</div>
+                                  {image.mold_growth_velocity != null && (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="flex items-center text-gray-600">
+                                        {image.mold_growth_velocity >= 0 ? (
+                                          <TrendingUp className="w-3 h-3 mr-1 text-red-500" />
+                                        ) : (
+                                          <TrendingDown className="w-3 h-3 mr-1 text-green-500" />
+                                        )}
+                                        Velocity
+                                      </span>
+                                      <span
+                                        className="font-medium"
+                                        style={{
+                                          color: image.mold_growth_velocity >= 0 ? '#dc2626' : '#10b981'
+                                        }}
+                                      >
+                                        {image.mold_growth_velocity >= 0 ? '+' : ''}{(image.mold_growth_velocity * 100).toFixed(1)}%
+                                      </span>
+                                    </div>
+                                  )}
+                                  {image.mold_growth_speed != null && (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="flex items-center text-gray-600">
+                                        <Activity className="w-3 h-3 mr-1 text-blue-500" />
+                                        Speed
+                                      </span>
+                                      <span className="font-medium text-gray-700">
+                                        {image.mold_growth_speed >= 0 ? '+' : ''}{(image.mold_growth_speed * 100).toFixed(2)}%/day
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Environmental Data */}
+                              {(image.temperature != null || image.humidity != null || image.battery_voltage != null) && (
+                                <div className="pt-2 border-t border-gray-100 space-y-1">
+                                  <div className="text-xs font-medium text-gray-700 mb-1">Environment</div>
+                                  <div className="grid grid-cols-2 gap-2 text-xs">
+                                    {image.temperature != null && (
+                                      <div className="flex items-center">
+                                        <Thermometer className="w-3 h-3 mr-1 text-orange-500" />
+                                        <span className="text-gray-600">{image.temperature.toFixed(1)}°F</span>
+                                      </div>
+                                    )}
+                                    {image.humidity != null && (
+                                      <div className="flex items-center">
+                                        <Droplets className="w-3 h-3 mr-1 text-blue-500" />
+                                        <span className="text-gray-600">{image.humidity.toFixed(1)}%</span>
+                                      </div>
+                                    )}
+                                    {image.battery_voltage != null && (
+                                      <div className="flex items-center col-span-2">
+                                        <Battery className="w-3 h-3 mr-1 text-green-500" />
+                                        <span className="text-gray-600">{image.battery_voltage.toFixed(2)}V</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
 
                               {/* Super Admin Edit Button */}
                               {isSuperAdmin && (
@@ -2648,23 +2716,6 @@ const SiteDeviceSessionDetailPage = () => {
                                   <ImageIcon className="w-3 h-3 mr-1" />
                                   Edit MGI Score
                                 </button>
-                              )}
-
-                              {/* Image Details */}
-                              {image.image_metadata && (
-                                <details className="mt-2 text-xs">
-                                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
-                                    Details
-                                  </summary>
-                                  <div className="mt-1 p-2 bg-gray-50 rounded text-gray-600 space-y-1">
-                                    {image.image_metadata.width && (
-                                      <div>Size: {image.image_metadata.width}×{image.image_metadata.height}</div>
-                                    )}
-                                    {image.image_metadata.format && (
-                                      <div>Format: {image.image_metadata.format}</div>
-                                    )}
-                                  </div>
-                                </details>
                               )}
                             </div>
                           </div>

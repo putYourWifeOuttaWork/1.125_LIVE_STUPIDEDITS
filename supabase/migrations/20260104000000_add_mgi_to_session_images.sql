@@ -1,19 +1,21 @@
 /*
-  # Add MGI Score Fields to Session Images
+  # Add MGI Score Fields and Environmental Data to Session Images
 
   1. Problem
     - The "Images & MGI Scores" tab shows "0 Images with MGI Scores"
-    - Device images are being fetched but without mgi_score and mgi_velocity fields
+    - Device images are being fetched but without MGI fields and environmental data
     - Frontend checks for img.mgi_score != null but the field is missing from the query
 
   2. Solution
-    - Add mgi_score and mgi_velocity to the images subquery in get_session_devices_with_wakes
-    - These fields exist in device_images table but weren't being selected
+    - Add mgi_score, mold_growth_velocity, mold_growth_speed to images subquery
+    - Add temperature, humidity, battery_voltage from wake_payloads for environmental context
+    - These fields exist in tables but weren't being selected together
 
   3. Impact
     - Images tab will now correctly show count of images with MGI scores
     - Individual device sections will show accurate "X with MGI" counts
-    - MGI data will be available for display in image cards
+    - MGI data (score, velocity, speed) will be available for display in image cards
+    - Environmental data (temp, humidity, battery) will enrich image metadata
 */
 
 -- Update the function to include MGI fields in images
@@ -141,7 +143,7 @@ BEGIN
         AND dwp.site_device_session_id = p_session_id
       ) as wake_payloads,
 
-      -- Get images as JSON array - FIXED: Now includes mgi_score and mgi_velocity
+      -- Get images as JSON array - FIXED: Now includes all MGI fields and environmental data
       (
         SELECT COALESCE(jsonb_agg(
           jsonb_build_object(
@@ -150,8 +152,16 @@ BEGIN
             'image_url', di.image_url,
             'image_status', di.status,
             'wake_window_index', dwp.wake_window_index,
+            'wake_number', dwp.wake_window_index,
+            -- MGI Fields
             'mgi_score', di.mgi_score,
-            'mgi_velocity', di.mgi_velocity
+            'mold_growth_velocity', di.mold_growth_velocity,
+            'mold_growth_speed', di.mold_growth_speed,
+            -- Environmental data from wake payload
+            'temperature', dwp.temperature,
+            'humidity', dwp.humidity,
+            'battery_voltage', dwp.battery_voltage,
+            'wifi_rssi', dwp.wifi_rssi
           ) ORDER BY di.captured_at
         ), '[]'::jsonb)
         FROM device_images di
@@ -202,4 +212,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_session_devices_with_wakes IS
-'Get all devices in a session with wake payloads, images, and statistics. Images now include mgi_score and mgi_velocity fields.';
+'Get all devices in a session with wake payloads, images, and statistics. Images now include all MGI fields (score, velocity, speed) and environmental data (temperature, humidity, battery_voltage).';
