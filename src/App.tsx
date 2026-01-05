@@ -40,6 +40,7 @@ const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
 const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const LanderPage = lazy(() => import('./pages/LanderPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -290,6 +291,11 @@ function App() {
           <Route path="/forgot-password" element={!user ? <ForgotPasswordPage /> : <Navigate to="/home" />} />
           <Route path="/reset-password" element={!user ? <ResetPasswordPage /> : <Navigate to="/home" />} />
           <Route path="/deactivated" element={isUserDeactivated ? <DeactivatedUserPage /> : <Navigate to="/home" />} />
+          <Route path="/lander" element={
+            <Suspense fallback={<LoadingScreen />}>
+              <LanderPage />
+            </Suspense>
+          } />
           
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
