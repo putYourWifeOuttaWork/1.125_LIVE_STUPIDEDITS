@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { Clock, AlertTriangle, CheckCircle, Loader, MapPin, Building, ExternalLink } from 'lucide-react';
 import Card, { CardContent } from '../common/Card';
-import { useActiveCompany } from '../../hooks/useActiveCompany';
+import { useCompanyFilterStore } from '../../stores/companyFilterStore';
+import useUserRole from '../../hooks/useUserRole';
 import { format } from 'date-fns';
 import { parseDateOnly } from '../../utils/timeFormatters';
 
@@ -41,7 +42,8 @@ export default function ActiveSessionsGrid({
   selectedSessionId
 }: ActiveSessionsGridProps) {
   const navigate = useNavigate();
-  const { activeCompanyId, isSuperAdmin } = useActiveCompany();
+  const { selectedCompanyId: activeCompanyId } = useCompanyFilterStore();
+  const { isSuperAdmin } = useUserRole();
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

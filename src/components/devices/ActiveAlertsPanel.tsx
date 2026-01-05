@@ -7,7 +7,8 @@ import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import useCompanies from '../../hooks/useCompanies';
-import { useActiveCompany } from '../../hooks/useActiveCompany';
+import { useCompanyFilterStore } from '../../stores/companyFilterStore';
+import useUserRole from '../../hooks/useUserRole';
 import CompanyAlertThresholdsModal from '../companies/CompanyAlertThresholdsModal';
 
 interface DeviceAlert {
@@ -44,7 +45,8 @@ interface DeviceAlert {
 const ActiveAlertsPanel = () => {
   const navigate = useNavigate();
   const { userCompany, isAdmin } = useCompanies();
-  const { activeCompanyId, isSuperAdmin } = useActiveCompany();
+  const { selectedCompanyId: activeCompanyId } = useCompanyFilterStore();
+  const { isSuperAdmin } = useUserRole();
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
