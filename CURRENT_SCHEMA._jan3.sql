@@ -1,6 +1,23 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.alert_escalation_rules (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  name text NOT NULL,
+  description text,
+  alert_severity ARRAY DEFAULT ARRAY['critical'::text, 'high'::text],
+  trigger_after interval DEFAULT '00:15:00'::interval,
+  escalation_channels jsonb DEFAULT '["email", "browser", "sms"]'::jsonb,
+  notify_company_admins boolean DEFAULT true,
+  notify_super_admins boolean DEFAULT true,
+  notify_user_ids ARRAY,
+  active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT alert_escalation_rules_pkey PRIMARY KEY (id),
+  CONSTRAINT alert_escalation_rules_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id)
+);
 CREATE TABLE public.app_secrets (
   key text NOT NULL,
   value text NOT NULL,
@@ -149,7 +166,15 @@ CREATE TABLE public.device_alerts (
   actual_value numeric,
   threshold_value numeric,
   measurement_timestamp timestamp with time zone,
+  notification_sent_at timestamp with time zone,
+  notification_channels jsonb DEFAULT '[]'::jsonb,
+  last_notified_at timestamp with time zone,
+  notification_count integer DEFAULT 0,
+  session_id uuid,
+  snapshot_id uuid,
+  wake_number integer,
   CONSTRAINT device_alerts_pkey PRIMARY KEY (alert_id),
+  CONSTRAINT device_alerts_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.site_device_sessions(session_id),
   CONSTRAINT device_alerts_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT device_alerts_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
   CONSTRAINT device_alerts_resolved_by_user_id_fkey FOREIGN KEY (resolved_by_user_id) REFERENCES public.users(id),
@@ -258,6 +283,10 @@ CREATE TABLE public.device_images (
   scored_at timestamp with time zone,
   mgi_scoring_status text DEFAULT 'pending'::text CHECK (mgi_scoring_status = ANY (ARRAY['pending'::text, 'in_progress'::text, 'complete'::text, 'failed'::text, 'skipped'::text])),
   mgi_scoring_started_at timestamp with time zone,
+  temperature numeric DEFAULT ((metadata ->> 'temperature'::text))::numeric,
+  humidity numeric DEFAULT ((metadata ->> 'humidity'::text))::numeric,
+  pressure numeric DEFAULT ((metadata ->> 'pressure'::text))::numeric,
+  gas_resistance numeric DEFAULT ((metadata ->> 'gas_resistance'::text))::numeric,
   CONSTRAINT device_images_pkey PRIMARY KEY (image_id),
   CONSTRAINT device_images_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT device_images_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
@@ -561,6 +590,28 @@ CREATE TABLE public.mqtt_protocol_fields (
   required boolean DEFAULT false,
   validation_rule text,
   CONSTRAINT mqtt_protocol_fields_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.notification_delivery_log (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  alert_id uuid,
+  user_id uuid NOT NULL,
+  company_id uuid NOT NULL,
+  channel text NOT NULL CHECK (channel = ANY (ARRAY['email'::text, 'browser'::text, 'sms'::text, 'in_app'::text])),
+  status text NOT NULL CHECK (status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text, 'bounced'::text, 'delivered'::text, 'read'::text])),
+  subject text,
+  message text NOT NULL,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  sent_at timestamp with time zone,
+  delivered_at timestamp with time zone,
+  read_at timestamp with time zone,
+  failed_at timestamp with time zone,
+  error_message text,
+  external_id text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT notification_delivery_log_pkey PRIMARY KEY (id),
+  CONSTRAINT notification_delivery_log_alert_id_fkey FOREIGN KEY (alert_id) REFERENCES public.device_alerts(alert_id),
+  CONSTRAINT notification_delivery_log_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT notification_delivery_log_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id)
 );
 CREATE TABLE public.petri_observations (
   observation_id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -967,6 +1018,30 @@ CREATE TABLE public.user_active_company_context (
   CONSTRAINT user_active_company_context_pkey PRIMARY KEY (user_id),
   CONSTRAINT user_active_company_context_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT user_active_company_context_active_company_id_fkey FOREIGN KEY (active_company_id) REFERENCES public.companies(company_id)
+);
+CREATE TABLE public.user_notification_preferences (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  company_id uuid NOT NULL,
+  email_enabled boolean DEFAULT true,
+  email_address text,
+  browser_enabled boolean DEFAULT true,
+  push_subscription jsonb,
+  sms_enabled boolean DEFAULT false,
+  phone_number text,
+  alert_types jsonb DEFAULT '["critical", "high", "medium"]'::jsonb,
+  quiet_hours_enabled boolean DEFAULT false,
+  quiet_hours_start time without time zone,
+  quiet_hours_end time without time zone,
+  quiet_hours_timezone text DEFAULT 'UTC'::text,
+  digest_mode boolean DEFAULT false,
+  digest_frequency text DEFAULT 'hourly'::text,
+  min_notification_interval interval DEFAULT '00:05:00'::interval,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_notification_preferences_pkey PRIMARY KEY (id),
+  CONSTRAINT user_notification_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT user_notification_preferences_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id)
 );
 CREATE TABLE public.users (
   id uuid NOT NULL,
