@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, CheckCircle, X, ExternalLink, Bell, BellOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle, X, ExternalLink, Bell, BellOff, Settings } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
 import { supabase } from '../../lib/supabaseClient';
@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import useCompanies from '../../hooks/useCompanies';
+import CompanyAlertThresholdsModal from '../companies/CompanyAlertThresholdsModal';
 
 interface DeviceAlert {
   alert_id: string;
@@ -45,6 +46,7 @@ const ActiveAlertsPanel = () => {
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
+  const [showThresholdsModal, setShowThresholdsModal] = useState(false);
 
   // Load active alerts
   useEffect(() => {
@@ -220,6 +222,16 @@ const ActiveAlertsPanel = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowThresholdsModal(true)}
+                leftIcon={<Settings className="w-4 h-4" />}
+              >
+                Configure Thresholds
+              </Button>
+            )}
             <button
               onClick={() => setShowResolved(!showResolved)}
               className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -347,6 +359,16 @@ const ActiveAlertsPanel = () => {
           </div>
         )}
       </CardContent>
+
+      {/* Company Alert Thresholds Modal */}
+      {userCompany && showThresholdsModal && (
+        <CompanyAlertThresholdsModal
+          isOpen={showThresholdsModal}
+          onClose={() => setShowThresholdsModal(false)}
+          companyId={userCompany.company_id}
+          companyName={userCompany.name}
+        />
+      )}
     </Card>
   );
 };

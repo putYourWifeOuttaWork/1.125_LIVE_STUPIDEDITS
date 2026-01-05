@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Building, Edit, Users, Link as LinkIcon } from 'lucide-react';
+import { Building, Edit, Users, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 import useCompanies from '../hooks/useCompanies';
 import Button from '../components/common/Button';
 import Card, { CardContent, CardHeader } from '../components/common/Card';
 import LoadingScreen from '../components/common/LoadingScreen';
 import CompanyFormModal from '../components/companies/CompanyFormModal';
 import CompanyUsersModal from '../components/companies/CompanyUsersModal';
+import CompanyAlertThresholdsModal from '../components/companies/CompanyAlertThresholdsModal';
 import { toast } from 'react-toastify';
 
 const CompanyManagementPage = () => {
@@ -22,6 +23,7 @@ const CompanyManagementPage = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
+  const [isThresholdsModalOpen, setIsThresholdsModalOpen] = useState(false);
 
   if (loading) {
     return <LoadingScreen />;
@@ -150,9 +152,46 @@ const CompanyManagementPage = () => {
               </CardHeader>
               <CardContent>
                 <p className="text-gray-700">
-                  View and manage users associated with your company. You can designate which users have administrative rights 
+                  View and manage users associated with your company. You can designate which users have administrative rights
                   to manage company details and other users.
                 </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {isAdmin && (
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-semibold">Alert Thresholds</h2>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={<AlertTriangle size={16} />}
+                    onClick={() => setIsThresholdsModalOpen(true)}
+                  >
+                    Configure Thresholds
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-700 mb-3">
+                  Configure default alert thresholds for temperature, humidity, MGI, and other environmental factors.
+                  These defaults apply to all devices unless a device has custom threshold overrides.
+                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium mb-1">What are alert thresholds?</p>
+                      <p>
+                        Thresholds define when devices should trigger alerts based on environmental readings.
+                        For example, setting a temperature warning at 90°F will trigger an alert when any device
+                        measures temperature above that value.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -201,6 +240,15 @@ const CompanyManagementPage = () => {
         <CompanyUsersModal
           isOpen={isUsersModalOpen}
           onClose={() => setIsUsersModalOpen(false)}
+          companyId={userCompany.company_id}
+          companyName={userCompany.name}
+        />
+      )}
+
+      {isThresholdsModalOpen && userCompany && (
+        <CompanyAlertThresholdsModal
+          isOpen={isThresholdsModalOpen}
+          onClose={() => setIsThresholdsModalOpen(false)}
           companyId={userCompany.company_id}
           companyName={userCompany.name}
         />
