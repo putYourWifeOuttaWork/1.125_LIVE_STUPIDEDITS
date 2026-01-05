@@ -375,27 +375,24 @@ const AlertsPage = () => {
       return;
     }
 
-    // Otherwise, find the session by device and date
-    if (!alert.device_id || !alert.site_id || !alert.program_id) {
-      toast.error('Unable to find session - missing device or site information');
+    // Otherwise, find the session by site and date
+    if (!alert.site_id || !alert.program_id) {
+      toast.error('Unable to find session - missing site information');
       return;
     }
 
     try {
       const alertDate = new Date(alert.triggered_at);
-      const startOfDay = new Date(alertDate.getFullYear(), alertDate.getMonth(), alertDate.getDate());
-      const endOfDay = new Date(startOfDay);
-      endOfDay.setDate(endOfDay.getDate() + 1);
+      // Format the date as YYYY-MM-DD for matching session_date
+      const sessionDate = alertDate.toISOString().split('T')[0];
 
-      // Find the session for this device on this day
+      // Find the session for this site on this day
       const { data: sessions, error } = await supabase
         .from('site_device_sessions')
         .select('session_id')
-        .eq('device_id', alert.device_id)
         .eq('site_id', alert.site_id)
-        .gte('start_time', startOfDay.toISOString())
-        .lt('start_time', endOfDay.toISOString())
-        .order('start_time', { ascending: false })
+        .eq('session_date', sessionDate)
+        .order('session_start_time', { ascending: false })
         .limit(1);
 
       if (error) throw error;
@@ -403,7 +400,7 @@ const AlertsPage = () => {
       if (sessions && sessions.length > 0) {
         navigate(`/programs/${alert.program_id}/sites/${alert.site_id}/device-sessions/${sessions[0].session_id}`);
       } else {
-        toast.error('No session found for this device on this date');
+        toast.error('No session found for this site on this date');
       }
     } catch (error) {
       console.error('Error finding session:', error);
@@ -773,7 +770,7 @@ const AlertsPage = () => {
                             Acknowledge
                           </Button>
                         )}
-                        {(alert.device_id || alert.session_id) && alert.program_id && alert.site_id && (
+                        {(alert.site_id || alert.session_id) && alert.program_id && (
                           <Button
                             variant="contained"
                             size="sm"
