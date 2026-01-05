@@ -16,12 +16,14 @@ import ActiveAlertsPanel from '../components/devices/ActiveAlertsPanel';
 import ActiveSessionsGrid, { ActiveSession } from '../components/devices/ActiveSessionsGrid';
 import SessionDetailsPanel from '../components/devices/SessionDetailsPanel';
 import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
-import { useActiveCompany } from '../hooks/useActiveCompany';
+import { useCompanyFilterStore } from '../stores/companyFilterStore';
+import useUserRole from '../hooks/useUserRole';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { loading: companyLoading } = useCompanies();
-  const { activeCompanyId, isSuperAdmin } = useActiveCompany();
+  const { selectedCompanyId: activeCompanyId } = useCompanyFilterStore();
+  const { isSuperAdmin } = useUserRole();
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedSessionData, setSelectedSessionData] = useState<ActiveSession | null>(null);

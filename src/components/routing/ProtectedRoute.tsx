@@ -8,7 +8,7 @@ import { User } from '../../lib/types';
 
 const ProtectedRoute = () => {
   const { user, setUser } = useAuthStore();
-  const { setActiveCompanyContext } = useCompanyFilterStore();
+  const { setActiveCompanyContext, setSelectedCompanyId } = useCompanyFilterStore();
   const location = useLocation();
   const [isLoading, setIsLoading] = useState(true);
 
@@ -61,6 +61,12 @@ const ProtectedRoute = () => {
         // Initialize active company context in the database BEFORE setting user
         // This ensures RLS policies have the correct company context
         console.log(`Initializing active company context for user ${fullUser.email}: ${fullUser.company_id}`);
+
+        // First set the local store state immediately so components can render
+        setSelectedCompanyId(fullUser.company_id);
+        console.log('Local company filter state set:', fullUser.company_id);
+
+        // Then set the database context for RLS
         const success = await setActiveCompanyContext(fullUser.company_id);
 
         if (!success) {
@@ -84,7 +90,7 @@ const ProtectedRoute = () => {
     };
 
     loadUserProfile();
-  }, [setUser, setActiveCompanyContext]);
+  }, [setUser, setActiveCompanyContext, setSelectedCompanyId]);
 
   if (isLoading) {
     return <LoadingScreen />;
