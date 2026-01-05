@@ -101,6 +101,46 @@ const ActiveAlertsPanel = () => {
     };
   }, [userCompany, showResolved]);
 
+  const handleViewSession = async (alert: DeviceAlert) => {
+    // If we have a direct session_id, use it
+    if (alert.session_id && alert.program_id && alert.site_id) {
+      navigate(`/programs/${alert.program_id}/sites/${alert.site_id}/device-sessions/${alert.session_id}`);
+      return;
+    }
+
+    // Otherwise, find the session by site and date
+    if (!alert.site_id || !alert.program_id) {
+      toast.error('Unable to find session - missing site information');
+      return;
+    }
+
+    try {
+      const alertDate = new Date(alert.triggered_at);
+      // Format the date as YYYY-MM-DD for matching session_date
+      const sessionDate = alertDate.toISOString().split('T')[0];
+
+      // Find the session for this site on this day
+      const { data: sessions, error } = await supabase
+        .from('site_device_sessions')
+        .select('session_id')
+        .eq('site_id', alert.site_id)
+        .eq('session_date', sessionDate)
+        .order('session_start_time', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      if (sessions && sessions.length > 0) {
+        navigate(`/programs/${alert.program_id}/sites/${alert.site_id}/device-sessions/${sessions[0].session_id}`);
+      } else {
+        toast.error('No session found for this site on this date');
+      }
+    } catch (error) {
+      console.error('Error finding session:', error);
+      toast.error('Failed to find session');
+    }
+  };
+
   const acknowledgeAlert = async (alertId: string) => {
     try {
       const { error } = await supabase
@@ -291,16 +331,15 @@ const ActiveAlertsPanel = () => {
                         <CheckCircle className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {/* Always prefer session link over device link */}
-                    {alert.session_id && alert.program_id && alert.site_id && (
+                    {/* View Session button - show if we have site and program info */}
+                    {(alert.site_id || alert.session_id) && alert.program_id && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          const url = `/programs/${alert.program_id}/sites/${alert.site_id}/device-sessions/${alert.session_id}`;
-                          navigate(url);
+                          handleViewSession(alert);
                         }}
                         className="p-1.5 border border-gray-400 rounded hover:bg-white transition-colors"
-                        title="View Device Session Detail"
+                        title="View Session"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                       </button>
