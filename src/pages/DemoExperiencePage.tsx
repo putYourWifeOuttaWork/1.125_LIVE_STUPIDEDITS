@@ -1,16 +1,42 @@
-import { Activity, AlertTriangle, BarChart3, Camera, CloudRain, Leaf, MapPin, TrendingUp, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, BarChart3, Camera, CloudRain, Leaf, LogOut, MapPin, TrendingUp, Zap } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabaseClient';
+import { toast } from 'react-toastify';
 import Card, { CardContent, CardHeader } from '../components/common/Card';
 
 const DemoExperiencePage = () => {
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      navigate('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast.error('Failed to sign out');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Alert Banner */}
       <div className="bg-blue-600 text-white px-4 py-3 shadow-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-center gap-2">
-          <Zap className="w-5 h-5 flex-shrink-0" />
-          <p className="text-sm sm:text-base font-medium text-center">
-            Your InVivo Admin has been alerted! In the meantime, enjoy this demo account!
-          </p>
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center justify-center gap-2 flex-1">
+            <Zap className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm sm:text-base font-medium text-center">
+              Your InVivo Admin has been alerted! In the meantime, enjoy this demo account!
+            </p>
+          </div>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 rounded-md transition-colors text-sm font-medium flex-shrink-0"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
         </div>
       </div>
 
