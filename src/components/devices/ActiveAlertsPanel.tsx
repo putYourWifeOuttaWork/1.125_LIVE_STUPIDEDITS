@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import useCompanies from '../../hooks/useCompanies';
+import { useActiveCompany } from '../../hooks/useActiveCompany';
 import CompanyAlertThresholdsModal from '../companies/CompanyAlertThresholdsModal';
 
 interface DeviceAlert {
@@ -43,21 +44,28 @@ interface DeviceAlert {
 const ActiveAlertsPanel = () => {
   const navigate = useNavigate();
   const { userCompany, isAdmin } = useCompanies();
+  const { activeCompanyId, isSuperAdmin } = useActiveCompany();
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
   const [showThresholdsModal, setShowThresholdsModal] = useState(false);
 
+  // Determine which company ID to use (super admin context or user's company)
+  const effectiveCompanyId = activeCompanyId || userCompany?.company_id;
+
   // Load active alerts
   useEffect(() => {
-    if (!userCompany) return;
+    if (!effectiveCompanyId) {
+      setLoading(false);
+      return;
+    }
 
     const loadAlerts = async () => {
       try {
         let query = supabase
           .from('device_alerts')
           .select('*')
-          .eq('company_id', userCompany.company_id)
+          .eq('company_id', effectiveCompanyId)
           .order('triggered_at', { ascending: false })
           .limit(10);
 
@@ -88,7 +96,7 @@ const ActiveAlertsPanel = () => {
           event: '*',
           schema: 'public',
           table: 'device_alerts',
-          filter: `company_id=eq.${userCompany.company_id}`,
+          filter: `company_id=eq.${effectiveCompanyId}`,
         },
         () => {
           loadAlerts(); // Reload on any change
@@ -99,7 +107,7 @@ const ActiveAlertsPanel = () => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [userCompany, showResolved]);
+  }, [effectiveCompanyId, showResolved]);
 
   const handleViewSession = async (alert: DeviceAlert) => {
     // If we have a direct session_id, use it
@@ -214,6 +222,35 @@ const ActiveAlertsPanel = () => {
   const criticalCount = alerts.filter(a => a.severity === 'critical' && !a.resolved_at).length;
   const warningCount = alerts.filter(a => a.severity === 'warning' && !a.resolved_at).length;
   const activeCount = alerts.filter(a => !a.resolved_at).length;
+
+  // Show message if no company is selected
+  if (!effectiveCompanyId) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-orange-600" />
+            <h2 className="text-lg font-semibold">Active Alerts</h2>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            {isSuperAdmin ? (
+              <>
+                <p className="font-medium">No Company Selected</p>
+                <p className="text-sm mt-2">Please select a company from the navbar to view alerts</p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">No Company Assignment</p>
+                <p className="text-sm mt-2">Please contact your administrator</p>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (loading) {
     return (
@@ -400,12 +437,12 @@ const ActiveAlertsPanel = () => {
       </CardContent>
 
       {/* Company Alert Thresholds Modal */}
-      {userCompany && showThresholdsModal && (
+      {effectiveCompanyId && showThresholdsModal && (
         <CompanyAlertThresholdsModal
           isOpen={showThresholdsModal}
           onClose={() => setShowThresholdsModal(false)}
-          companyId={userCompany.company_id}
-          companyName={userCompany.name}
+          companyId={effectiveCompanyId}
+          companyName={userCompany?.name || 'Company'}
         />
       )}
     </Card>
