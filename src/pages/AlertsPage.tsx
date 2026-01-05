@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -84,12 +84,14 @@ const AlertsPage = () => {
 
   // Filter state from URL
   const [showFilters, setShowFilters] = useState(false);
-  const severityFilter = searchParams.get('severity')?.split(',') || [];
+  const severityFilterStr = searchParams.get('severity') || '';
+  const severityFilter = severityFilterStr ? severityFilterStr.split(',') : [];
   const statusFilter = searchParams.get('status') || 'unresolved';
   const companyFilter = searchParams.get('company') || activeCompanyId || '';
   const siteFilter = searchParams.get('site') || '';
   const deviceFilter = searchParams.get('device') || '';
-  const categoryFilter = searchParams.get('category')?.split(',') || [];
+  const categoryFilterStr = searchParams.get('category') || '';
+  const categoryFilter = categoryFilterStr ? categoryFilterStr.split(',') : [];
   const dateRangeFilter = searchParams.get('dateRange') || 'last_7_days';
   const searchQuery = searchParams.get('search') || '';
 
@@ -123,24 +125,16 @@ const AlertsPage = () => {
     updateFilter('category', newFilter);
   };
 
-  // Load alerts with filters
-  useEffect(() => {
-    loadAlerts();
-    loadStats();
-  }, [
-    currentPage,
-    pageSize,
-    severityFilter,
-    statusFilter,
-    companyFilter,
-    siteFilter,
-    deviceFilter,
-    categoryFilter,
-    dateRangeFilter,
-    searchQuery,
-  ]);
+  // Ref to track if initial load is done
+  const initialLoadRef = useRef(false);
+  const loadingRef = useRef(false);
 
-  const loadAlerts = async () => {
+  // Memoized load alerts function
+  const loadAlerts = useCallback(async () => {
+    // Prevent concurrent requests
+    if (loadingRef.current) return;
+
+    loadingRef.current = true;
     try {
       setLoading(true);
 
@@ -217,10 +211,23 @@ const AlertsPage = () => {
       toast.error('Failed to load alerts');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  };
+  }, [
+    currentPage,
+    pageSize,
+    severityFilterStr,
+    statusFilter,
+    companyFilter,
+    siteFilter,
+    deviceFilter,
+    categoryFilterStr,
+    dateRangeFilter,
+    searchQuery,
+  ]);
 
-  const loadStats = async () => {
+  // Memoized load stats function
+  const loadStats = useCallback(async () => {
     try {
       let query = supabase
         .from('device_alerts')
@@ -261,9 +268,18 @@ const AlertsPage = () => {
     } catch (error) {
       console.error('Error loading stats:', error);
     }
-  };
+  }, [companyFilter, isSuperAdmin]);
 
-  // Real-time subscription
+  // Load alerts when filters change
+  useEffect(() => {
+    if (!initialLoadRef.current) {
+      initialLoadRef.current = true;
+    }
+    loadAlerts();
+    loadStats();
+  }, [loadAlerts, loadStats]);
+
+  // Real-time subscription - only reload, don't call directly
   useEffect(() => {
     const channel = supabase
       .channel('device_alerts_realtime')
@@ -276,8 +292,11 @@ const AlertsPage = () => {
           filter: companyFilter ? `company_id=eq.${companyFilter}` : undefined,
         },
         () => {
-          loadAlerts();
-          loadStats();
+          // Only reload if not currently loading
+          if (!loadingRef.current && initialLoadRef.current) {
+            loadAlerts();
+            loadStats();
+          }
         }
       )
       .subscribe();
@@ -285,7 +304,7 @@ const AlertsPage = () => {
     return () => {
       channel.unsubscribe();
     };
-  }, [companyFilter]);
+  }, [companyFilter, loadAlerts, loadStats]);
 
   const acknowledgeAlert = async (alertId: string) => {
     try {
