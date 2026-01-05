@@ -22,6 +22,7 @@ import NetworkStatusIndicator from './components/common/NetworkStatusIndicator';
 import { registerAuthErrorHandler } from './lib/queryClient';
 import RequireSuperAdmin from './components/routing/RequireSuperAdmin';
 import RequireCompanyAdmin from './components/routing/RequireCompanyAdmin';
+import RequireCompanyAssignment from './components/routing/RequireCompanyAssignment';
 
 // Lazy load pages to improve initial load time
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -40,6 +41,8 @@ const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
 const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const DemoExperiencePage = lazy(() => import('./pages/DemoExperiencePage'));
+const SuperAdminPanelPage = lazy(() => import('./pages/SuperAdminPanelPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -292,8 +295,26 @@ function App() {
           <Route path="/deactivated" element={isUserDeactivated ? <DeactivatedUserPage /> : <Navigate to="/home" />} />
           
           <Route element={<ProtectedRoute />}>
+            {/* Demo Experience - No Layout */}
+            <Route path="/demo" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <DemoExperiencePage />
+              </Suspense>
+            } />
+
+            {/* Super Admin Panel - With Layout */}
             <Route element={<AppLayout />}>
-              <Route path="/home" element={
+              <Route path="/admin" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <RequireSuperAdmin>
+                    <SuperAdminPanelPage />
+                  </RequireSuperAdmin>
+                </Suspense>
+              } />
+
+              {/* Company-Required Routes */}
+              <Route element={<RequireCompanyAssignment />}>
+                <Route path="/home" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <HomePage />
                 </Suspense>
@@ -378,8 +399,14 @@ function App() {
                   <AlertsPage />
                 </Suspense>
               } />
+              </Route>
+              {/* End Company-Required Routes */}
+
             </Route>
+            {/* End AppLayout */}
+
           </Route>
+          {/* End ProtectedRoute */}
           
           <Route path="/error" element={<ErrorPage />} />
           <Route path="*" element={<Navigate to={user ? '/home' : '/login'} />} />
