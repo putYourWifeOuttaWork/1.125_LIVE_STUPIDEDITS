@@ -20,6 +20,8 @@ import { useCompanyFilterStore } from '../stores/companyFilterStore';
 import useUserRole from '../hooks/useUserRole';
 
 const HomePage = () => {
+  console.log('HomePage: Component mounting/rendering');
+
   const navigate = useNavigate();
   const { loading: companyLoading } = useCompanies();
   const { selectedCompanyId: activeCompanyId } = useCompanyFilterStore();
@@ -30,10 +32,19 @@ const HomePage = () => {
   const [sessionSiteData, setSessionSiteData] = useState<Site | null>(null);
   const [sessionDevices, setSessionDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
+  const [renderError, setRenderError] = useState<Error | null>(null);
 
   const {
     setIsSessionsDrawerOpen,
   } = useSessionStore();
+
+  // Component mount effect
+  useEffect(() => {
+    console.log('HomePage: Component mounted');
+    return () => {
+      console.log('HomePage: Component unmounting');
+    };
+  }, []);
 
   // Handle session selection
   const handleSessionSelect = async (session: ActiveSession) => {
@@ -127,12 +138,37 @@ const HomePage = () => {
     }
   };
 
+  // Debug logging
+  console.log('HomePage render:', {
+    companyLoading,
+    isSuperAdmin,
+    activeCompanyId,
+    selectedSessionId,
+    hasSessionSiteData: !!sessionSiteData
+  });
+
+  // Display any render errors
+  if (renderError) {
+    console.error('HomePage: Render error:', renderError);
+    return (
+      <div className="p-8 bg-red-50 border border-red-200 rounded-lg">
+        <h2 className="text-xl font-bold text-red-800 mb-2">Render Error</h2>
+        <p className="text-red-600">{renderError.message}</p>
+        <pre className="mt-4 text-xs text-red-700 overflow-auto">{renderError.stack}</pre>
+      </div>
+    );
+  }
+
   if (companyLoading) {
+    console.log('HomePage: Showing LoadingScreen due to companyLoading');
     return <LoadingScreen />;
   }
 
-  return (
-     <div className="animate-fade-in space-y-4">
+  console.log('HomePage: Rendering main content');
+
+  try {
+    return (
+      <div className="animate-fade-in space-y-4">
       {/* Tier 1: Company Context Banner (Super Admin Only) + Header */}
       {isSuperAdmin && activeCompanyId && (
         <Card className="border-l-4 border-l-blue-600">
@@ -189,7 +225,21 @@ const HomePage = () => {
         <div className="space-y-4">
           {/* Active Alerts - Top 50% - SCROLLABLE */}
           <div className="max-h-[400px] overflow-y-auto">
-            <ActiveAlertsPanel />
+            {(() => {
+              try {
+                console.log('Rendering ActiveAlertsPanel');
+                return <ActiveAlertsPanel />;
+              } catch (error) {
+                console.error('Error rendering ActiveAlertsPanel:', error);
+                return (
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-red-600">Error loading alerts panel</p>
+                    </CardContent>
+                  </Card>
+                );
+              }
+            })()}
           </div>
 
           {/* Active Sessions List - Bottom 50% */}
@@ -200,12 +250,20 @@ const HomePage = () => {
                 <p className="text-sm text-gray-600 mt-1">Real-time device session monitoring</p>
               </CardHeader>
               <CardContent>
-                <ActiveSessionsGrid
-                  limit={20}
-                  companyFilter={activeCompanyId}
-                  onSessionSelect={handleSessionSelect}
-                  selectedSessionId={selectedSessionId}
-                />
+                {(() => {
+                  try {
+                    console.log('Rendering ActiveSessionsGrid');
+                    return <ActiveSessionsGrid
+                      limit={20}
+                      companyFilter={activeCompanyId}
+                      onSessionSelect={handleSessionSelect}
+                      selectedSessionId={selectedSessionId}
+                    />;
+                  } catch (error) {
+                    console.error('Error rendering ActiveSessionsGrid:', error);
+                    return <p className="text-red-600">Error loading active sessions</p>;
+                  }
+                })()}
               </CardContent>
             </Card>
           </div>
@@ -236,7 +294,11 @@ const HomePage = () => {
                   <div className="flex justify-center py-12">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
-                ) : sessionDevices.length > 0 && sessionSiteData.length && sessionSiteData.width ? (
+                ) : sessionDevices.length > 0 &&
+                     sessionSiteData?.length &&
+                     sessionSiteData.length > 0 &&
+                     sessionSiteData?.width &&
+                     sessionSiteData.width > 0 ? (
                   <SiteMapAnalyticsViewer
                     siteLength={sessionSiteData.length}
                     siteWidth={sessionSiteData.width}
@@ -252,7 +314,7 @@ const HomePage = () => {
                     <MapPin className="mx-auto h-16 w-16 text-gray-300" />
                     <p className="text-gray-600 mt-4 font-medium">Site Map Not Ready</p>
                     <p className="text-sm text-gray-500 mt-2">
-                      {!sessionSiteData.length || !sessionSiteData.width
+                      {!sessionSiteData?.length || sessionSiteData.length <= 0 || !sessionSiteData?.width || sessionSiteData.width <= 0
                         ? 'Site dimensions need to be configured'
                         : 'No devices have been placed on this site map yet'
                       }
@@ -265,7 +327,18 @@ const HomePage = () => {
         </div>
       </div>
     </div>
-  );
+    );
+  } catch (error: any) {
+    console.error('HomePage: Caught render error:', error);
+    // Set error state to trigger error display on next render
+    setTimeout(() => setRenderError(error), 0);
+    return (
+      <div className="p-8 bg-red-50 border border-red-200 rounded-lg">
+        <h2 className="text-xl font-bold text-red-800 mb-2">Unexpected Error</h2>
+        <p className="text-red-600">{error?.message || 'An unknown error occurred'}</p>
+      </div>
+    );
+  }
 };
 
 export default HomePage;
