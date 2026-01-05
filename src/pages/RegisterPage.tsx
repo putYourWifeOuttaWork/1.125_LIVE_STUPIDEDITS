@@ -23,8 +23,8 @@ const RegisterSchema = Yup.object().shape({
   confirmPassword: Yup.string()
     .oneOf([Yup.ref('password')], 'Passwords must match')
     .required('Please confirm your password'),
-  organization: Yup.string()
-    .optional()
+  companyName: Yup.string()
+    .required('Company name is required')
 });
 
 const RegisterPage = () => {
@@ -40,20 +40,20 @@ const RegisterPage = () => {
       fullName: '',
       password: '',
       confirmPassword: '',
-      organization: ''
+      companyName: ''
     },
     validationSchema: RegisterSchema,
     onSubmit: async (values, { setSubmitting }) => {
       try {
         setErrorMessage('');
-
+        
         const { data, error } = await supabase.auth.signUp({
           email: values.email,
           password: values.password,
           options: {
             data: {
               full_name: values.fullName,
-              organization: values.organization || null
+              company: values.companyName
             }
           }
         });
@@ -184,16 +184,15 @@ const RegisterPage = () => {
               </div>
 
               <Input
-                label="Organization (Optional)"
-                id="organization"
-                name="organization"
+                label="Company Name"
+                id="companyName"
+                name="companyName"
                 type="text"
-                placeholder="Enter your organization name"
-                value={formik.values.organization}
+                placeholder="Enter your company name"
+                value={formik.values.companyName}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
-                error={formik.touched.organization && formik.errors.organization ? formik.errors.organization : undefined}
-                helperText="Your admin will assign you to the correct company"
+                error={formik.touched.companyName && formik.errors.companyName ? formik.errors.companyName : undefined}
               />
 
               <Button

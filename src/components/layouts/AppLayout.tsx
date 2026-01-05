@@ -280,16 +280,6 @@ const AppLayout = () => {
                   </ReloadLink>
                 </>
               )}
-              {isSuperAdmin && (
-                <Link
-                  to="/admin"
-                  className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors bg-blue-700"
-                  data-testid="admin-link"
-                >
-                  <Shield size={18} />
-                  <span className="hidden lg:inline">Admin</span>
-                </Link>
-              )}
               <Link
                 to="/profile" 
                 className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
@@ -403,19 +393,6 @@ const AppLayout = () => {
                 <div className="flex items-center space-x-2">
                   <Cpu size={18} />
                   <span>Devices</span>
-                </div>
-              </Link>
-            )}
-            {isSuperAdmin && (
-              <Link
-                to="/admin"
-                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors bg-blue-50 border-l-4 border-blue-600"
-                onClick={() => setIsMobileMenuOpen(false)}
-                data-testid="mobile-admin-link"
-              >
-                <div className="flex items-center space-x-2">
-                  <Shield size={18} className="text-blue-600" />
-                  <span className="font-semibold text-blue-600">Admin Panel</span>
                 </div>
               </Link>
             )}
