@@ -221,35 +221,8 @@ const AppLayout = () => {
               </div>
             </div>
 
-            {/* Breadcrumbs (hide on mobile) */}
-            <div className="hidden md:flex items-center space-x-2 text-sm" data-testid="breadcrumbs">
-              <Link to="/home" className="hover:underline" data-testid="home-breadcrumb">
-                Home
-              </Link>
-              {location.pathname.includes('/programs') && location.pathname !== '/programs' && (
-                <>
-                  <span>/</span>
-                  <Link to="/programs" className="hover:underline" data-testid="programs-breadcrumb">Programs</Link>
-                </>
-              )}
-              {selectedProgram && (
-                <>
-                  <span>/</span>
-                  <Link to={`/programs/${selectedProgram.program_id}/sites`} className="hover:underline truncate max-w-[120px] md:max-w-[150px]" data-testid={`program-breadcrumb-${selectedProgram.program_id}`}>
-                    {selectedProgram.name}
-                  </Link>
-                </>
-              )}
-              {selectedSite && (
-                <>
-                  <span>/</span>
-                  <span className="truncate max-w-[120px] md:max-w-[150px]" data-testid={`site-breadcrumb-${selectedSite.site_id}`}>{selectedSite.name}</span>
-                </>
-              )}
-            </div>
-
             {/* User menu (desktop) */}
-            <div className="hidden md:flex items-center space-x-1 lg:space-x-2" data-testid="user-menu-desktop">
+            <div className="hidden md:flex items-center gap-1 flex-shrink-0" data-testid="user-menu-desktop">
               <Link 
                 to="/home" 
                 className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
@@ -272,8 +245,6 @@ const AppLayout = () => {
                   <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent-500 rounded-full"></span>
                 )}
               </button>
-
-              <NotificationCenter />
 
               {userCompany && (
                 <Link
@@ -446,7 +417,7 @@ const AppLayout = () => {
       
       {/* Enhanced Mobile Sessions Button */}
       {showSessionIndicator && hasActiveSessions && (
-        <div 
+        <div
           className="fixed bottom-14 right-12 z-50 flex items-center bg-primary-600 rounded-full shadow-lg cursor-pointer animate-pulse"
           onClick={() => setIsSessionsDrawerOpen(true)}
           data-testid="mobile-sessions-button"
@@ -458,6 +429,11 @@ const AppLayout = () => {
           </div>
         </div>
       )}
+
+      {/* Floating Notification Center */}
+      <div className="fixed bottom-4 right-4 z-50">
+        <NotificationCenter />
+      </div>
     </div>
   );
 };
