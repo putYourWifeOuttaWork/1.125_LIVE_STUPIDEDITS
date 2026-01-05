@@ -92,7 +92,7 @@ const AlertsPage = () => {
   const deviceFilter = searchParams.get('device') || '';
   const categoryFilterStr = searchParams.get('category') || '';
   const categoryFilter = categoryFilterStr ? categoryFilterStr.split(',') : [];
-  const dateRangeFilter = searchParams.get('dateRange') || 'last_7_days';
+  const dateRangeFilter = searchParams.get('dateRange') || 'all';
   const searchQuery = searchParams.get('search') || '';
 
   // Update URL when filters change
