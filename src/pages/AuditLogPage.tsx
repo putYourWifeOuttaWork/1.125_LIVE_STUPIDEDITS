@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePilotProgramStore } from '../stores/pilotProgramStore';
 import { useAuditLog } from '../hooks/useAuditLog';
-import { Clock, Filter, User, FileText, ArrowLeft, RefreshCw, Download, Hash } from 'lucide-react';
+import { Clock, Filter, User, FileText, ArrowLeft, RefreshCw, Download, Hash, ChevronRight, ChevronDown, Camera, Activity } from 'lucide-react';
 import Button from '../components/common/Button';
 import LoadingScreen from '../components/common/LoadingScreen';
 import DateRangePicker from '../components/common/DateRangePicker';
@@ -50,6 +50,8 @@ const objectTypes = [
 // Event sources for filtering (site level - comprehensive audit)
 const siteEventSources = [
   { value: 'site', label: 'Site Updates' },
+  { value: 'session', label: 'Daily Sessions' },
+  { value: 'wake', label: 'Device Wakes' },
   { value: 'device', label: 'Device Events' },
   { value: 'alert', label: 'Device Alerts' },
   { value: 'command', label: 'Device Commands' },
@@ -194,6 +196,20 @@ const AuditLogPage = () => {
       newExpanded.add(eventId);
     }
     setExpandedRows(newExpanded);
+  };
+
+  const handleDeviceClick = (deviceId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deviceId && programId) {
+      navigate(`/programs/${programId}/devices/${deviceId}`);
+    }
+  };
+
+  const handleSessionClick = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (sessionId && programId && siteId) {
+      navigate(`/programs/${programId}/sites/${siteId}/sessions/${sessionId}`);
+    }
   };
   
   const handleExportCsv = async () => {
@@ -438,12 +454,18 @@ const AuditLogPage = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th scope="col" className="w-8 px-2 py-3"></th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Time
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Event
                   </th>
+                  {siteId && (
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Device / Session
+                    </th>
+                  )}
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     User
                   </th>
@@ -457,15 +479,33 @@ const AuditLogPage = () => {
                   <>
                     <tr
                       key={log.event_id}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => toggleRowExpansion(log.event_id)}
+                      className="hover:bg-gray-50"
                     >
+                      {/* Expand/Collapse Icon */}
+                      <td
+                        className="w-8 px-2 py-4 cursor-pointer"
+                        onClick={() => toggleRowExpansion(log.event_id)}
+                      >
+                        {expandedRows.has(log.event_id) ? (
+                          <ChevronDown className="h-4 w-4 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-gray-400" />
+                        )}
+                      </td>
+
+                      {/* Timestamp */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {format(new Date(log.event_timestamp), 'MMM d, yyyy HH:mm:ss')}
                       </td>
+
+                      {/* Event Type Badge */}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          log.event_type?.includes('Creation')
+                          log.event_source === 'session'
+                            ? 'bg-blue-100 text-blue-800'
+                            : log.event_source === 'wake'
+                            ? 'bg-purple-100 text-purple-800'
+                            : log.event_type?.includes('Creation')
                             ? 'bg-success-100 text-success-800'
                             : log.event_type?.includes('Update')
                             ? 'bg-secondary-100 text-secondary-800'
@@ -473,95 +513,229 @@ const AuditLogPage = () => {
                             ? 'bg-error-100 text-error-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}>
+                          {log.event_source === 'session' && <Activity size={12} className="mr-1" />}
+                          {log.event_source === 'wake' && <Camera size={12} className="mr-1" />}
                           {eventTypeLabels[log.event_type as HistoryEventType] || log.event_type}
                         </span>
                       </td>
+
+                      {/* Device / Session Column (only for site-level audit logs) */}
+                      {siteId && (
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {log.device_code && log.device_id && (
+                            <button
+                              onClick={(e) => handleDeviceClick(log.device_id, e)}
+                              className="flex items-center text-primary-600 hover:text-primary-800 hover:underline font-mono"
+                            >
+                              <Camera size={14} className="mr-1" />
+                              {log.device_code}
+                            </button>
+                          )}
+                          {log.session_id && (
+                            <button
+                              onClick={(e) => handleSessionClick(log.session_id, e)}
+                              className="flex items-center text-blue-600 hover:text-blue-800 hover:underline text-xs mt-1"
+                            >
+                              <Activity size={12} className="mr-1" />
+                              {log.session_id.substring(0, 8)}...
+                            </button>
+                          )}
+                          {!log.device_code && !log.session_id && (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* User */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <div className="flex items-center">
                           <User className="h-4 w-4 text-gray-400 mr-1" />
                           {log.user_email || 'System'}
                         </div>
-                        {log.device_code && (
-                          <div className="flex items-center mt-1 text-xs text-gray-500">
-                            <span className="font-mono">{log.device_code}</span>
-                          </div>
-                        )}
                       </td>
+
+                      {/* Details */}
                       <td className="px-6 py-4 text-sm text-gray-500">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-900">
-                            {log.description || (log.object_type ? log.object_type.charAt(0).toUpperCase() + log.object_type.slice(1).replace('_', ' ') : '')}
-                          </p>
-                          {log.severity && log.event_source === 'alert' && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                              log.severity === 'critical' ? 'bg-error-100 text-error-800' :
-                              log.severity === 'error' ? 'bg-error-100 text-error-700' :
-                              log.severity === 'warning' ? 'bg-warning-100 text-warning-800' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {log.severity}
-                            </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-900">
+                              {log.description || (log.object_type ? log.object_type.charAt(0).toUpperCase() + log.object_type.slice(1).replace('_', ' ') : '')}
+                            </p>
+                            {log.severity && (
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                log.severity === 'critical' ? 'bg-error-100 text-error-800' :
+                                log.severity === 'error' ? 'bg-error-100 text-error-700' :
+                                log.severity === 'warning' ? 'bg-warning-100 text-warning-800' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {log.severity}
+                              </span>
+                            )}
+                          </div>
+                          {log.new_data && Object.keys(log.new_data).length > 0 && (
+                            <div className="mt-1 text-xs">
+                              {log.update_type === 'UserAdded' && (
+                                <span>Added user: {log.new_data.user_email}</span>
+                              )}
+                              {log.update_type === 'UserRemoved' && (
+                                <span>Removed user: {log.old_data?.user_email}</span>
+                              )}
+                              {log.update_type === 'UserRoleChanged' && (
+                                <span>
+                                  Changed role for {log.old_data?.user_email} from{' '}
+                                  {log.old_data?.role} to {log.new_data.role}
+                                </span>
+                              )}
+                              {log.update_type === 'ProgramCreation' && (
+                                <span>Created program: {log.new_data.name}</span>
+                              )}
+                              {log.update_type === 'ProgramUpdate' && (
+                                <span>
+                                  Updated program properties
+                                  {log.old_data?.name !== log.new_data.name
+                                    ? ` (renamed from "${log.old_data?.name}" to "${log.new_data.name}")`
+                                    : ''}
+                                </span>
+                              )}
+                              {log.update_type === 'SiteCreation' && (
+                                <span>Created site: {log.new_data.name}</span>
+                              )}
+                              {log.update_type === 'SiteUpdate' && (
+                                <span>Updated site: {log.new_data.name}</span>
+                              )}
+                              {log.update_type === 'SubmissionCreation' && (
+                                <div className="flex items-center">
+                                  <span>Created submission with temp: {log.new_data.temperature}°F</span>
+                                  {getGlobalSubmissionId(log) && (
+                                    <span className="ml-2 inline-flex items-center text-xs text-primary-600">
+                                      <Hash size={10} className="mr-0.5" />
+                                      {getGlobalSubmissionId(log)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {log.update_type === 'SubmissionUpdate' && (
+                                <div className="flex items-center">
+                                  <span>Updated submission</span>
+                                  {getGlobalSubmissionId(log) && (
+                                    <span className="ml-2 inline-flex items-center text-xs text-primary-600">
+                                      <Hash size={10} className="mr-0.5" />
+                                      {getGlobalSubmissionId(log)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
-                        {log.new_data && Object.keys(log.new_data).length > 0 && (
-                          <div className="mt-1 text-xs">
-                            {log.update_type === 'UserAdded' && (
-                              <span>Added user: {log.new_data.user_email}</span>
-                            )}
-                            {log.update_type === 'UserRemoved' && (
-                              <span>Removed user: {log.old_data?.user_email}</span>
-                            )}
-                            {log.update_type === 'UserRoleChanged' && (
-                              <span>
-                                Changed role for {log.old_data?.user_email} from{' '}
-                                {log.old_data?.role} to {log.new_data.role}
-                              </span>
-                            )}
-                            {log.update_type === 'ProgramCreation' && (
-                              <span>Created program: {log.new_data.name}</span>
-                            )}
-                            {log.update_type === 'ProgramUpdate' && (
-                              <span>
-                                Updated program properties
-                                {log.old_data?.name !== log.new_data.name
-                                  ? ` (renamed from "${log.old_data?.name}" to "${log.new_data.name}")`
-                                  : ''}
-                              </span>
-                            )}
-                            {log.update_type === 'SiteCreation' && (
-                              <span>Created site: {log.new_data.name}</span>
-                            )}
-                            {log.update_type === 'SiteUpdate' && (
-                              <span>Updated site: {log.new_data.name}</span>
-                            )}
-                            {log.update_type === 'SubmissionCreation' && (
-                              <div className="flex items-center">
-                                <span>Created submission with temp: {log.new_data.temperature}°F</span>
-                                {getGlobalSubmissionId(log) && (
-                                  <span className="ml-2 inline-flex items-center text-xs text-primary-600">
-                                    <Hash size={10} className="mr-0.5" />
-                                    {getGlobalSubmissionId(log)}
-                                  </span>
-                                )}
+                      </td>
+                    </tr>
+
+                    {/* Expanded Row Content - JSON Details */}
+                    {expandedRows.has(log.event_id) && (
+                      <tr key={`${log.event_id}-expanded`} className="bg-gray-50">
+                        <td colSpan={siteId ? 6 : 5} className="px-6 py-4">
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-semibold text-gray-900">Event Details</h4>
+
+                            {/* Event Metadata */}
+                            <div className="grid grid-cols-2 gap-4 text-xs">
+                              <div>
+                                <span className="font-medium text-gray-700">Event ID:</span>
+                                <span className="ml-2 text-gray-600 font-mono">{log.event_id}</span>
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-700">Event Source:</span>
+                                <span className="ml-2 text-gray-600">{log.event_source || 'N/A'}</span>
+                              </div>
+                              {log.session_id && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Session ID:</span>
+                                  <button
+                                    onClick={(e) => handleSessionClick(log.session_id, e)}
+                                    className="ml-2 text-blue-600 hover:text-blue-800 hover:underline font-mono"
+                                  >
+                                    {log.session_id}
+                                  </button>
+                                </div>
+                              )}
+                              {log.device_id && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Device ID:</span>
+                                  <button
+                                    onClick={(e) => handleDeviceClick(log.device_id, e)}
+                                    className="ml-2 text-primary-600 hover:text-primary-800 hover:underline font-mono"
+                                  >
+                                    {log.device_id}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Event Data JSON */}
+                            {log.event_data && Object.keys(log.event_data).length > 0 && (
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-medium text-gray-700">Event Data:</span>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(JSON.stringify(log.event_data, null, 2));
+                                      toast.success('Copied to clipboard');
+                                    }}
+                                    className="text-xs text-primary-600 hover:text-primary-800"
+                                  >
+                                    Copy JSON
+                                  </button>
+                                </div>
+                                <pre className="bg-white p-3 rounded border border-gray-200 overflow-x-auto text-xs">
+                                  {JSON.stringify(log.event_data, null, 2)}
+                                </pre>
                               </div>
                             )}
-                            {log.update_type === 'SubmissionUpdate' && (
-                              <div className="flex items-center">
-                                <span>Updated submission</span>
-                                {getGlobalSubmissionId(log) && (
-                                  <span className="ml-2 inline-flex items-center text-xs text-primary-600">
-                                    <Hash size={10} className="mr-0.5" />
-                                    {getGlobalSubmissionId(log)}
-                                  </span>
-                                )}
+
+                            {/* Metadata JSON */}
+                            {log.metadata && Object.keys(log.metadata).length > 0 && (
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-medium text-gray-700">Metadata:</span>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(JSON.stringify(log.metadata, null, 2));
+                                      toast.success('Copied to clipboard');
+                                    }}
+                                    className="text-xs text-primary-600 hover:text-primary-800"
+                                  >
+                                    Copy JSON
+                                  </button>
+                                </div>
+                                <pre className="bg-white p-3 rounded border border-gray-200 overflow-x-auto text-xs">
+                                  {JSON.stringify(log.metadata, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+
+                            {/* Old Data / New Data for updates */}
+                            {log.old_data && Object.keys(log.old_data).length > 0 && (
+                              <div>
+                                <span className="text-xs font-medium text-gray-700">Previous Values:</span>
+                                <pre className="bg-white p-3 rounded border border-gray-200 overflow-x-auto text-xs mt-2">
+                                  {JSON.stringify(log.old_data, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+
+                            {log.new_data && Object.keys(log.new_data).length > 0 && log.event_type?.includes('Update') && (
+                              <div>
+                                <span className="text-xs font-medium text-gray-700">New Values:</span>
+                                <pre className="bg-white p-3 rounded border border-gray-200 overflow-x-auto text-xs mt-2">
+                                  {JSON.stringify(log.new_data, null, 2)}
+                                </pre>
                               </div>
                             )}
                           </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                        </td>
+                      </tr>
+                    )}
                   </>
                 ))}
               </tbody>
