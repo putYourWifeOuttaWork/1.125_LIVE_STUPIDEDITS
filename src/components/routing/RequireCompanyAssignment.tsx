@@ -21,38 +21,19 @@ const RequireCompanyAssignment = ({ children }: RequireCompanyAssignmentProps) =
   useEffect(() => {
     const checkPermissions = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (!user) {
-          setLoading(false);
-          return;
-        }
-
-        // Query user record directly instead of using RPC
-        const { data: userRecord, error } = await supabase
-          .from('users')
-          .select('company_id, is_super_admin')
-          .eq('id', user.id)
-          .maybeSingle();
+        const { data, error } = await supabase
+          .rpc('get_user_permission_status');
 
         if (error) {
-          console.error('RequireCompanyAssignment: Query error:', error);
+          console.error('Error checking permissions:', error);
           setLoading(false);
           return;
         }
 
-        if (!userRecord) {
-          // User record doesn't exist yet - redirect to demo
-          setHasCompany(false);
-          setIsSuperAdmin(false);
-          setLoading(false);
-          return;
-        }
-
-        setHasCompany(!!userRecord.company_id);
-        setIsSuperAdmin(userRecord.is_super_admin || false);
+        setHasCompany(data.has_company);
+        setIsSuperAdmin(data.is_super_admin);
       } catch (error) {
-        console.error('RequireCompanyAssignment: Exception:', error);
+        console.error('Error in RequireCompanyAssignment:', error);
       } finally {
         setLoading(false);
       }
@@ -62,26 +43,20 @@ const RequireCompanyAssignment = ({ children }: RequireCompanyAssignmentProps) =
   }, []);
 
   if (loading) {
-    console.log('RequireCompanyAssignment: Still loading, showing LoadingScreen');
     return <LoadingScreen />;
   }
 
-  console.log('RequireCompanyAssignment: Rendering decision:', { isSuperAdmin, hasCompany });
-
   // Super admins can access everything
   if (isSuperAdmin) {
-    console.log('RequireCompanyAssignment: User is super admin, allowing access');
     return <>{children}</>;
   }
 
   // Users without a company assignment go to demo
   if (!hasCompany) {
-    console.log('RequireCompanyAssignment: User has no company, redirecting to /demo');
     return <Navigate to="/demo" state={{ from: location }} replace />;
   }
 
   // Users with a company can proceed
-  console.log('RequireCompanyAssignment: User has company, rendering children');
   return <>{children}</>;
 };
 
