@@ -39,6 +39,7 @@ const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
 const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'));
+const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -370,6 +371,11 @@ function App() {
               <Route path="/devices/:deviceId" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <DeviceDetailPage />
+                </Suspense>
+              } />
+              <Route path="/alerts" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <AlertsPage />
                 </Suspense>
               } />
             </Route>

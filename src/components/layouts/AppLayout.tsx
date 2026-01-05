@@ -17,7 +17,8 @@ import {
   ClipboardList,
   Cpu,
   ChevronDown,
-  Shield
+  Shield,
+  AlertTriangle
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -223,15 +224,26 @@ const AppLayout = () => {
 
             {/* User menu (desktop) */}
             <div className="hidden md:flex items-center gap-1 flex-shrink-0" data-testid="user-menu-desktop">
-              <Link 
-                to="/home" 
+              <Link
+                to="/home"
                 className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
                 data-testid="home-link"
               >
                 <Home size={18} />
                 <span className="hidden lg:inline">Home</span>
               </Link>
-              
+
+              {isCompanyAdmin && (
+                <Link
+                  to="/alerts"
+                  className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
+                  data-testid="alerts-link"
+                >
+                  <AlertTriangle size={18} />
+                  <span className="hidden lg:inline">Alerts</span>
+                </Link>
+              )}
+
               <button
                 className={`relative flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors ${
                   isSessionsDrawerOpen ? 'bg-primary-600' : ''
@@ -305,8 +317,8 @@ const AppLayout = () => {
               </div>
             </Link>
             
-            <Link 
-              to="/programs" 
+            <Link
+              to="/programs"
               className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
               onClick={() => setIsMobileMenuOpen(false)}
               data-testid="mobile-programs-link"
@@ -316,6 +328,20 @@ const AppLayout = () => {
                 <span>Programs</span>
               </div>
             </Link>
+
+            {isCompanyAdmin && (
+              <Link
+                to="/alerts"
+                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                onClick={() => setIsMobileMenuOpen(false)}
+                data-testid="mobile-alerts-link"
+              >
+                <div className="flex items-center space-x-2">
+                  <AlertTriangle size={18} />
+                  <span>Alerts</span>
+                </div>
+              </Link>
+            )}
             {selectedProgram && (
               <>
                 <Link 
