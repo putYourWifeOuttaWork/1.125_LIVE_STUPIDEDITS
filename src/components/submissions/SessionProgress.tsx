@@ -189,13 +189,13 @@ const SessionProgress: React.FC<SessionProgressProps> = ({
         {/* Progress bar */}
         <div className="flex items-center gap-2">
           <div className="w-full bg-gray-200 rounded-full h-1.5">
-            <div 
-              className="bg-primary-600 h-1.5 rounded-full" 
-              style={{ width: `${session.percentage_complete}%` }}
+            <div
+              className="bg-primary-600 h-1.5 rounded-full"
+              style={{ width: `${Math.min(session.percentage_complete, 100)}%` }}
             ></div>
           </div>
           <span className="text-xs whitespace-nowrap">
-            {session.percentage_complete}%
+            {Math.min(session.percentage_complete, 100)}%
           </span>
         </div>
         
@@ -289,12 +289,12 @@ const SessionProgress: React.FC<SessionProgressProps> = ({
       {/* Progress bar */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-sm font-medium">Progress: {session.percentage_complete}% Complete</span>
+          <span className="text-sm font-medium">Progress: {Math.min(session.percentage_complete, 100)}% Complete</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
-          <div 
-            className="bg-primary-600 h-2 rounded-full" 
-            style={{ width: `${session.percentage_complete}%` }}
+          <div
+            className="bg-primary-600 h-2 rounded-full"
+            style={{ width: `${Math.min(session.percentage_complete, 100)}%` }}
           ></div>
         </div>
       </div>

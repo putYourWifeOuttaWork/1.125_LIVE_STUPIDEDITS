@@ -5,14 +5,15 @@ import { useAuthStore } from '../stores/authStore';
 import { toast } from 'react-toastify';
 import offlineStorage from '../utils/offlineStorage';
 import { useOnlineStatus } from './useOnlineStatus';
-import { 
-  updatePetriObservations, 
+import {
+  updatePetriObservations,
   updateGasifierObservations,
   PetriFormData,
   GasifierFormData
 } from '../utils/submissionUtils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { withRetry } from '../utils/helpers';
+import { useCompanyFilterStore } from '../stores/companyFilterStore';
 
 interface SubmissionWithCounts extends Submission {
   petri_count: number;
@@ -28,15 +29,16 @@ export function useSubmissions(siteId?: string) {
   const [error, setError] = useState<string | null>(null);
   const isOnline = useOnlineStatus();
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompanyFilterStore();
 
   // Use React Query for fetching submissions
   const submissionsQuery = useQuery({
-    queryKey: ['submissions', siteId],
+    queryKey: ['submissions', siteId, selectedCompanyId],
     queryFn: async () => {
       if (!siteId) return [];
-      
-      console.log(`Fetching submissions for site ${siteId}`);
-      
+
+      console.log(`Fetching submissions for site ${siteId}, company: ${selectedCompanyId}`);
+
       try {
         // Use the RPC function with pagination and filtering
         const { data, error } = await withRetry(() => supabase
@@ -69,7 +71,7 @@ export function useSubmissions(siteId?: string) {
         throw err;
       }
     },
-    enabled: !!siteId,
+    enabled: !!siteId && !!selectedCompanyId,
     staleTime: 0, // Always refetch when window regains focus
     refetchOnWindowFocus: true,
   });
@@ -87,12 +89,12 @@ export function useSubmissions(siteId?: string) {
   // Memoized fetchSubmissions with useCallback
   const fetchSubmissions = useCallback(async () => {
     if (!siteId) return;
-    
+
     console.log('Forcing submissions refetch');
-    // Refetch using React Query
-    await queryClient.invalidateQueries({queryKey: ['submissions', siteId]});
-    await queryClient.refetchQueries({queryKey: ['submissions', siteId]});
-  }, [siteId, queryClient]);
+    // Refetch using React Query - use wildcard to invalidate all company contexts
+    await queryClient.invalidateQueries({queryKey: ['submissions']});
+    await queryClient.refetchQueries({queryKey: ['submissions', siteId, selectedCompanyId]});
+  }, [siteId, selectedCompanyId, queryClient]);
 
   // Use React Query for fetching petri observations
   const fetchSubmissionPetriObservations = useCallback(async (submissionId: string) => {
@@ -311,7 +313,7 @@ export function useSubmissions(siteId?: string) {
     },
     onSuccess: () => {
       // Invalidate and refetch submissions query to update the list
-      queryClient.invalidateQueries({queryKey: ['submissions', siteId]});
+      queryClient.invalidateQueries({queryKey: ['submissions']});
       toast.success('Submission created successfully!');
     },
     onError: (error) => {
@@ -434,11 +436,11 @@ export function useSubmissions(siteId?: string) {
     onSuccess: (data) => {
       console.log('Update mutation completed successfully');
       // Invalidate and refetch queries to update the data
-      queryClient.invalidateQueries({queryKey: ['submissions', siteId]});
+      queryClient.invalidateQueries({queryKey: ['submissions']});
       queryClient.invalidateQueries({queryKey: ['submission', data.submission_id]});
-      queryClient.invalidateQueries({queryKey: ['petriObservations', data.submission_id]});
-      queryClient.invalidateQueries({queryKey: ['gasifierObservations', data.submission_id]});
-      
+      queryClient.invalidateQueries({queryKey: ['petriObservations']});
+      queryClient.invalidateQueries({queryKey: ['gasifierObservations']});
+
       toast.success('Submission updated successfully!');
     },
     onError: (error) => {
@@ -503,16 +505,16 @@ export function useSubmissions(siteId?: string) {
     },
     onSuccess: (submissionId) => {
       // Update local state
-      setSubmissions(prevSubmissions => 
+      setSubmissions(prevSubmissions =>
         prevSubmissions.filter(submission => submission.submission_id !== submissionId)
       );
-      
+
       // Invalidate and refetch queries
-      queryClient.invalidateQueries({queryKey: ['submissions', siteId]});
+      queryClient.invalidateQueries({queryKey: ['submissions']});
       queryClient.removeQueries({queryKey: ['submission', submissionId]});
       queryClient.removeQueries({queryKey: ['petriObservations', submissionId]});
       queryClient.removeQueries({queryKey: ['gasifierObservations', submissionId]});
-      
+
       toast.success('Submission deleted successfully!');
     },
     onError: (error) => {

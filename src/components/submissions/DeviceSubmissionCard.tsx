@@ -83,7 +83,7 @@ const DeviceSubmissionCard = ({
 
   const completionPercentage =
     submission.expected_wake_count > 0
-      ? Math.round((submission.completed_wake_count / submission.expected_wake_count) * 100)
+      ? Math.min(Math.round((submission.completed_wake_count / submission.expected_wake_count) * 100), 100)
       : 0;
 
   const totalWakes = submission.completed_wake_count + submission.failed_wake_count + submission.extra_wake_count;

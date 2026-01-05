@@ -4,6 +4,7 @@ import { Site, SubmissionDefaults, PetriDefaults, GasifierDefaults, VentPlacemen
 import { toast } from 'react-toastify';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { withRetry, fetchSitesByProgramId, fetchSiteById } from '../lib/api';
+import { useCompanyFilterStore } from '../stores/companyFilterStore';
 
 // Interface for physical attributes and facility details
 interface SiteProperties {
@@ -37,30 +38,31 @@ interface SiteProperties {
 
 export function useSites(programId?: string) {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompanyFilterStore();
 
   // Use React Query to fetch sites instead of useState/useEffect
   const sitesQuery = useQuery({
-    queryKey: ['sites', programId],
+    queryKey: ['sites', programId, selectedCompanyId],
     queryFn: async () => {
       if (!programId) return [];
-      
-      console.log(`[useSites] fetchSites started for programId: ${programId}`);
-      
+
+      console.log(`[useSites] fetchSites started for programId: ${programId}, company: ${selectedCompanyId}`);
+
       const startTime = performance.now();
       const { data, error } = await fetchSitesByProgramId(programId);
       const endTime = performance.now();
-      
+
       console.log(`[useSites] fetchSites query took ${(endTime - startTime).toFixed(2)}ms`);
-      
+
       if (error) {
         console.error('[useSites] Error fetching sites:', error);
         throw error;
       }
-      
+
       console.log(`[useSites] fetchSites succeeded, found ${data?.length || 0} sites`);
       return data || [];
     },
-    enabled: !!programId,
+    enabled: !!programId && !!selectedCompanyId,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
@@ -123,13 +125,13 @@ export function useSites(programId?: string) {
     onSuccess: (updatedSite) => {
       // Update cache for this site
       queryClient.setQueryData(['site', updatedSite.site_id], updatedSite);
-      
+
       // Update site in sites list
-      queryClient.setQueryData<Site[]>(['sites', programId], (oldData) => {
+      queryClient.setQueryData<Site[]>(['sites', programId, selectedCompanyId], (oldData) => {
         if (!oldData) return [updatedSite];
         return oldData.map(site => site.site_id === updatedSite.site_id ? updatedSite : site);
       });
-      
+
       toast.success(`Site name updated to "${updatedSite.name}"`);
     },
     onError: (error) => {
@@ -181,13 +183,13 @@ export function useSites(programId?: string) {
     onSuccess: (updatedSite) => {
       // Update cache for this site
       queryClient.setQueryData(['site', updatedSite.site_id], updatedSite);
-      
+
       // Update site in sites list
-      queryClient.setQueryData<Site[]>(['sites', programId], (oldData) => {
+      queryClient.setQueryData<Site[]>(['sites', programId, selectedCompanyId], (oldData) => {
         if (!oldData) return [updatedSite];
         return oldData.map(site => site.site_id === updatedSite.site_id ? updatedSite : site);
       });
-      
+
       toast.success('Weather defaults updated successfully');
     },
     onError: (error) => {
@@ -248,14 +250,14 @@ export function useSites(programId?: string) {
     onSuccess: (updatedSite) => {
       // Update cache for this site
       queryClient.setQueryData(['site', updatedSite.site_id], updatedSite);
-      
+
       // Update site in sites list
-      queryClient.setQueryData<Site[]>(['sites', programId], (oldData) => 
-        oldData ? oldData.map(site => 
+      queryClient.setQueryData<Site[]>(['sites', programId, selectedCompanyId], (oldData) =>
+        oldData ? oldData.map(site =>
           site.site_id === updatedSite.site_id ? updatedSite : site
         ) : []
       );
-      
+
       toast.success('Site dimensions updated successfully');
     },
     onError: (error) => {
@@ -328,14 +330,14 @@ export function useSites(programId?: string) {
     onSuccess: (updatedSite) => {
       // Update cache for this site
       queryClient.setQueryData(['site', updatedSite.site_id], updatedSite);
-      
+
       // Update site in sites list
-      queryClient.setQueryData<Site[]>(['sites', programId], (oldData) => 
-        oldData ? oldData.map(site => 
+      queryClient.setQueryData<Site[]>(['sites', programId, selectedCompanyId], (oldData) =>
+        oldData ? oldData.map(site =>
           site.site_id === updatedSite.site_id ? updatedSite : site
         ) : []
       );
-      
+
       toast.success('Site properties updated successfully');
     },
     onError: (error) => {
@@ -441,14 +443,14 @@ export function useSites(programId?: string) {
     },
     onSuccess: (newSite) => {
       // Add the new site to the cached sites list
-      queryClient.setQueryData<Site[]>(['sites', newSite.program_id], (oldData) => {
+      queryClient.setQueryData<Site[]>(['sites', newSite.program_id, selectedCompanyId], (oldData) => {
         if (!oldData) return [newSite];
         return [...oldData, newSite];
       });
-      
+
       // Cache the individual site
       queryClient.setQueryData(['site', newSite.site_id], newSite);
-      
+
       toast.success('Site created successfully!');
     },
     onError: (error) => {
@@ -479,14 +481,14 @@ export function useSites(programId?: string) {
     },
     onSuccess: (siteId) => {
       // Remove the site from the sites list in cache
-      queryClient.setQueryData<Site[]>(['sites', programId], (oldData) => {
+      queryClient.setQueryData<Site[]>(['sites', programId, selectedCompanyId], (oldData) => {
         if (!oldData) return [];
         return oldData.filter(site => site.site_id !== siteId);
       });
-      
+
       // Remove the individual site from cache
       queryClient.removeQueries(['site', siteId]);
-      
+
       toast.success('Site deleted successfully!');
     },
     onError: (error) => {
@@ -546,12 +548,12 @@ export function useSites(programId?: string) {
     onSuccess: (updatedSite) => {
       // Update cache
       queryClient.setQueryData(['site', updatedSite.site_id], updatedSite);
-      
-      queryClient.setQueryData<Site[]>(['sites', programId], (oldData) => {
+
+      queryClient.setQueryData<Site[]>(['sites', programId, selectedCompanyId], (oldData) => {
         if (!oldData) return [updatedSite];
         return oldData.map(site => site.site_id === updatedSite.site_id ? updatedSite : site);
       });
-      
+
       toast.success('Site template updated successfully');
     },
     onError: (error) => {
@@ -590,12 +592,12 @@ export function useSites(programId?: string) {
     onSuccess: (updatedSite) => {
       // Update cache
       queryClient.setQueryData(['site', updatedSite.site_id], updatedSite);
-      
-      queryClient.setQueryData<Site[]>(['sites', programId], (oldData) => {
+
+      queryClient.setQueryData<Site[]>(['sites', programId, selectedCompanyId], (oldData) => {
         if (!oldData) return [updatedSite];
         return oldData.map(site => site.site_id === updatedSite.site_id ? updatedSite : site);
       });
-      
+
       toast.success('Site template cleared successfully');
     },
     onError: (error) => {
@@ -722,8 +724,8 @@ export function useSites(programId?: string) {
 
   // Function to force refresh sites
   const fetchSites = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['sites', programId] });
-  }, [queryClient, programId]);
+    await queryClient.invalidateQueries({ queryKey: ['sites'] });
+  }, [queryClient]);
 
   // Return query data and functions
   return {
@@ -735,7 +737,7 @@ export function useSites(programId?: string) {
     createSite,
     deleteSite,
     setSites: (sites: Site[]) => {
-      queryClient.setQueryData(['sites', programId], sites);
+      queryClient.setQueryData(['sites', programId, selectedCompanyId], sites);
     },
     updateSiteName,
     updateSiteWeatherDefaults,
