@@ -21,20 +21,23 @@ const RequireCompanyAssignment = ({ children }: RequireCompanyAssignmentProps) =
   useEffect(() => {
     const checkPermissions = async () => {
       try {
+        console.log('RequireCompanyAssignment: Checking permissions...');
         const { data, error } = await supabase
           .rpc('get_user_permission_status');
 
         if (error) {
-          console.error('Error checking permissions:', error);
+          console.error('RequireCompanyAssignment: RPC error:', error);
           setLoading(false);
           return;
         }
 
+        console.log('RequireCompanyAssignment: Permission data:', data);
         setHasCompany(data.has_company);
         setIsSuperAdmin(data.is_super_admin);
       } catch (error) {
-        console.error('Error in RequireCompanyAssignment:', error);
+        console.error('RequireCompanyAssignment: Exception:', error);
       } finally {
+        console.log('RequireCompanyAssignment: Done loading');
         setLoading(false);
       }
     };
@@ -43,20 +46,26 @@ const RequireCompanyAssignment = ({ children }: RequireCompanyAssignmentProps) =
   }, []);
 
   if (loading) {
+    console.log('RequireCompanyAssignment: Still loading, showing LoadingScreen');
     return <LoadingScreen />;
   }
 
+  console.log('RequireCompanyAssignment: Rendering decision:', { isSuperAdmin, hasCompany });
+
   // Super admins can access everything
   if (isSuperAdmin) {
+    console.log('RequireCompanyAssignment: User is super admin, allowing access');
     return <>{children}</>;
   }
 
   // Users without a company assignment go to demo
   if (!hasCompany) {
+    console.log('RequireCompanyAssignment: User has no company, redirecting to /demo');
     return <Navigate to="/demo" state={{ from: location }} replace />;
   }
 
   // Users with a company can proceed
+  console.log('RequireCompanyAssignment: User has company, rendering children');
   return <>{children}</>;
 };
 
