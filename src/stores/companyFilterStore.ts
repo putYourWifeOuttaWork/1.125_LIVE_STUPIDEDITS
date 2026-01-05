@@ -20,7 +20,10 @@ export const useCompanyFilterStore = create<CompanyFilterState>()(
       error: null,
 
       // Set the selected company ID locally (for UI state)
-      setSelectedCompanyId: (companyId) => set({ selectedCompanyId: companyId }),
+      setSelectedCompanyId: (companyId) => {
+        console.log('Setting selectedCompanyId:', companyId);
+        set({ selectedCompanyId: companyId });
+      },
 
       // Set the active company context in the database (for super admins)
       setActiveCompanyContext: async (companyId: string): Promise<boolean> => {
