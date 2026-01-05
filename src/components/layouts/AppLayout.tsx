@@ -27,6 +27,7 @@ import { useSessionStore } from '../../stores/sessionStore';
 import sessionManager from '../../lib/sessionManager';
 import Button from '../common/Button';
 import ReloadLink from '../common/ReloadLink';
+import { NotificationCenter } from '../notifications/NotificationCenter';
 
 const AppLayout = () => {
   const { user } = useAuthStore();
@@ -271,7 +272,9 @@ const AppLayout = () => {
                   <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent-500 rounded-full"></span>
                 )}
               </button>
-              
+
+              <NotificationCenter />
+
               {userCompany && (
                 <Link
                   to="/company"

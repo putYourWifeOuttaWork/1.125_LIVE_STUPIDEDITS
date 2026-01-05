@@ -38,6 +38,7 @@ const UserAuditPage = lazy(() => import('./pages/UserAuditPage'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const DeviceDetailPage = lazy(() => import('./pages/DeviceDetailPage'));
 const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSessionDetailPage'));
+const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -349,6 +350,11 @@ function App() {
               <Route path="/profile" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <UserProfilePage />
+                </Suspense>
+              } />
+              <Route path="/notifications" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <NotificationSettingsPage />
                 </Suspense>
               } />
               <Route path="/company" element={
