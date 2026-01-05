@@ -389,7 +389,7 @@ const AlertsPage = () => {
 
       // Find the session for this device on this day
       const { data: sessions, error } = await supabase
-        .from('device_sessions')
+        .from('site_device_sessions')
         .select('session_id')
         .eq('device_id', alert.device_id)
         .eq('site_id', alert.site_id)
