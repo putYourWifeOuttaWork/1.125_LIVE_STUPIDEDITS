@@ -12,6 +12,9 @@
   5. Refresh your application
 */
 
+-- Drop the existing function first (in case it has a different signature)
+DROP FUNCTION IF EXISTS get_user_company();
+
 -- Function to get user's company with admin status
 CREATE OR REPLACE FUNCTION get_user_company()
 RETURNS JSONB AS $$
@@ -68,4 +71,4 @@ GRANT EXECUTE ON FUNCTION get_user_company() TO authenticated;
 COMMENT ON FUNCTION get_user_company() IS 'Returns the current user''s company data and admin status. Used by frontend useCompanies hook.';
 
 -- Test the function (optional - shows what the function returns)
-SELECT get_user_company();
+-- SELECT get_user_company();
