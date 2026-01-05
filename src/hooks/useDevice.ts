@@ -145,6 +145,33 @@ export const useDeviceImages = (deviceId: string) => {
     }
   });
 
+  const clearStaleImagesMutation = useMutation({
+    mutationFn: async (ageHours: number = 1) => {
+      const { data, error } = await supabase
+        .rpc('manually_clear_stale_images', {
+          p_device_id: deviceId,
+          p_age_hours: ageHours
+        })
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['device-images', deviceId] });
+      queryClient.invalidateQueries({ queryKey: ['device', deviceId] });
+      const count = data?.count || 0;
+      if (count > 0) {
+        toast.success(`Cleared ${count} stale image${count > 1 ? 's' : ''}`);
+      } else {
+        toast.info('No stale images to clear');
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to clear stale images: ${error.message}`);
+    }
+  });
+
   return {
     images,
     isLoading,
@@ -152,7 +179,9 @@ export const useDeviceImages = (deviceId: string) => {
     refetch,
     retryImage: (imageId: string, imageName: string) => retryImageMutation.mutateAsync({ imageId, imageName }),
     retryFailedImages: () => retryAllFailedMutation.mutateAsync(),
-    isRetrying: retryImageMutation.isPending || retryAllFailedMutation.isPending
+    clearStaleImages: (ageHours?: number) => clearStaleImagesMutation.mutateAsync(ageHours),
+    isRetrying: retryImageMutation.isPending || retryAllFailedMutation.isPending,
+    isClearingStale: clearStaleImagesMutation.isPending
   };
 };
 

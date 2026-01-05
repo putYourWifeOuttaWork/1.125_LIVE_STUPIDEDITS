@@ -12,7 +12,7 @@ interface DeviceImagesPanelProps {
 }
 
 const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
-  const { images, isLoading, retryFailedImages, retryImage } = useDeviceImages(deviceId);
+  const { images, isLoading, retryFailedImages, retryImage, clearStaleImages, isClearingStale } = useDeviceImages(deviceId);
   const [selectedImage, setSelectedImage] = useState<any | null>(null);
   const [retrying, setRetrying] = useState(false);
 
@@ -34,6 +34,16 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
       toast.success(`Retry queued for ${imageName}`);
     } catch (error) {
       toast.error('Failed to queue retry command');
+    }
+  };
+
+  const handleClearStale = async () => {
+    if (window.confirm('Clear all images stuck in receiving/pending status for more than 1 hour?')) {
+      try {
+        await clearStaleImages(1); // 1 hour threshold
+      } catch (error) {
+        // Error handled by mutation
+      }
     }
   };
 
@@ -226,10 +236,22 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
       {pendingImages.length > 0 && (
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Clock className="text-warning-500" size={20} />
-              <h3 className="text-lg font-semibold">In Progress</h3>
-              <span className="text-sm text-gray-600">({pendingImages.length})</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="text-warning-500" size={20} />
+                <h3 className="text-lg font-semibold">In Progress</h3>
+                <span className="text-sm text-gray-600">({pendingImages.length})</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<XCircle size={14} />}
+                onClick={handleClearStale}
+                isLoading={isClearingStale}
+                className="border-warning-300 text-warning-700 hover:bg-warning-50"
+              >
+                Clear Stale Images
+              </Button>
             </div>
           </CardHeader>
           <CardContent>

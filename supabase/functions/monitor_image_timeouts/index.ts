@@ -52,6 +52,40 @@ Deno.serve(async (req: Request) => {
     const wakeResults = timedOutWakes || [];
     console.log(`[Monitor] Found ${wakeResults.length} wake payloads to timeout`);
 
+    // Step 1C: Clear stale receiving images (1-hour timeout for stuck images)
+    const { data: staleImages, error: staleError } = await supabase
+      .rpc('clear_stale_receiving_images');
+
+    const staleResults = staleImages || [];
+    if (staleError) {
+      console.error('[Monitor] Error clearing stale images:', staleError);
+      // Don't throw - continue with processing
+    } else {
+      console.log(`[Monitor] Cleared ${staleResults.length} stale receiving images`);
+
+      // Create device history events for stale images
+      for (const img of staleResults) {
+        try {
+          await supabase.from('device_history').insert({
+            device_id: img.device_id,
+            event_type: 'image_transfer_stale',
+            event_category: 'image_capture',
+            severity: 'warning',
+            description: `Image stale after ${img.age_minutes} minutes: ${img.image_name}. No progress detected.`,
+            event_data: {
+              image_id: img.image_id,
+              image_name: img.image_name,
+              chunks_received: img.received_chunks,
+              total_chunks: img.total_chunks,
+              age_minutes: img.age_minutes,
+            },
+          });
+        } catch (error) {
+          console.error(`[Monitor] Error creating history for stale image ${img.image_name}:`, error);
+        }
+      }
+    }
+
     // Step 2: Queue retry commands and create history events
     const processedImages: string[] = [];
     const failedImages: string[] = [];
@@ -137,11 +171,13 @@ Deno.serve(async (req: Request) => {
       summary: {
         images_timed_out: results.length,
         wake_payloads_timed_out: wakeResults.length,
+        stale_images_cleared: staleResults.length,
         retries_queued: processedImages.length,
         failed_to_queue: failedImages.length,
       },
       processed_images: processedImages,
       failed_images: failedImages,
+      stale_images: staleResults.map((img: any) => img.image_name),
       timestamp: new Date().toISOString(),
     };
 
