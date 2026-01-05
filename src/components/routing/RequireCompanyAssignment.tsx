@@ -21,23 +21,39 @@ const RequireCompanyAssignment = ({ children }: RequireCompanyAssignmentProps) =
   useEffect(() => {
     const checkPermissions = async () => {
       try {
-        console.log('RequireCompanyAssignment: Checking permissions...');
-        const { data, error } = await supabase
-          .rpc('get_user_permission_status');
+        const { data: { user } } = await supabase.auth.getUser();
 
-        if (error) {
-          console.error('RequireCompanyAssignment: RPC error:', error);
+        if (!user) {
           setLoading(false);
           return;
         }
 
-        console.log('RequireCompanyAssignment: Permission data:', data);
-        setHasCompany(data.has_company);
-        setIsSuperAdmin(data.is_super_admin);
+        // Query user record directly instead of using RPC
+        const { data: userRecord, error } = await supabase
+          .from('users')
+          .select('company_id, is_super_admin')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error('RequireCompanyAssignment: Query error:', error);
+          setLoading(false);
+          return;
+        }
+
+        if (!userRecord) {
+          // User record doesn't exist yet - redirect to demo
+          setHasCompany(false);
+          setIsSuperAdmin(false);
+          setLoading(false);
+          return;
+        }
+
+        setHasCompany(!!userRecord.company_id);
+        setIsSuperAdmin(userRecord.is_super_admin || false);
       } catch (error) {
         console.error('RequireCompanyAssignment: Exception:', error);
       } finally {
-        console.log('RequireCompanyAssignment: Done loading');
         setLoading(false);
       }
     };
