@@ -51,14 +51,13 @@ const AppLayout = () => {
   const [hasActiveSessions, setHasActiveSessions] = useState(false);
   const [showSessionIndicator, setShowSessionIndicator] = useState(false);
 
-  // Load all companies for super admins and initialize company context
+  // Load all companies for super admins
   useEffect(() => {
     if (isSuperAdmin) {
       fetchAllCompanies();
     }
-    // Load active company context from database on mount
-    loadActiveCompanyContext();
-  }, [isSuperAdmin, fetchAllCompanies, loadActiveCompanyContext]);
+    // Note: Active company context is already loaded in ProtectedRoute
+  }, [isSuperAdmin, fetchAllCompanies]);
 
   // Get display name for company filter
   const getCompanyFilterDisplay = () => {
