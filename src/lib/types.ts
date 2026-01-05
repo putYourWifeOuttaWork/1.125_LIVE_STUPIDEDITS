@@ -847,3 +847,42 @@ export type SessionWakeSnapshot = {
   max_mgi?: number | null;
   created_at: string;
 };
+
+// ==========================================
+// ROI CALCULATOR TYPES
+// ==========================================
+
+export type ROICalculation = {
+  calculation_id: string;
+  share_token: string;
+  facility_sqft: number;
+  annual_production: number;
+  waste_percent: number;
+  downtime_days: number;
+  basic_devices: number | null;
+  pro_devices: number | null;
+  max_devices: number | null;
+  basic_roi: number | null;
+  pro_roi: number | null;
+  max_roi: number | null;
+  created_at: string;
+};
+
+export type ROITierResult = {
+  tierName: string;
+  deviceCount: number;
+  annualInvestment: number;
+  wasteReduction: number;
+  operationalSavings: number;
+  totalReturn: number;
+  netBenefit: number;
+  roiPercentage: number;
+  features: string[];
+};
+
+export type ROICalculatorInputs = {
+  facilitySquareFeet: number;
+  annualProduction: number;
+  wastePercent: number;
+  downtimeDays: number;
+};

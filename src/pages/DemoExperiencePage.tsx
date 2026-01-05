@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { toast } from 'react-toastify';
 import Card, { CardContent, CardHeader } from '../components/common/Card';
+import ROICalculator from '../components/common/ROICalculator';
 
 const DemoExperiencePage = () => {
   const navigate = useNavigate();
@@ -291,44 +292,13 @@ const DemoExperiencePage = () => {
                   <TrendingUp className="w-6 h-6 text-green-600" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Proven ROI</h2>
-                  <p className="text-sm text-gray-600">Real results from real facilities</p>
+                  <h2 className="text-2xl font-bold text-gray-900">Calculate Your ROI</h2>
+                  <p className="text-sm text-gray-600">See the financial impact for your facility</p>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid md:grid-cols-2 gap-8">
-                <div className="space-y-4">
-                  <div className="text-center p-6 bg-gradient-to-br from-green-50 to-green-100 rounded-lg">
-                    <div className="text-5xl font-bold text-green-600 mb-2">28:1</div>
-                    <div className="text-lg font-semibold text-gray-800">Return on Investment</div>
-                    <p className="text-sm text-gray-600 mt-2">With just 3 devices at $2,999/device/year</p>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-700">Annual Investment</span>
-                      <span className="text-lg font-bold text-gray-900">$8,997</span>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-700">Prevented Losses</span>
-                      <span className="text-lg font-bold text-green-600">$251,916</span>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-green-100 border-2 border-green-300 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-semibold text-gray-800">Net Benefit</span>
-                      <span className="text-xl font-bold text-green-700">$242,919</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-600 italic mt-4">
-                    * Based on 10,000 sq ft facility preventing 10-20% crop loss
-                  </p>
-                </div>
-              </div>
+              <ROICalculator />
             </CardContent>
           </Card>
         </section>
