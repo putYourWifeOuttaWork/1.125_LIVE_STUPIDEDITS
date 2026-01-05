@@ -274,38 +274,36 @@ async function handleStatusMessage(payload, client) {
   // Send any pending commands to the device
   await sendPendingCommands(device, client);
 
-  // Per ESP32-CAM architecture: Handle pending images status
+  // Per ESP32-CAM architecture: Handle device alive status
   const pendingCount = payload.pendingImg || payload.pending_count || 0;
 
-  if (pendingCount === 0) {
-    // Device has NO pending images - request a new capture
-    try {
-      const captureCmd = {
-        device_id: deviceMac,
-        capture_image: true,
-      };
-      client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(captureCmd));
-      console.log(`[CMD] Device has no pending images - sent capture_image command to ${deviceMac}`);
-    } catch (cmdError) {
-      console.error(`[ERROR] Failed to send capture_image command:`, cmdError);
-    }
+  // Log pending image information for diagnostics
+  if (pendingCount > 0) {
+    console.log(`[STATUS] Device reports ${pendingCount} pending images from offline period`);
   } else {
-    // Device HAS pending images - send ACK to proceed with transmission
-    try {
-      const nextWakeTime = await calculateNextWakeTime(device.device_id);
-      const ackMessage = {
-        device_id: deviceMac,
-        ACK_OK: {
-          next_wake_time: nextWakeTime
-        }
-      };
+    console.log(`[STATUS] Device has no pending images - will capture new image`);
+  }
 
-      const ackTopic = `ESP32CAM/${deviceMac}/ack`;
-      client.publish(ackTopic, JSON.stringify(ackMessage));
-      console.log(`[ACK] Device has ${pendingCount} pending images - sent ACK_OK to ${deviceMac} with next_wake: ${nextWakeTime}`);
-    } catch (ackError) {
-      console.error(`[ERROR] Failed to send ACK_OK:`, ackError);
-    }
+  // ALWAYS send capture_image command when device sends Alive message
+  // This initiates the standard protocol flow regardless of pending count:
+  // 1. Server sends capture_image
+  // 2. Device responds with metadata (from pending queue or new capture)
+  // 3. Server sends send_image to request transmission
+  // 4. Device sends chunks
+  // 5. Server verifies and sends ACK_OK with next_wake_time
+  //
+  // Per BrainlyTree PDF Section 8.5: The device knows whether to capture
+  // a new image or send a pending one. Server should not send ACK_OK until
+  // AFTER successfully receiving and verifying the image.
+  try {
+    const captureCmd = {
+      device_id: deviceMac,
+      capture_image: true,
+    };
+    client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(captureCmd));
+    console.log(`[CMD] Sent capture_image command to ${deviceMac} (device pending count: ${pendingCount})`);
+  } catch (cmdError) {
+    console.error(`[ERROR] Failed to send capture_image command:`, cmdError);
   }
 
   return { device, pendingCount };
