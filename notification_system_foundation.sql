@@ -119,7 +119,8 @@ CREATE TABLE IF NOT EXISTS alert_escalation_rules (
 
   escalation_channels jsonb DEFAULT '["email", "browser", "sms"]'::jsonb,
 
-  notify_roles text[] DEFAULT ARRAY['company_admin'],
+  notify_company_admins boolean DEFAULT true,
+  notify_super_admins boolean DEFAULT true,
   notify_user_ids uuid[],
 
   active boolean DEFAULT true,
@@ -170,7 +171,7 @@ CREATE POLICY "Company admins can view all company notification preferences"
       SELECT 1 FROM users
       WHERE users.id = auth.uid()
       AND users.company_id = user_notification_preferences.company_id
-      AND users.role IN ('company_admin', 'super_admin')
+      AND (users.is_company_admin = true OR users.is_super_admin = true)
     )
   );
 
@@ -189,7 +190,7 @@ CREATE POLICY "Company admins can view company notification logs"
       SELECT 1 FROM users
       WHERE users.id = auth.uid()
       AND users.company_id = notification_delivery_log.company_id
-      AND users.role IN ('company_admin', 'super_admin')
+      AND (users.is_company_admin = true OR users.is_super_admin = true)
     )
   );
 
@@ -225,7 +226,7 @@ CREATE POLICY "Company admins can manage escalation rules"
       SELECT 1 FROM users
       WHERE users.id = auth.uid()
       AND users.company_id = alert_escalation_rules.company_id
-      AND users.role IN ('company_admin', 'super_admin')
+      AND (users.is_company_admin = true OR users.is_super_admin = true)
     )
   )
   WITH CHECK (
@@ -233,7 +234,7 @@ CREATE POLICY "Company admins can manage escalation rules"
       SELECT 1 FROM users
       WHERE users.id = auth.uid()
       AND users.company_id = alert_escalation_rules.company_id
-      AND users.role IN ('company_admin', 'super_admin')
+      AND (users.is_company_admin = true OR users.is_super_admin = true)
     )
   );
 
