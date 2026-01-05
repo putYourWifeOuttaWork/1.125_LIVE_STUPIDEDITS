@@ -368,6 +368,49 @@ const AlertsPage = () => {
     toast.success(`${label} copied to clipboard`);
   };
 
+  const handleViewSession = async (alert: DeviceAlert) => {
+    // If we have a direct session_id, use it
+    if (alert.session_id && alert.program_id && alert.site_id) {
+      navigate(`/programs/${alert.program_id}/sites/${alert.site_id}/device-sessions/${alert.session_id}`);
+      return;
+    }
+
+    // Otherwise, find the session by device and date
+    if (!alert.device_id || !alert.site_id || !alert.program_id) {
+      toast.error('Unable to find session - missing device or site information');
+      return;
+    }
+
+    try {
+      const alertDate = new Date(alert.triggered_at);
+      const startOfDay = new Date(alertDate.getFullYear(), alertDate.getMonth(), alertDate.getDate());
+      const endOfDay = new Date(startOfDay);
+      endOfDay.setDate(endOfDay.getDate() + 1);
+
+      // Find the session for this device on this day
+      const { data: sessions, error } = await supabase
+        .from('device_sessions')
+        .select('session_id')
+        .eq('device_id', alert.device_id)
+        .eq('site_id', alert.site_id)
+        .gte('start_time', startOfDay.toISOString())
+        .lt('start_time', endOfDay.toISOString())
+        .order('start_time', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      if (sessions && sessions.length > 0) {
+        navigate(`/programs/${alert.program_id}/sites/${alert.site_id}/device-sessions/${sessions[0].session_id}`);
+      } else {
+        toast.error('No session found for this device on this date');
+      }
+    } catch (error) {
+      console.error('Error finding session:', error);
+      toast.error('Failed to find session');
+    }
+  };
+
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
@@ -730,14 +773,11 @@ const AlertsPage = () => {
                             Acknowledge
                           </Button>
                         )}
-                        {alert.session_id && alert.program_id && alert.site_id && (
+                        {(alert.device_id || alert.session_id) && alert.program_id && alert.site_id && (
                           <Button
                             variant="contained"
                             size="sm"
-                            onClick={() => {
-                              const url = `/programs/${alert.program_id}/sites/${alert.site_id}/device-sessions/${alert.session_id}`;
-                              navigate(url);
-                            }}
+                            onClick={() => handleViewSession(alert)}
                             leftIcon={<ExternalLink className="w-4 h-4" />}
                             className="whitespace-nowrap"
                           >
