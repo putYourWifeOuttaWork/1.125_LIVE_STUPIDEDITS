@@ -46,11 +46,11 @@ CREATE TABLE IF NOT EXISTS public.device_alert_thresholds (
   updated_by_user_id uuid NULL REFERENCES public.users(id) ON DELETE SET NULL,
 
   -- ===== ABSOLUTE THRESHOLDS =====
-  -- Temperature (Fahrenheit)
-  temp_min_warning numeric(5,2) NULL DEFAULT 32.0,
-  temp_min_critical numeric(5,2) NULL DEFAULT 25.0,
-  temp_max_warning numeric(5,2) NULL DEFAULT 90.0,
-  temp_max_critical numeric(5,2) NULL DEFAULT 100.0,
+  -- Temperature (Fahrenheit) - ALL SYSTEM TEMPERATURES IN FAHRENHEIT
+  temp_min_warning numeric(5,2) NULL DEFAULT 32.0,  -- °F
+  temp_min_critical numeric(5,2) NULL DEFAULT 25.0, -- °F
+  temp_max_warning numeric(5,2) NULL DEFAULT 90.0,  -- °F
+  temp_max_critical numeric(5,2) NULL DEFAULT 100.0, -- °F
 
   -- Relative Humidity (Percent)
   rh_min_warning numeric(5,2) NULL DEFAULT 20.0,

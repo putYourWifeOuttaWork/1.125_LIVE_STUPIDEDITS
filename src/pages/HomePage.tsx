@@ -185,8 +185,8 @@ const HomePage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Left Column: Active Alerts + Active Sessions List */}
         <div className="space-y-4">
-          {/* Active Alerts - Top 50% */}
-          <div className="max-h-[400px] overflow-hidden">
+          {/* Active Alerts - Top 50% - SCROLLABLE */}
+          <div className="max-h-[400px] overflow-y-auto">
             <ActiveAlertsPanel />
           </div>
 

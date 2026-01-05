@@ -233,6 +233,7 @@ export async function handleHelloStatus(
       const serverImageName = `${normalizedMac}_${timestamp}.jpg`;
 
       // Create consolidated wake_payload record with protocol state tracking
+      // NOTE: ALL TEMPERATURES ARE IN FAHRENHEIT - device sends °F, we store °F
       const { data: wakePayload, error: wakeError } = await supabase
         .from('device_wake_payloads')
         .insert({
@@ -243,7 +244,7 @@ export async function handleHelloStatus(
           site_device_session_id: sessionId,
           captured_at: now,
           received_at: now,
-          temperature: payload.temperature,
+          temperature: payload.temperature,  // Fahrenheit from device
           humidity: payload.humidity,
           pressure: payload.pressure,
           gas_resistance: payload.gas_resistance,
@@ -320,6 +321,7 @@ export async function handleHelloStatus(
       }
 
       // Create historical telemetry record for battery & wifi tracking (legacy system)
+      // NOTE: ALL TEMPERATURES IN FAHRENHEIT - device sends °F, we store °F, alerts check °F
       if (payload.battery_voltage !== undefined || payload.wifi_rssi !== undefined) {
         const { error: telemetryError } = await supabase
           .from('device_telemetry')
@@ -333,7 +335,7 @@ export async function handleHelloStatus(
             captured_at: now,
             battery_voltage: payload.battery_voltage,
             wifi_rssi: payload.wifi_rssi,
-            temperature: payload.temperature,
+            temperature: payload.temperature,  // Fahrenheit from device
             humidity: payload.humidity,
             pressure: payload.pressure,
             gas_resistance: payload.gas_resistance,
@@ -500,6 +502,7 @@ export async function handleMetadata(
         sessionId = sessionData?.session_id || null;
       }
 
+      // NOTE: ALL TEMPERATURES IN FAHRENHEIT - device sends °F, we store °F, alerts check °F
       const { error: telemetryError } = await supabase
         .from('device_telemetry')
         .insert({
@@ -510,7 +513,7 @@ export async function handleMetadata(
           site_device_session_id: sessionId,          // ✅ ACTIVE SESSION
           wake_payload_id: result.payload_id,         // ✅ LINK TO WAKE PAYLOAD
           captured_at: payload.capture_timestamp,
-          temperature: payload.temperature,
+          temperature: payload.temperature,           // Fahrenheit from device
           humidity: payload.humidity,
           pressure: payload.pressure,
           gas_resistance: payload.gas_resistance,
@@ -689,6 +692,7 @@ export async function handleTelemetryOnly(
 
     // Insert into device_telemetry table with FULL CONTEXT
     // DOES NOT create device_images or touch session counters
+    // NOTE: ALL TEMPERATURES IN FAHRENHEIT - device sends °F, we store °F, alerts check °F
     const capturedAt = payload.captured_at || (payload as any).capture_timestamp || new Date().toISOString();
     const { error: insertError } = await supabase
       .from('device_telemetry')
@@ -700,7 +704,7 @@ export async function handleTelemetryOnly(
         site_device_session_id: sessionId,            // ✅ ACTIVE SESSION
         wake_payload_id: null,                        // OK - telemetry-only has no wake payload
         captured_at: capturedAt,
-        temperature: payload.temperature,
+        temperature: payload.temperature,             // Fahrenheit from device
         humidity: payload.humidity,
         pressure: payload.pressure,
         gas_resistance: payload.gas_resistance,

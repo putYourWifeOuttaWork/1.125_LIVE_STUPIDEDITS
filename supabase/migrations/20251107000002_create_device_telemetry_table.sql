@@ -6,7 +6,7 @@
       - `telemetry_id` (uuid, primary key)
       - `device_id` (uuid, FK) - Reference to devices table
       - `captured_at` (timestamptz) - When data was captured by device
-      - `temperature` (numeric) - Temperature in °C from BME680
+      - `temperature` (numeric) - Temperature in °F (Fahrenheit) from BME680
       - `humidity` (numeric) - Humidity % from BME680
       - `pressure` (numeric) - Pressure in hPa from BME680
       - `gas_resistance` (numeric) - Gas resistance in kΩ from BME680
@@ -77,7 +77,8 @@ USING (
 -- Server-side code will use service role key to insert telemetry data
 
 -- Add helpful comments
-COMMENT ON TABLE device_telemetry IS 'Environmental sensor data captured by IoT devices (BME680 sensor readings)';
+COMMENT ON TABLE device_telemetry IS 'Environmental sensor data captured by IoT devices (BME680 sensor readings). ALL TEMPERATURES IN FAHRENHEIT.';
+COMMENT ON COLUMN device_telemetry.temperature IS 'Temperature in Fahrenheit (°F) - ALL SYSTEM TEMPERATURES USE FAHRENHEIT';
 COMMENT ON COLUMN device_telemetry.captured_at IS 'Timestamp when device captured the data (may differ from created_at if sent offline)';
 COMMENT ON COLUMN device_telemetry.gas_resistance IS 'Gas resistance in kΩ - indicator of air quality';
 COMMENT ON COLUMN device_telemetry.wifi_rssi IS 'WiFi signal strength in dBm (typically -30 to -90)';
