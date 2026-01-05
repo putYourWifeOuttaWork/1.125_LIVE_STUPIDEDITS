@@ -138,6 +138,10 @@ const AlertsPage = () => {
     try {
       setLoading(true);
 
+      // Parse filter arrays inside the callback
+      const severities = severityFilterStr ? severityFilterStr.split(',') : [];
+      const categories = categoryFilterStr ? categoryFilterStr.split(',') : [];
+
       let query = supabase
         .from('device_alerts')
         .select('*', { count: 'exact' })
@@ -156,13 +160,13 @@ const AlertsPage = () => {
       }
 
       // Apply severity filter
-      if (severityFilter.length > 0) {
-        query = query.in('severity', severityFilter);
+      if (severities.length > 0) {
+        query = query.in('severity', severities);
       }
 
       // Apply category filter
-      if (categoryFilter.length > 0) {
-        query = query.in('alert_category', categoryFilter);
+      if (categories.length > 0) {
+        query = query.in('alert_category', categories);
       }
 
       // Apply site filter
