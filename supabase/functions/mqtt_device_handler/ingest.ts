@@ -17,6 +17,25 @@ import { formatNextWakeTime } from './protocol.ts';
 const SYSTEM_USER_UUID = '00000000-0000-0000-0000-000000000001';
 
 /**
+ * Convert Celsius to Fahrenheit
+ * Devices send temperature in Celsius, system stores in Fahrenheit
+ * Formula: °F = (°C × 1.8) + 32
+ */
+function celsiusToFahrenheit(celsius: number | null | undefined): number | null {
+  if (celsius === null || celsius === undefined) return null;
+
+  // Validate input range (-40°C to 85°C is typical sensor range)
+  if (celsius < -40 || celsius > 85) {
+    console.warn(`[Temperature] Out of range Celsius value: ${celsius}°C`);
+  }
+
+  const fahrenheit = (celsius * 1.8) + 32;
+
+  // Round to 2 decimal places
+  return Math.round(fahrenheit * 100) / 100;
+}
+
+/**
  * Generate a unique device_code based on hardware version
  * Format: DEVICE-{HARDWARE}-{NNN} where NNN is zero-padded sequential number
  */
@@ -244,7 +263,7 @@ export async function handleHelloStatus(
           site_device_session_id: sessionId,
           captured_at: now,
           received_at: now,
-          temperature: payload.temperature,  // Fahrenheit from device
+          temperature: celsiusToFahrenheit(payload.temperature),  // Convert Celsius → Fahrenheit
           humidity: payload.humidity,
           pressure: payload.pressure,
           gas_resistance: payload.gas_resistance,
@@ -321,7 +340,7 @@ export async function handleHelloStatus(
       }
 
       // Create historical telemetry record for battery & wifi tracking (legacy system)
-      // NOTE: ALL TEMPERATURES IN FAHRENHEIT - device sends °F, we store °F, alerts check °F
+      // NOTE: ALL TEMPERATURES IN FAHRENHEIT - device sends °C, converted to °F, stored as °F, alerts check °F
       if (payload.battery_voltage !== undefined || payload.wifi_rssi !== undefined) {
         const { error: telemetryError } = await supabase
           .from('device_telemetry')
@@ -335,7 +354,7 @@ export async function handleHelloStatus(
             captured_at: now,
             battery_voltage: payload.battery_voltage,
             wifi_rssi: payload.wifi_rssi,
-            temperature: payload.temperature,  // Fahrenheit from device
+            temperature: celsiusToFahrenheit(payload.temperature),  // Convert Celsius → Fahrenheit
             humidity: payload.humidity,
             pressure: payload.pressure,
             gas_resistance: payload.gas_resistance,
@@ -502,7 +521,7 @@ export async function handleMetadata(
         sessionId = sessionData?.session_id || null;
       }
 
-      // NOTE: ALL TEMPERATURES IN FAHRENHEIT - device sends °F, we store °F, alerts check °F
+      // NOTE: ALL TEMPERATURES IN FAHRENHEIT - device sends °C, converted to °F, stored as °F, alerts check °F
       const { error: telemetryError } = await supabase
         .from('device_telemetry')
         .insert({
@@ -513,7 +532,7 @@ export async function handleMetadata(
           site_device_session_id: sessionId,          // ✅ ACTIVE SESSION
           wake_payload_id: result.payload_id,         // ✅ LINK TO WAKE PAYLOAD
           captured_at: payload.capture_timestamp,
-          temperature: payload.temperature,           // Fahrenheit from device
+          temperature: celsiusToFahrenheit(payload.temperature),  // Convert Celsius → Fahrenheit
           humidity: payload.humidity,
           pressure: payload.pressure,
           gas_resistance: payload.gas_resistance,
@@ -704,7 +723,7 @@ export async function handleTelemetryOnly(
         site_device_session_id: sessionId,            // ✅ ACTIVE SESSION
         wake_payload_id: null,                        // OK - telemetry-only has no wake payload
         captured_at: capturedAt,
-        temperature: payload.temperature,             // Fahrenheit from device
+        temperature: celsiusToFahrenheit(payload.temperature),  // Convert Celsius → Fahrenheit
         humidity: payload.humidity,
         pressure: payload.pressure,
         gas_resistance: payload.gas_resistance,
