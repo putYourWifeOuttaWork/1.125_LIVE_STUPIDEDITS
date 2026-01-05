@@ -22,13 +22,14 @@ import {
   Battery,
   Image as ImageIcon,
   AlertOctagon,
+  Zap,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import Button from '../components/common/Button';
 import LoadingScreen from '../components/common/LoadingScreen';
 import DeviceSessionCard from '../components/devices/DeviceSessionCard';
 import DeviceStatusBadge from '../components/devices/DeviceStatusBadge';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'react-toastify';
 import { supabase } from '../lib/supabaseClient';
 import { parseDateOnly } from '../utils/timeFormatters';
@@ -42,6 +43,7 @@ import { SessionWakeSnapshot } from '../lib/types';
 import TimeSeriesChart from '../components/lab/TimeSeriesChart';
 import HistogramChart from '../components/lab/HistogramChart';
 import DeviceImageLightbox from '../components/devices/DeviceImageLightbox';
+import ManualWakeModal from '../components/devices/ManualWakeModal';
 
 interface DeviceSessionData {
   device_id: string;
@@ -95,10 +97,18 @@ const SiteDeviceSessionDetailPage = () => {
     currentIndex: number;
     deviceInfo: { device_code: string; device_name?: string };
   } | null>(null);
+  const [enhancedDeviceData, setEnhancedDeviceData] = useState<Map<string, any>>(new Map());
+  const [enhancedDeviceDataLoading, setEnhancedDeviceDataLoading] = useState(false);
+  const [manualWakeModalState, setManualWakeModalState] = useState<{
+    isOpen: boolean;
+    deviceId: string;
+    deviceCode: string;
+  } | null>(null);
 
   const { role } = useUserRole();
   const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
   const isSuperAdmin = role === 'super_admin';
+  const isAdmin = role === 'company_admin' || role === 'super_admin';
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch snapshots for this specific session
@@ -236,6 +246,78 @@ const SiteDeviceSessionDetailPage = () => {
     fetchSessionData();
     fetchDevicesData();
     refetchSnapshots();
+  };
+
+  // Fetch enhanced device data for Status Overview in Images tab
+  const fetchEnhancedDeviceData = async () => {
+    if (!devices || devices.length === 0) return;
+
+    try {
+      setEnhancedDeviceDataLoading(true);
+      const deviceIds = devices.map(d => d.device_id);
+
+      const { data, error } = await supabase
+        .from('devices')
+        .select('device_id, provisioning_status, next_wake_at, manual_wake_override, is_active')
+        .in('device_id', deviceIds);
+
+      if (error) throw error;
+
+      if (data) {
+        const dataMap = new Map();
+        data.forEach(device => {
+          dataMap.set(device.device_id, device);
+        });
+        setEnhancedDeviceData(dataMap);
+      }
+    } catch (error: any) {
+      console.error('Error fetching enhanced device data:', error);
+    } finally {
+      setEnhancedDeviceDataLoading(false);
+    }
+  };
+
+  // Fetch enhanced device data when Images tab is active
+  useEffect(() => {
+    if (activeTab === 'images' && devices.length > 0 && enhancedDeviceData.size === 0) {
+      fetchEnhancedDeviceData();
+    }
+  }, [activeTab, devices]);
+
+  // Helper function to display next wake time
+  const getNextWakeDisplay = (device: DeviceSessionData, enhancedData: any) => {
+    if (enhancedData?.next_wake_at) {
+      const nextWakeDate = new Date(enhancedData.next_wake_at);
+      const now = new Date();
+
+      // If next wake is in the past, show as overdue
+      if (nextWakeDate < now) {
+        return <span className="text-red-600">Overdue ({formatDistanceToNow(nextWakeDate, { addSuffix: true })})</span>;
+      }
+
+      return <span className="text-green-600">{formatDistanceToNow(nextWakeDate, { addSuffix: true })}</span>;
+    }
+
+    if (device.wake_schedule_cron) {
+      if (enhancedData && !enhancedData.is_active) {
+        return <span className="text-amber-600">Activate device to calculate</span>;
+      }
+
+      // Simple cron parser for common patterns
+      const parts = device.wake_schedule_cron.split(' ');
+      if (parts.length === 5) {
+        const hours = parts[1];
+        if (hours === '*/3') return <span className="text-gray-600">Every 3 hours (pending first wake)</span>;
+        if (hours === '*/6') return <span className="text-gray-600">Every 6 hours (pending first wake)</span>;
+        if (hours === '*/12') return <span className="text-gray-600">Every 12 hours (pending first wake)</span>;
+        if (hours.includes(',')) {
+          return <span className="text-gray-600">{hours.split(',').length} times daily (pending first wake)</span>;
+        }
+      }
+      return <span className="text-gray-600">Pending first wake</span>;
+    }
+
+    return <span className="text-gray-500">Not scheduled</span>;
   };
 
   // Easing function for smooth transitions
@@ -2060,7 +2142,7 @@ const SiteDeviceSessionDetailPage = () => {
                 <tbody className="divide-y divide-gray-200">
                   {devices.map((device, idx) => {
                     const successRate = device.expected_wakes_in_session > 0
-                      ? Math.round((device.completed_wakes / device.expected_wakes_in_session) * 100)
+                      ? Math.min(100, Math.round((device.completed_wakes / device.expected_wakes_in_session) * 100))
                       : 0;
 
                     const tempReadings = device.wake_payloads?.filter((w: any) => w.temperature != null) || [];
@@ -2599,6 +2681,87 @@ const SiteDeviceSessionDetailPage = () => {
                         </div>
                       </div>
 
+                      {/* Status Overview */}
+                      <div className="mb-4 bg-gray-50 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-3">Status Overview</h4>
+
+                        {enhancedDeviceDataLoading ? (
+                          <div className="text-sm text-gray-500">Loading status...</div>
+                        ) : (
+                          (() => {
+                            const enhancedData = enhancedDeviceData.get(device.device_id);
+
+                            return (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Last Seen */}
+                                <div>
+                                  <p className="text-sm text-gray-500 mb-1">Last Seen</p>
+                                  <p className="font-medium text-gray-900">
+                                    {device.last_seen_at
+                                      ? formatDistanceToNow(new Date(device.last_seen_at), { addSuffix: true })
+                                      : 'Never'}
+                                  </p>
+                                </div>
+
+                                {/* Provisioning Status */}
+                                <div>
+                                  <p className="text-sm text-gray-500 mb-1">Provisioning Status</p>
+                                  <p className="font-medium text-gray-900 capitalize">
+                                    {enhancedData?.provisioning_status?.replace('_', ' ') || 'Unknown'}
+                                  </p>
+                                </div>
+
+                                {/* Next Wake */}
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <Clock className="h-4 w-4 text-gray-400" />
+                                      <p className="text-sm text-gray-500">Next Wake</p>
+                                    </div>
+                                    {isAdmin && (
+                                      <button
+                                        onClick={() => setManualWakeModalState({
+                                          isOpen: true,
+                                          deviceId: device.device_id,
+                                          deviceCode: device.device_code
+                                        })}
+                                        className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                        title="Schedule a one-time manual wake"
+                                      >
+                                        <Zap className="h-3 w-3" />
+                                        Manual Wake
+                                      </button>
+                                    )}
+                                  </div>
+                                  <p className="font-medium text-gray-900">
+                                    {getNextWakeDisplay(device, enhancedData)}
+                                  </p>
+                                  {enhancedData?.next_wake_at && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      {new Date(enhancedData.next_wake_at).toLocaleString()}
+                                    </p>
+                                  )}
+                                  {enhancedData?.manual_wake_override && (
+                                    <p className="text-xs text-orange-600 mt-1 font-medium flex items-center gap-1">
+                                      <Zap className="h-3 w-3" />
+                                      Manual wake scheduled
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Wake Schedule */}
+                                <div>
+                                  <p className="text-sm text-gray-500 mb-1">Wake Schedule</p>
+                                  <p className="font-medium font-mono text-sm text-gray-900">
+                                    {device.wake_schedule_cron || 'Not set'}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })()
+                        )}
+                      </div>
+
                       {/* Images Grid */}
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         {device.images.map((image: any, idx: number) => (
@@ -2784,6 +2947,20 @@ const SiteDeviceSessionDetailPage = () => {
           deviceInfo={lightboxState.deviceInfo}
           onNavigate={(newIndex) => {
             setLightboxState(prev => prev ? { ...prev, currentIndex: newIndex } : null);
+          }}
+        />
+      )}
+
+      {/* Manual Wake Modal */}
+      {manualWakeModalState && (
+        <ManualWakeModal
+          isOpen={manualWakeModalState.isOpen}
+          onClose={() => setManualWakeModalState(null)}
+          deviceId={manualWakeModalState.deviceId}
+          deviceCode={manualWakeModalState.deviceCode}
+          onSuccess={() => {
+            fetchEnhancedDeviceData();
+            toast.success('Manual wake scheduled successfully');
           }}
         />
       )}
