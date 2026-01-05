@@ -36,7 +36,7 @@
 CREATE TABLE IF NOT EXISTS user_notification_preferences (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id uuid NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
 
   -- Channel Preferences
   email_enabled boolean DEFAULT true,
@@ -76,9 +76,9 @@ CREATE TABLE IF NOT EXISTS user_notification_preferences (
 CREATE TABLE IF NOT EXISTS notification_delivery_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  alert_id uuid REFERENCES device_alerts(id) ON DELETE SET NULL,
+  alert_id uuid REFERENCES device_alerts(alert_id) ON DELETE SET NULL,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id uuid NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
 
   channel text NOT NULL CHECK (channel IN ('email', 'browser', 'sms', 'in_app')),
   status text NOT NULL CHECK (status IN ('pending', 'sent', 'failed', 'bounced', 'delivered', 'read')),
@@ -109,7 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_notification_delivery_log_created_at ON notificat
 -- =====================================================
 CREATE TABLE IF NOT EXISTS alert_escalation_rules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id uuid NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
 
   name text NOT NULL,
   description text,
