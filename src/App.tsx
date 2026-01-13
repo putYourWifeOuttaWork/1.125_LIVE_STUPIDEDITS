@@ -41,6 +41,7 @@ const SiteDeviceSessionDetailPage = lazy(() => import('./pages/SiteDeviceSession
 const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const LanderPage = lazy(() => import('./pages/LanderPage'));
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -382,6 +383,11 @@ function App() {
               <Route path="/alerts" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <AlertsPage />
+                </Suspense>
+              } />
+              <Route path="/analytics" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <AnalyticsPage />
                 </Suspense>
               } />
             </Route>

@@ -18,7 +18,8 @@ import {
   Cpu,
   ChevronDown,
   Shield,
-  AlertTriangle
+  AlertTriangle,
+  BarChart3
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -278,6 +279,14 @@ const AppLayout = () => {
                     <Cpu size={18} />
                     <span className="hidden lg:inline">Devices</span>
                   </ReloadLink>
+                  <ReloadLink
+                    to="/analytics"
+                    className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
+                    data-testid="analytics-link"
+                  >
+                    <BarChart3 size={18} />
+                    <span className="hidden lg:inline">Analytics</span>
+                  </ReloadLink>
                 </>
               )}
               <Link
@@ -384,17 +393,30 @@ const AppLayout = () => {
               </Link>
             )}
             {isCompanyAdmin && (
-              <Link
-                to="/devices"
-                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-                data-testid="mobile-devices-link"
-              >
-                <div className="flex items-center space-x-2">
-                  <Cpu size={18} />
-                  <span>Devices</span>
-                </div>
-              </Link>
+              <>
+                <Link
+                  to="/devices"
+                  className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  data-testid="mobile-devices-link"
+                >
+                  <div className="flex items-center space-x-2">
+                    <Cpu size={18} />
+                    <span>Devices</span>
+                  </div>
+                </Link>
+                <Link
+                  to="/analytics"
+                  className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  data-testid="mobile-analytics-link"
+                >
+                  <div className="flex items-center space-x-2">
+                    <BarChart3 size={18} />
+                    <span>Analytics</span>
+                  </div>
+                </Link>
+              </>
             )}
             <Link
               to="/profile" 
