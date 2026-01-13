@@ -595,3 +595,278 @@ export async function cleanupExpiredCache(): Promise<void> {
     console.error('Error cleaning up expired cache:', error);
   }
 }
+
+// ============================================================
+// NEW ANALYTICS FUNCTIONS (Advanced Query Interface)
+// ============================================================
+
+export interface TimeSeriesDataPoint {
+  timestamp: string;
+  metric_name: string;
+  metric_value: number;
+  device_id: string;
+  device_code: string;
+  site_id: string;
+  site_name: string;
+  program_id: string;
+  program_name: string;
+}
+
+export interface AggregatedDataPoint {
+  group_key: string;
+  group_id: string | null;
+  metric_name: string;
+  metric_value: number;
+  record_count: number;
+}
+
+export interface ComparisonDataPoint {
+  timestamp: string;
+  entity_id: string;
+  entity_name: string;
+  metric_name: string;
+  metric_value: number;
+}
+
+export interface DrillDownImage {
+  image_id: string;
+  device_id: string;
+  device_code: string;
+  site_name: string;
+  program_name: string;
+  captured_at: string;
+  mgi_score: number | null;
+  temperature: number | null;
+  humidity: number | null;
+  image_url: string | null;
+  detection_count: number | null;
+}
+
+/**
+ * Fetch time-series data with multiple metrics (for line charts)
+ */
+export async function fetchTimeSeriesData(params: {
+  companyId: string;
+  timeStart: string;
+  timeEnd: string;
+  programIds?: string[];
+  siteIds?: string[];
+  deviceIds?: string[];
+  metrics?: string[];
+  interval?: string;
+}): Promise<TimeSeriesDataPoint[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_analytics_time_series', {
+      p_company_id: params.companyId,
+      p_time_start: params.timeStart,
+      p_time_end: params.timeEnd,
+      p_program_ids: params.programIds || null,
+      p_site_ids: params.siteIds || null,
+      p_device_ids: params.deviceIds || null,
+      p_metrics: params.metrics || ['mgi_score', 'temperature', 'humidity'],
+      p_interval: params.interval || '1 hour'
+    });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching time series data:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch aggregated metrics grouped by dimension (for bar charts)
+ */
+export async function fetchAggregatedData(params: {
+  companyId: string;
+  timeStart: string;
+  timeEnd: string;
+  programIds?: string[];
+  siteIds?: string[];
+  deviceIds?: string[];
+  metrics?: string[];
+  aggregation?: 'avg' | 'sum' | 'min' | 'max';
+  groupBy?: 'device' | 'site' | 'program';
+}): Promise<AggregatedDataPoint[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_analytics_aggregated', {
+      p_company_id: params.companyId,
+      p_time_start: params.timeStart,
+      p_time_end: params.timeEnd,
+      p_program_ids: params.programIds || null,
+      p_site_ids: params.siteIds || null,
+      p_device_ids: params.deviceIds || null,
+      p_metrics: params.metrics || ['mgi_score'],
+      p_aggregation: params.aggregation || 'avg',
+      p_group_by: params.groupBy || 'device'
+    });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching aggregated data:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch comparison data across entities (for comparison charts)
+ */
+export async function fetchComparisonData(params: {
+  companyId: string;
+  timeStart: string;
+  timeEnd: string;
+  entityType: 'program' | 'site' | 'device';
+  entityIds: string[];
+  metrics?: string[];
+  interval?: string;
+}): Promise<ComparisonDataPoint[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_analytics_comparison', {
+      p_company_id: params.companyId,
+      p_time_start: params.timeStart,
+      p_time_end: params.timeEnd,
+      p_entity_type: params.entityType,
+      p_entity_ids: params.entityIds,
+      p_metrics: params.metrics || ['mgi_score'],
+      p_interval: params.interval || '1 day'
+    });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching comparison data:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch drill-down image details (for detailed view after brushing)
+ */
+export async function fetchDrillDownImages(params: {
+  companyId: string;
+  timeStart: string;
+  timeEnd: string;
+  programIds?: string[];
+  siteIds?: string[];
+  deviceIds?: string[];
+  limit?: number;
+  offset?: number;
+}): Promise<DrillDownImage[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_analytics_drill_down', {
+      p_company_id: params.companyId,
+      p_time_start: params.timeStart,
+      p_time_end: params.timeEnd,
+      p_program_ids: params.programIds || null,
+      p_site_ids: params.siteIds || null,
+      p_device_ids: params.deviceIds || null,
+      p_limit: params.limit || 1000,
+      p_offset: params.offset || 0
+    });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching drill-down images:', error);
+    throw error;
+  }
+}
+
+/**
+ * Transform time series data for D3 chart consumption
+ */
+export function transformTimeSeriesForD3(
+  data: TimeSeriesDataPoint[],
+  metricName: string
+): { timestamps: Date[]; series: { id: string; label: string; values: number[] }[] } {
+  const filtered = data.filter(d => d.metric_name === metricName);
+
+  const grouped = filtered.reduce((acc, point) => {
+    const key = point.device_code || point.site_name || point.program_name;
+    if (!acc[key]) {
+      acc[key] = {
+        id: point.device_id || point.site_id || point.program_id,
+        label: key,
+        points: []
+      };
+    }
+    acc[key].points.push({
+      timestamp: new Date(point.timestamp),
+      value: point.metric_value
+    });
+    return acc;
+  }, {} as Record<string, { id: string; label: string; points: { timestamp: Date; value: number }[] }>);
+
+  const allTimestamps = Array.from(
+    new Set(filtered.map(d => d.timestamp))
+  ).sort().map(t => new Date(t));
+
+  const series = Object.values(grouped).map(group => ({
+    id: group.id,
+    label: group.label,
+    values: allTimestamps.map(ts => {
+      const point = group.points.find(p => p.timestamp.getTime() === ts.getTime());
+      return point ? point.value : 0;
+    })
+  }));
+
+  return { timestamps: allTimestamps, series };
+}
+
+/**
+ * Transform aggregated data for D3 bar chart
+ */
+export function transformAggregatedForD3(
+  data: AggregatedDataPoint[]
+): { labels: string[]; datasets: { metricName: string; values: number[] }[] } {
+  const metricNames = Array.from(new Set(data.map(d => d.metric_name)));
+  const labels = Array.from(new Set(data.map(d => d.group_key)));
+
+  const datasets = metricNames.map(metric => ({
+    metricName: metric,
+    values: labels.map(label => {
+      const point = data.find(d => d.group_key === label && d.metric_name === metric);
+      return point ? point.metric_value : 0;
+    })
+  }));
+
+  return { labels, datasets };
+}
+
+/**
+ * Export data to CSV
+ */
+export function exportDataToCSV(data: any[], filename: string): void {
+  if (!data || data.length === 0) {
+    console.warn('No data to export');
+    return;
+  }
+
+  const headers = Object.keys(data[0]);
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row =>
+      headers.map(header => {
+        const value = row[header];
+        if (value === null || value === undefined) return '';
+        return typeof value === 'string' && value.includes(',')
+          ? `"${value}"`
+          : value;
+      }).join(',')
+    )
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
+  link.style.visibility = 'hidden';
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
