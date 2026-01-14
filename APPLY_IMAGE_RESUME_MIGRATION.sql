@@ -419,9 +419,9 @@ SELECT
     LIMIT 1
   ) AS last_wake_payload_id,
   -- Company context
-  c.company_name,
-  s.site_name,
-  p.program_name
+  c.name AS company_name,
+  s.name AS site_name,
+  p.name AS program_name
 FROM device_images di
 JOIN devices d ON di.device_id = d.device_id
 LEFT JOIN companies c ON di.company_id = c.company_id

@@ -1,17 +1,23 @@
 # Image Resume Migration - Status Update
 
-## Problem Solved
+## Problems Solved
 
-**Original Error:**
+**Error 1: Duplicate Images**
 ```
 ERROR: 23505: could not create unique index "device_images_device_id_image_name_key"
 DETAIL: Key (device_id, image_name)=(57b7f85e-354f-4a51-a8f8-5aecff515768, image_10567.jpg) is duplicated.
 ```
 
-**Second Error (after cleanup):**
+**Error 2: Function Signature Conflict**
 ```
 ERROR: 42725: function name "fn_wake_ingestion_handler" is not unique
 HINT: Specify the argument list to select the function unambiguously.
+```
+
+**Error 3: Column Name Mismatch**
+```
+ERROR: 42703: column c.company_name does not exist
+LINE 422: c.company_name,
 ```
 
 ## Resolution
@@ -28,10 +34,20 @@ HINT: Specify the argument list to select the function unambiguously.
 - PostgreSQL saw this as function overloading → ambiguity error
 - **Solution:** Added `DROP FUNCTION IF EXISTS` before creating new version
 
+### Issue 3: Column Name Mismatch ✅ FIXED
+- View referenced non-existent columns
+- Schema uses `name` not `company_name`, `site_name`, `program_name`
+- **Fixed columns:**
+  - `c.company_name` → `c.name AS company_name`
+  - `s.site_name` → `s.name AS site_name`
+  - `p.program_name` → `p.name AS program_name`
+- Verified against `CURRENT_SCHEMA._jan3.sql`
+
 ## Files Updated
 
-1. **APPLY_IMAGE_RESUME_MIGRATION.sql** - Added function drop statement
+1. **APPLY_IMAGE_RESUME_MIGRATION.sql** - Fixed function signature and column names
 2. **APPLY_IMAGE_RESUME_INSTRUCTIONS.md** - Updated with new expected output
+3. **IMAGE_RESUME_MIGRATION_STATUS.md** - Complete status tracking document
 
 ## Cleanup Results
 
