@@ -19,11 +19,16 @@ This feature enables the MQTT handler to resume interrupted image transfers inst
 1. Open Supabase Dashboard → SQL Editor
 2. Copy contents of `APPLY_PENDING_IMAGE_PROTOCOL_STATE.sql`
 3. Paste and run the migration
-4. Verify success
+4. Verify success (should show "SUCCESS" with no errors)
 
 **What it does**:
+- Creates `protocol_state` column and related columns (if they don't exist)
 - Adds new `ack_pending_sent` state to protocol_state CHECK constraint
+- Creates index for efficient queries
+- Migrates existing wake payload data
 - Updates column documentation
+
+**Safe to run multiple times**: This migration uses `IF NOT EXISTS` and `IF EXISTS` checks, so it's safe to run even if some parts were already applied.
 
 ### 3. Edge Function Deployment (Manual Step Required)
 
