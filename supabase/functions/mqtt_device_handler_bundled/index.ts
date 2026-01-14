@@ -1,8 +1,14 @@
 /**
  * Phase 3 - MQTT Device Handler (HTTP Webhook Mode) - BUNDLED SINGLE FILE
+ * Version 3.4.0 - Pending Image Resume Support
  *
  * HTTP webhook receiver that processes MQTT messages forwarded from local MQTT service
  * All modules bundled into single file for Supabase Dashboard deployment
+ *
+ * NEW in 3.4.0:
+ * - Pending image resume: Detects incomplete images and sends ACK to resume transfer
+ * - Protocol state tracking: ack_pending_sent for resumed transfers
+ * - Improved HELLO handling: Checks database for pending images
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.39.8';
@@ -523,6 +529,64 @@ async function logAckToAudit(
   }
 }
 
+/**
+ * Publish ACK for pending image (without next_wake_time)
+ * Used when device reports pendingImg > 0 to resume image transfer
+ *
+ * Per protocol: ACK for pending images has empty ACK_OK object
+ * This tells the device to continue sending the incomplete image
+ */
+async function publishPendingImageAck(
+  deviceMac: string,
+  imageName: string,
+  supabase: SupabaseClient
+): Promise<void> {
+  const normalizedMac = normalizeMacAddress(deviceMac);
+  if (!normalizedMac) {
+    console.error('[ACK] Invalid MAC address format:', deviceMac);
+    return;
+  }
+
+  // Per protocol: ACK for pending images has empty ACK_OK object (no next_wake_time)
+  const message = {
+    device_id: normalizedMac,
+    image_name: imageName,
+    ACK_OK: {},
+  };
+
+  const topic = `ESP32CAM/${normalizedMac}/ack`;
+
+  console.log('[ACK] Pending image ACK tracked for:', {
+    device: normalizedMac,
+    image: imageName,
+    note: 'HTTP mode - local MQTT service will publish',
+  });
+
+  // Log to MQTT message log
+  await logMqttMessage(
+    supabase,
+    normalizedMac,
+    'outbound',
+    topic,
+    message,
+    'ack_pending',
+    null,
+    null,
+    imageName
+  );
+
+  // Log to audit trail
+  await logAckToAudit(
+    supabase,
+    normalizedMac,
+    imageName,
+    'PENDING_IMAGE_ACK',
+    topic,
+    message,
+    true
+  );
+}
+
 // ============================================
 // INGEST MODULE
 // ============================================
@@ -695,7 +759,7 @@ async function handleHelloStatus(
       .update(updateData)
       .eq('device_id', existingDevice.device_id);
 
-    // Create wake payload record
+    // Create wake payload record with protocol state tracking
     let sessionId = null;
     if (lineageData?.site_id) {
       const { data: sessionData } = await supabase
@@ -710,7 +774,11 @@ async function handleHelloStatus(
       sessionId = sessionData?.session_id || null;
     }
 
-    await supabase
+    // Generate server image name for this wake
+    const timestamp = Date.now();
+    const serverImageName = `${normalizedMac}_${timestamp}.jpg`;
+
+    const { data: wakePayload, error: wakeError } = await supabase
       .from('device_wake_payloads')
       .insert({
         device_id: existingDevice.device_id,
@@ -728,10 +796,59 @@ async function handleHelloStatus(
         wifi_rssi: payload.wifi_rssi,
         telemetry_data: payload,
         wake_type: 'hello',
-        payload_status: 'complete',
+        protocol_state: 'hello_received',
+        server_image_name: serverImageName,
+        payload_status: 'pending',
         overage_flag: false,
-        is_complete: true,
-      });
+        is_complete: false,
+      })
+      .select('payload_id')
+      .single();
+
+    if (wakeError) {
+      console.error('[Ingest] Error creating wake_payload:', wakeError);
+    } else {
+      console.log('[Ingest] Wake payload created:', wakePayload?.payload_id, 'state: hello_received');
+
+      // Check for pending images from previous incomplete transfers
+      const pendingCount = payload.pendingImg || payload.pending_count || 0;
+
+      // Query database for oldest incomplete image
+      const { data: pendingImage } = await supabase
+        .from('device_images')
+        .select('image_id, image_name, status, received_chunks, total_chunks')
+        .eq('device_id', existingDevice.device_id)
+        .in('status', ['pending', 'receiving'])
+        .order('captured_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingCount > 0 && pendingImage) {
+        // Device has pending image and we found it in DB - send ACK to resume
+        console.log('[Ingest] PENDING IMAGE DETECTED - Resuming transfer:', pendingImage.image_name,
+                   `(${pendingImage.received_chunks}/${pendingImage.total_chunks} chunks)`);
+
+        // Update wake payload to track pending image resume
+        if (wakePayload?.payload_id) {
+          await supabase
+            .from('device_wake_payloads')
+            .update({
+              protocol_state: 'ack_pending_sent',
+              ack_sent_at: new Date().toISOString(),
+              server_image_name: pendingImage.image_name,
+              image_id: pendingImage.image_id,
+            })
+            .eq('payload_id', wakePayload.payload_id);
+        }
+
+        // Send ACK for pending image (empty ACK_OK, no next_wake_time)
+        await publishPendingImageAck(normalizedMac, pendingImage.image_name, supabase);
+
+        console.log('[Ingest] Pending image ACK sent - device will continue transfer');
+      } else {
+        console.log('[Ingest] No pending images detected - normal wake flow');
+      }
+    }
 
     console.log('[Ingest] Device updated:', existingDevice.device_id);
   } catch (err) {
@@ -1206,8 +1323,13 @@ Deno.serve(async (req: Request) => {
         success: true,
         message: 'MQTT Device Handler V3 (HTTP Webhook Mode) - BUNDLED',
         mode: 'HTTP POST webhook (no persistent MQTT connection)',
-        version: '3.3.1-bundled',
-        phase: 'Phase 3 - HTTP Webhook Integration',
+        version: '3.4.0-bundled',
+        phase: 'Phase 3 - HTTP Webhook Integration + Pending Image Resume',
+        features: [
+          'Pending image detection and resume',
+          'Protocol state tracking (ack_pending_sent)',
+          'Database-backed chunk recovery',
+        ],
         usage: 'POST with {topic: string, payload: object}',
       }),
       {
