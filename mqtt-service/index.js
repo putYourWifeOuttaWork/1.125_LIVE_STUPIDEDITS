@@ -137,6 +137,62 @@ async function autoProvisionDevice(deviceMac) {
   }
 }
 
+/**
+ * Publish ACK message to resume pending image transfer
+ * Per BrainlyTree PDF spec: sends ACK with image_name to resume incomplete transfer
+ */
+async function publishPendingImageAck(deviceMac, imageName, deviceId, imageId, client) {
+  try {
+    console.log(`[ACK] Resuming pending image ${imageName} for device ${deviceMac}`);
+
+    // Build ACK message per protocol spec
+    const ackMessage = {
+      device_id: deviceMac,
+      image_name: imageName,
+      ACK_OK: {}
+    };
+
+    // Publish to device's ACK topic
+    const topic = `ESP32CAM/${deviceMac}/ack`;
+    client.publish(topic, JSON.stringify(ackMessage));
+    console.log(`[ACK] Sent resume ACK for ${imageName} to ${deviceMac} on ${topic}`);
+
+    // Log ACK to database for audit trail
+    const { error: logError } = await supabase
+      .from('device_ack_log')
+      .insert({
+        device_id: deviceId,
+        mac_address: deviceMac,
+        image_name: imageName,
+        ack_type: 'resume_pending',
+        ack_sent_at: new Date().toISOString(),
+        message_payload: ackMessage
+      });
+
+    if (logError) {
+      console.error(`[ERROR] Failed to log ACK to database:`, logError);
+    } else {
+      console.log(`[ACK] Logged resume ACK to database for ${imageName}`);
+    }
+
+    // Update image status to show we're resuming
+    const { error: updateError } = await supabase
+      .from('device_images')
+      .update({
+        status: 'receiving',
+        updated_at: new Date().toISOString()
+      })
+      .eq('image_id', imageId);
+
+    if (updateError) {
+      console.error(`[ERROR] Failed to update image status:`, updateError);
+    }
+
+  } catch (error) {
+    console.error(`[ERROR] Failed to publish pending image ACK:`, error);
+  }
+}
+
 async function sendPendingCommands(device, client) {
   // Query pending commands for this device
   const { data: commands, error } = await supabase
@@ -277,36 +333,61 @@ async function handleStatusMessage(payload, client) {
   // Per ESP32-CAM architecture: Handle device alive status
   const pendingCount = payload.pendingImg || payload.pending_count || 0;
 
-  // Log pending image information for diagnostics
+  // Query database for pending images BEFORE deciding what command to send
+  let pendingImageInDB = null;
   if (pendingCount > 0) {
-    console.log(`[STATUS] Device reports ${pendingCount} pending images from offline period`);
+    console.log(`[STATUS] Device reports ${pendingCount} pending images - checking database...`);
+
+    const { data: pendingImage, error: pendingError } = await supabase
+      .from('device_images')
+      .select('*')
+      .eq('device_id', device.device_id)
+      .in('status', ['pending', 'receiving'])
+      .order('captured_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (pendingError) {
+      console.error(`[ERROR] Failed to query pending images:`, pendingError);
+    } else if (pendingImage) {
+      pendingImageInDB = pendingImage;
+      const receivedChunks = pendingImage.received_chunks || 0;
+      const totalChunks = pendingImage.total_chunks || 0;
+      console.log(`[STATUS] Found pending image ${pendingImage.image_name} in DB for resume (${receivedChunks}/${totalChunks} chunks)`);
+    } else {
+      console.log(`[STATUS] Device reports ${pendingCount} pending but none found in DB - will send capture_image as fallback`);
+    }
   } else {
     console.log(`[STATUS] Device has no pending images - will capture new image`);
   }
 
-  // ALWAYS send capture_image command when device sends Alive message
-  // This initiates the standard protocol flow regardless of pending count:
-  // 1. Server sends capture_image
-  // 2. Device responds with metadata (from pending queue or new capture)
-  // 3. Server sends send_image to request transmission
-  // 4. Device sends chunks
-  // 5. Server verifies and sends ACK_OK with next_wake_time
-  //
-  // Per BrainlyTree PDF Section 8.5: The device knows whether to capture
-  // a new image or send a pending one. Server should not send ACK_OK until
-  // AFTER successfully receiving and verifying the image.
+  // Implement conditional command logic based on pending status
   try {
-    const captureCmd = {
-      device_id: deviceMac,
-      capture_image: true,
-    };
-    client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(captureCmd));
-    console.log(`[CMD] Sent capture_image command to ${deviceMac} (device pending count: ${pendingCount})`);
+    if (pendingCount > 0 && pendingImageInDB) {
+      // Send ACK to resume pending image transfer
+      await publishPendingImageAck(deviceMac, pendingImageInDB.image_name, device.device_id, pendingImageInDB.image_id, client);
+    } else if (pendingCount > 0 && !pendingImageInDB) {
+      // Fallback: device reports pending but none in DB, send capture_image
+      const captureCmd = {
+        device_id: deviceMac,
+        capture_image: true,
+      };
+      client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(captureCmd));
+      console.log(`[CMD] Device reports ${pendingCount} pending but none in DB - sending capture_image as fallback`);
+    } else {
+      // Normal flow: no pending images, send capture_image
+      const captureCmd = {
+        device_id: deviceMac,
+        capture_image: true,
+      };
+      client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(captureCmd));
+      console.log(`[CMD] No pending images - sending capture_image for new capture`);
+    }
   } catch (cmdError) {
-    console.error(`[ERROR] Failed to send capture_image command:`, cmdError);
+    console.error(`[ERROR] Failed to send command:`, cmdError);
   }
 
-  return { device, pendingCount };
+  return { device, pendingCount, pendingImageInDB };
 }
 
 async function handleMetadataMessage(payload, client) {
