@@ -240,6 +240,10 @@ COMMENT ON FUNCTION fn_log_duplicate_image IS
 -- STEP 5: UPDATE WAKE INGESTION HANDLER
 -- ==========================================
 
+-- Drop existing function first (may have different signature)
+DROP FUNCTION IF EXISTS fn_wake_ingestion_handler(UUID, TIMESTAMPTZ, TEXT, JSONB);
+
+-- Create updated function with resume support
 CREATE OR REPLACE FUNCTION fn_wake_ingestion_handler(
   p_device_id UUID,
   p_captured_at TIMESTAMPTZ,

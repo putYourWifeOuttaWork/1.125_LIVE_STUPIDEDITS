@@ -48,8 +48,9 @@ Duplicates backed up to device_images_duplicates_backup table
 
 After cleanup, run the main migration which:
 1. Adds UNIQUE constraint on `(device_id, image_name)`
-2. Creates helper functions and tables
-3. Enables resume functionality
+2. Drops and recreates `fn_wake_ingestion_handler` with resume support
+3. Creates helper functions and tables
+4. Enables resume functionality
 
 **To Run:**
 1. Open Supabase Dashboard → SQL Editor
@@ -60,11 +61,15 @@ After cleanup, run the main migration which:
 **Expected Output:**
 ```
 Added UNIQUE constraint on device_images(device_id, image_name)
+DROP FUNCTION (if existed)
+CREATE OR REPLACE FUNCTION fn_wake_ingestion_handler
 === Image Resume Migration Complete ===
 Incomplete images in database: X
 Duplicate logs recorded: 0
 Resume system is now active!
 ```
+
+**Note:** This migration safely drops the old version of `fn_wake_ingestion_handler` (4 parameters) and creates a new version with resume support (5 parameters).
 
 ## Why Duplicates Exist
 
