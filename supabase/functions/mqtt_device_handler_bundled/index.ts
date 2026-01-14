@@ -810,43 +810,10 @@ async function handleHelloStatus(
     } else {
       console.log('[Ingest] Wake payload created:', wakePayload?.payload_id, 'state: hello_received');
 
-      // Check for pending images from previous incomplete transfers
+      // Log pending image count for diagnostics (firmware handles resume automatically)
       const pendingCount = payload.pendingImg || payload.pending_count || 0;
-
-      // Query database for oldest incomplete image
-      const { data: pendingImage } = await supabase
-        .from('device_images')
-        .select('image_id, image_name, status, received_chunks, total_chunks')
-        .eq('device_id', existingDevice.device_id)
-        .in('status', ['pending', 'receiving'])
-        .order('captured_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (pendingCount > 0 && pendingImage) {
-        // Device has pending image and we found it in DB - send ACK to resume
-        console.log('[Ingest] PENDING IMAGE DETECTED - Resuming transfer:', pendingImage.image_name,
-                   `(${pendingImage.received_chunks}/${pendingImage.total_chunks} chunks)`);
-
-        // Update wake payload to track pending image resume
-        if (wakePayload?.payload_id) {
-          await supabase
-            .from('device_wake_payloads')
-            .update({
-              protocol_state: 'ack_pending_sent',
-              ack_sent_at: new Date().toISOString(),
-              server_image_name: pendingImage.image_name,
-              image_id: pendingImage.image_id,
-            })
-            .eq('payload_id', wakePayload.payload_id);
-        }
-
-        // Send ACK for pending image (empty ACK_OK, no next_wake_time)
-        await publishPendingImageAck(normalizedMac, pendingImage.image_name, supabase);
-
-        console.log('[Ingest] Pending image ACK sent - device will continue transfer');
-      } else {
-        console.log('[Ingest] No pending images detected - normal wake flow');
+      if (pendingCount > 0) {
+        console.log('[Ingest] Device reports', pendingCount, 'pending images - firmware will auto-resume on next transfer');
       }
     }
 
@@ -895,6 +862,39 @@ async function handleMetadata(
 
     const deviceId = lineageData.device_id;
 
+    // Check if this image already exists (resume detection)
+    const { data: existingImage, error: existingError } = await supabase
+      .from('device_images')
+      .select('image_id, status, received_chunks, total_chunks')
+      .eq('device_id', deviceId)
+      .eq('image_name', payload.image_name)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error('[Ingest] Failed to check for existing image:', existingError);
+    }
+
+    // Handle duplicate complete image
+    if (existingImage && existingImage.status === 'complete') {
+      console.warn('[Ingest] Duplicate metadata for complete image', payload.image_name, '- logging and ignoring');
+
+      await supabase.rpc('fn_log_duplicate_image', {
+        p_device_id: deviceId,
+        p_image_name: payload.image_name,
+        p_duplicate_metadata: {
+          captured_at: payload.capture_timestamp,
+          total_chunks: payload.total_chunks_count,
+          image_size: payload.image_size,
+          temperature: payload.temperature,
+          humidity: payload.humidity,
+          pressure: payload.pressure,
+          gas_resistance: payload.gas_resistance,
+        },
+      });
+
+      return;
+    }
+
     const telemetryData = {
       captured_at: payload.capture_timestamp,
       total_chunks: payload.total_chunks_count,
@@ -909,11 +909,13 @@ async function handleMetadata(
       slot_index: payload.slot_index,
     };
 
+    // Call ingestion handler with existing image_id if resuming
     const { data: result, error } = await supabase.rpc('fn_wake_ingestion_handler', {
       p_device_id: deviceId,
       p_captured_at: payload.capture_timestamp,
       p_image_name: payload.image_name,
       p_telemetry_data: telemetryData,
+      p_existing_image_id: existingImage?.image_id || null,
     });
 
     if (error || !result || !result.success) {
@@ -921,12 +923,21 @@ async function handleMetadata(
       return;
     }
 
-    console.log('[Ingest] Wake ingestion success:', {
-      payload_id: result.payload_id,
-      image_id: result.image_id,
-      session_id: result.session_id,
-      wake_index: result.wake_index,
-    });
+    if (existingImage && existingImage.status !== 'complete') {
+      console.log('[Ingest] Resume detected - continuing image transfer:', {
+        image_id: result.image_id,
+        received_chunks: existingImage.received_chunks,
+        total_chunks: existingImage.total_chunks,
+        is_resume: result.is_resume,
+      });
+    } else {
+      console.log('[Ingest] New image transfer - wake ingestion success:', {
+        payload_id: result.payload_id,
+        image_id: result.image_id,
+        session_id: result.session_id,
+        wake_index: result.wake_index,
+      });
+    }
 
     if (result.payload_id && result.image_id) {
       await supabase
@@ -936,7 +947,7 @@ async function handleMetadata(
           image_status: 'receiving',
           wake_type: 'image_wake',
           chunk_count: payload.total_chunks_count,
-          chunks_received: 0,
+          chunks_received: existingImage?.received_chunks || 0,
         })
         .eq('payload_id', result.payload_id);
     }

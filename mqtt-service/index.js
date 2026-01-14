@@ -347,6 +347,20 @@ async function handleMetadataMessage(payload, client) {
     return;
   }
 
+  // Check if this image already exists (resume detection)
+  const { data: existingImage, error: existingError } = await supabase
+    .from('device_images')
+    .select('image_id, status, received_chunks, total_chunks')
+    .eq('device_id', device.device_id)
+    .eq('image_name', normalizedPayload.image_name)
+    .maybeSingle();
+
+  if (existingError) {
+    console.error(`[ERROR] Failed to check for existing image:`, existingError);
+    // Continue with insert attempt
+  }
+
+  let imageRecord;
   const imageKey = getImageKey(normalizedPayload.device_id, normalizedPayload.image_name);
 
   // Build metadata object with all sensor data
@@ -359,31 +373,74 @@ async function handleMetadataMessage(payload, client) {
     error: normalizedPayload.error || 0,
   };
 
-  console.log(`[METADATA] Inserting image record with metadata:`, JSON.stringify(metadataObj));
+  // Handle three cases: no existing, incomplete existing, or complete existing
+  if (!existingImage) {
+    // Case 1: New image - INSERT
+    console.log(`[METADATA] New image transfer starting`);
+    const { data: newImage, error: insertError } = await supabase
+      .from('device_images')
+      .insert({
+        device_id: device.device_id,
+        image_name: normalizedPayload.image_name,
+        image_size: normalizedPayload.image_size || 0,
+        captured_at: normalizedPayload.capture_timestamp,
+        total_chunks: normalizedPayload.total_chunks_count,
+        received_chunks: 0,
+        status: 'receiving',
+        error_code: normalizedPayload.error || 0,
+        metadata: metadataObj,
+      })
+      .select()
+      .single();
 
-  const { data: imageRecord, error: imageError } = await supabase
-    .from('device_images')
-    .insert({
-      device_id: device.device_id,
-      image_name: normalizedPayload.image_name,
-      image_size: normalizedPayload.image_size || 0,
-      captured_at: normalizedPayload.capture_timestamp,
-      total_chunks: normalizedPayload.total_chunks_count,
-      received_chunks: 0,
-      status: 'receiving',
-      error_code: normalizedPayload.error || 0,
-      metadata: metadataObj,
-    })
-    .select()
-    .single();
+    if (insertError) {
+      console.error(`[ERROR] Failed to create image record:`, insertError);
+      return;
+    }
 
-  if (imageError) {
-    console.error(`[ERROR] Failed to create image record:`, imageError);
-    console.error(`[ERROR] Payload was:`, JSON.stringify(normalizedPayload));
+    imageRecord = newImage;
+    console.log(`[SUCCESS] Created new image record ${imageRecord.image_id}`);
+
+  } else if (existingImage.status === 'complete') {
+    // Case 2: Complete image receiving duplicate metadata - LOG and IGNORE
+    console.warn(`[METADATA] Duplicate metadata for complete image ${normalizedPayload.image_name} - logging and ignoring`);
+
+    await supabase.rpc('fn_log_duplicate_image', {
+      p_device_id: device.device_id,
+      p_image_name: normalizedPayload.image_name,
+      p_duplicate_metadata: metadataObj,
+    });
+
+    // Don't process chunks for complete images
     return;
-  }
 
-  console.log(`[SUCCESS] Created image record ${imageRecord.image_id}`);
+  } else {
+    // Case 3: Incomplete image (status 'pending' or 'receiving') - RESUME
+    console.log(`[METADATA] Resuming incomplete image transfer: ${normalizedPayload.image_name} (${existingImage.received_chunks}/${existingImage.total_chunks} chunks already received)`);
+
+    const { data: updatedImage, error: updateError } = await supabase
+      .from('device_images')
+      .update({
+        captured_at: normalizedPayload.capture_timestamp,
+        image_size: normalizedPayload.image_size || existingImage.image_size,
+        total_chunks: normalizedPayload.total_chunks_count,
+        status: 'receiving',
+        metadata: metadataObj,
+        updated_at: new Date().toISOString(),
+        // Don't reset received_chunks - preserve progress
+      })
+      .eq('image_id', existingImage.image_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error(`[ERROR] Failed to update image record:`, updateError);
+      return;
+    }
+
+    imageRecord = updatedImage;
+    console.log(`[SUCCESS] Updated image record ${imageRecord.image_id} - resuming from chunk ${existingImage.received_chunks}`);
+  }
 
   // Create telemetry record if we have sensor data
   if (normalizedPayload.temperature !== undefined) {
