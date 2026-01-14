@@ -82,6 +82,77 @@ export async function publishMissingChunks(
 }
 
 /**
+ * Publish ACK for pending image (without next_wake_time)
+ * Used when device reports pendingImg > 0 to resume image transfer
+ */
+export async function publishPendingImageAck(
+  client: MqttClient | null,
+  deviceMac: string,
+  imageName: string,
+  supabase?: SupabaseClient
+): Promise<void> {
+  // Normalize MAC address (remove separators, uppercase)
+  const normalizedMac = normalizeMacAddress(deviceMac);
+  if (!normalizedMac) {
+    console.error('[ACK] Invalid MAC address format:', deviceMac);
+    return;
+  }
+
+  // Per protocol: ACK for pending images has empty ACK_OK object
+  const message = {
+    device_id: normalizedMac,
+    image_name: imageName,
+    ACK_OK: {},
+  };
+
+  const topic = `ESP32CAM/${normalizedMac}/ack`;
+
+  console.log('[ACK] Sending ACK for pending image:', {
+    device: normalizedMac,
+    image: imageName,
+    topic,
+  });
+
+  // In HTTP mode, there's no MQTT client - we just track state
+  if (!client) {
+    console.log('[ACK] HTTP mode - pending image ACK tracked in database only');
+    return;
+  }
+
+  try {
+    client.publish(topic, JSON.stringify(message));
+    console.log('[ACK] Pending image ACK published successfully');
+
+    // Log to audit trail
+    if (supabase) {
+      await supabase.rpc('fn_log_device_ack', {
+        p_device_mac: normalizedMac,
+        p_image_name: imageName,
+        p_ack_type: 'PENDING_IMAGE_ACK',
+        p_mqtt_topic: topic,
+        p_mqtt_payload: message,
+        p_mqtt_success: true,
+      });
+    }
+  } catch (err) {
+    console.error('[ACK] Failed to publish pending image ACK:', err);
+
+    // Log failure to audit trail
+    if (supabase) {
+      await supabase.rpc('fn_log_device_ack', {
+        p_device_mac: normalizedMac,
+        p_image_name: imageName,
+        p_ack_type: 'PENDING_IMAGE_ACK',
+        p_mqtt_topic: topic,
+        p_mqtt_payload: message,
+        p_mqtt_success: false,
+        p_mqtt_error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+}
+
+/**
  * Publish ACK_OK with next wake time
  */
 export async function publishAckOk(

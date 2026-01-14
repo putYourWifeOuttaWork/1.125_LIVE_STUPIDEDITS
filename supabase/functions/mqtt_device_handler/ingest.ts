@@ -318,24 +318,64 @@ export async function handleHelloStatus(
               .eq('payload_id', payloadId);
           }
         } else {
-          // Provisioned and mapped: Full protocol flow (ACK -> SNAP -> wait for image)
-          console.log('[Ingest] Device provisioned - initiating image capture protocol');
+          // Provisioned and mapped: Check for pending images first
+          console.log('[Ingest] Device provisioned - checking for pending images');
 
-          // Update state to ACK sent
-          if (payloadId) {
-            await supabase
-              .from('device_wake_payloads')
-              .update({
-                protocol_state: 'ack_sent',
-                ack_sent_at: new Date().toISOString(),
-              })
-              .eq('payload_id', payloadId);
+          const pendingCount = payload.pending_count || 0;
+
+          // Check database for oldest incomplete image
+          const { data: pendingImage } = await supabase
+            .from('device_images')
+            .select('image_id, image_name, status, received_chunks, total_chunks')
+            .eq('device_id', existingDevice.device_id)
+            .in('status', ['pending', 'receiving'])
+            .order('captured_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (pendingCount > 0 && pendingImage) {
+            // Device has pending image and we found it in DB - send ACK to resume
+            console.log('[Ingest] Resuming pending image transfer:', pendingImage.image_name,
+                       `(${pendingImage.received_chunks}/${pendingImage.total_chunks} chunks)`);
+
+            // Update wake payload to track pending image resume
+            if (payloadId) {
+              await supabase
+                .from('device_wake_payloads')
+                .update({
+                  protocol_state: 'ack_pending_sent',
+                  ack_sent_at: new Date().toISOString(),
+                  server_image_name: pendingImage.image_name,
+                  device_image_id: pendingImage.image_id,
+                })
+                .eq('payload_id', payloadId);
+            }
+
+            // Send ACK for pending image (empty ACK_OK, no next_wake_time)
+            const { publishPendingImageAck } = await import('./ack.ts');
+            await publishPendingImageAck(client, normalizedMac, pendingImage.image_name, supabase);
+
+            console.log('[Ingest] Pending image ACK sent - device will continue transfer');
+          } else {
+            // No pending images (or device reports 0) - proceed with new capture
+            console.log('[Ingest] No pending images - initiating new image capture');
+
+            // Update state to ACK sent
+            if (payloadId) {
+              await supabase
+                .from('device_wake_payloads')
+                .update({
+                  protocol_state: 'ack_sent',
+                  ack_sent_at: new Date().toISOString(),
+                })
+                .eq('payload_id', payloadId);
+            }
+
+            // Send SNAP command to capture new image
+            await publishSnapCommand(client, normalizedMac, serverImageName, supabase, payloadId);
+
+            console.log('[Ingest] Protocol flow initiated: HELLO -> ACK -> SNAP, waiting for metadata');
           }
-
-          // Send SNAP command to capture image
-          await publishSnapCommand(client, normalizedMac, serverImageName, supabase, payloadId);
-
-          console.log('[Ingest] Protocol flow initiated: HELLO -> ACK -> SNAP, waiting for metadata');
         }
       }
 
@@ -369,12 +409,6 @@ export async function handleHelloStatus(
       console.log('[Ingest] Device updated:', existingDevice.device_id,
                   'Battery:', payload.battery_voltage, 'WiFi:', payload.wifi_rssi,
                   'Next wake:', updateData.next_wake_at);
-    }
-
-    // If pending images, log for monitoring
-    if (payload.pending_count && payload.pending_count > 0) {
-      console.log('[Ingest] Device has pending images:', payload.pending_count);
-      // Device will send automatically - no action needed per PDF Section 8.5
     }
   } catch (err) {
     console.error('[Ingest] Error handling HELLO:', err);
