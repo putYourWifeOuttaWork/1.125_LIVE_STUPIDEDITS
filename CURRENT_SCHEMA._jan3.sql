@@ -296,6 +296,29 @@ CREATE TABLE public.device_images (
   CONSTRAINT device_images_site_device_session_id_fkey FOREIGN KEY (site_device_session_id) REFERENCES public.site_device_sessions(session_id),
   CONSTRAINT device_images_wake_payload_id_fkey FOREIGN KEY (wake_payload_id) REFERENCES public.device_wake_payloads(payload_id)
 );
+CREATE TABLE public.device_images_duplicates_backup (
+  backup_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  backed_up_at timestamp with time zone DEFAULT now(),
+  image_id uuid,
+  device_id uuid,
+  company_id uuid,
+  program_id uuid,
+  site_id uuid,
+  image_name text,
+  image_url text,
+  image_size integer,
+  captured_at timestamp with time zone,
+  received_at timestamp with time zone,
+  total_chunks integer,
+  received_chunks integer,
+  status text,
+  error_code integer,
+  metadata jsonb,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  backup_reason text DEFAULT 'Duplicate image_name cleanup before resume migration'::text,
+  CONSTRAINT device_images_duplicates_backup_pkey PRIMARY KEY (backup_id)
+);
 CREATE TABLE public.device_program_assignments (
   assignment_id uuid NOT NULL DEFAULT gen_random_uuid(),
   device_id uuid NOT NULL,
@@ -409,6 +432,11 @@ CREATE TABLE public.device_wake_payloads (
   chunk_count integer CHECK (chunk_count >= 0),
   chunks_received integer DEFAULT 0 CHECK (chunks_received >= 0),
   is_complete boolean DEFAULT false,
+  protocol_state text CHECK (protocol_state = ANY (ARRAY['hello_received'::text, 'ack_sent'::text, 'ack_pending_sent'::text, 'snap_sent'::text, 'metadata_received'::text, 'complete'::text, 'failed'::text, 'sleep_only'::text])),
+  server_image_name text,
+  ack_sent_at timestamp with time zone,
+  snap_sent_at timestamp with time zone,
+  sleep_sent_at timestamp with time zone,
   CONSTRAINT device_wake_payloads_pkey PRIMARY KEY (payload_id),
   CONSTRAINT device_wake_payloads_site_device_session_id_fkey FOREIGN KEY (site_device_session_id) REFERENCES public.site_device_sessions(session_id),
   CONSTRAINT device_wake_payloads_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
