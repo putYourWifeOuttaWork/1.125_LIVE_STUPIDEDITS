@@ -40,20 +40,42 @@
 -- STEP 1: ADD UNIQUE CONSTRAINT TO DEVICE_IMAGES
 -- ==========================================
 
--- First check if constraint already exists
+-- First check for duplicates and constraint existence
 DO $$
+DECLARE
+  v_duplicate_count INT;
+  v_constraint_exists BOOLEAN;
 BEGIN
-  -- Add unique constraint if it doesn't exist
-  IF NOT EXISTS (
+  -- Check if constraint already exists
+  SELECT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'device_images_device_id_image_name_key'
-  ) THEN
-    ALTER TABLE device_images
-    ADD CONSTRAINT device_images_device_id_image_name_key
-    UNIQUE (device_id, image_name);
+  ) INTO v_constraint_exists;
 
-    RAISE NOTICE 'Added UNIQUE constraint on device_images(device_id, image_name)';
+  IF v_constraint_exists THEN
+    RAISE NOTICE 'UNIQUE constraint already exists - skipping';
+    RETURN;
   END IF;
+
+  -- Check for duplicate (device_id, image_name) pairs
+  SELECT COUNT(*) INTO v_duplicate_count
+  FROM (
+    SELECT device_id, image_name, COUNT(*) as cnt
+    FROM device_images
+    GROUP BY device_id, image_name
+    HAVING COUNT(*) > 1
+  ) duplicates;
+
+  IF v_duplicate_count > 0 THEN
+    RAISE EXCEPTION 'Cannot add UNIQUE constraint: Found % duplicate (device_id, image_name) pairs. Run APPLY_IMAGE_RESUME_CLEANUP_FIRST.sql to clean up duplicates.', v_duplicate_count;
+  END IF;
+
+  -- Add unique constraint
+  ALTER TABLE device_images
+  ADD CONSTRAINT device_images_device_id_image_name_key
+  UNIQUE (device_id, image_name);
+
+  RAISE NOTICE 'Added UNIQUE constraint on device_images(device_id, image_name)';
 END $$;
 
 -- Add index for fast resume detection
