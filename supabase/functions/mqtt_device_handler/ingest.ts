@@ -403,6 +403,15 @@ export async function handleHelloStatus(
         if (telemetryError) {
           console.error('[Ingest] Error creating telemetry record:', telemetryError);
           // Don't return - telemetry is secondary to device update
+        } else {
+          // Check for threshold alerts on HELLO telemetry
+          await checkAllAlerts(
+            supabase,
+            existingDevice.device_id,
+            payload.temperature,
+            payload.humidity,
+            now
+          );
         }
       }
 
@@ -578,6 +587,15 @@ export async function handleMetadata(
         // Don't fail - telemetry is secondary
       } else {
         console.log('[Ingest] Telemetry recorded: temp=', payload.temperature, 'rh=', payload.humidity);
+
+        // Check for threshold alerts on metadata telemetry
+        await checkAllAlerts(
+          supabase,
+          lineageData.device_id,
+          payload.temperature,
+          payload.humidity,
+          payload.capture_timestamp
+        );
       }
     }
 
@@ -643,6 +661,89 @@ export async function handleChunk(
     }
   } catch (err) {
     console.error('[Ingest] Exception handling chunk:', err);
+  }
+}
+
+/**
+ * Check all alert thresholds for a device with environmental data
+ * Comprehensive alert detection across all categories
+ */
+async function checkAllAlerts(
+  supabase: SupabaseClient,
+  deviceId: string,
+  tempCelsius: number | null | undefined,
+  humidity: number | null | undefined,
+  capturedAt: string
+): Promise<void> {
+  try {
+    // Convert temperature to Fahrenheit for alert threshold comparison
+    const tempF = celsiusToFahrenheit(tempCelsius);
+
+    // 1. Check absolute thresholds (temp, humidity, MGI)
+    const { data: absoluteAlerts, error: absoluteError } = await supabase.rpc(
+      'check_absolute_thresholds',
+      {
+        p_device_id: deviceId,
+        p_temperature: tempF,  // FAHRENHEIT for threshold comparison
+        p_humidity: humidity || null,
+        p_mgi: null,
+        p_measurement_timestamp: capturedAt,
+      }
+    );
+
+    if (absoluteError) {
+      console.error('[Alerts] Error checking absolute thresholds:', absoluteError);
+    } else if (absoluteAlerts && absoluteAlerts.length > 0) {
+      console.log('[Alerts] Absolute threshold alerts:', absoluteAlerts.length);
+      absoluteAlerts.forEach((alert: any) => {
+        console.log(`  - ${alert.type}: ${alert.severity}`);
+      });
+    }
+
+    // 2. Check combination zones (Temp + RH danger zones)
+    if (tempF !== null && humidity !== null) {
+      const { data: comboAlerts, error: comboError } = await supabase.rpc(
+        'check_combination_zones',
+        {
+          p_device_id: deviceId,
+          p_temperature: tempF,  // FAHRENHEIT for threshold comparison
+          p_humidity: humidity,
+          p_measurement_timestamp: capturedAt,
+        }
+      );
+
+      if (comboError) {
+        console.error('[Alerts] Error checking combination zones:', comboError);
+      } else if (comboAlerts && comboAlerts.length > 0) {
+        console.log('[Alerts] Combination zone alerts:', comboAlerts.length);
+        comboAlerts.forEach((alert: any) => {
+          console.log(`  - ${alert.type}: ${alert.severity}`);
+        });
+      }
+    }
+
+    // 3. Check intra-session shifts (within-day changes)
+    const { data: shiftAlerts, error: shiftError } = await supabase.rpc(
+      'check_intra_session_shifts',
+      {
+        p_device_id: deviceId,
+        p_temperature: tempF,  // FAHRENHEIT for threshold comparison
+        p_humidity: humidity || null,
+        p_measurement_timestamp: capturedAt,
+      }
+    );
+
+    if (shiftError) {
+      console.error('[Alerts] Error checking intra-session shifts:', shiftError);
+    } else if (shiftAlerts && shiftAlerts.length > 0) {
+      console.log('[Alerts] Intra-session shift alerts:', shiftAlerts.length);
+      shiftAlerts.forEach((alert: any) => {
+        console.log(`  - ${alert.type}: ${alert.severity}`);
+      });
+    }
+  } catch (err) {
+    console.error('[Alerts] Exception checking alerts:', err);
+    // Don't fail the whole operation if alert check fails
   }
 }
 
@@ -772,31 +873,14 @@ export async function handleTelemetryOnly(
 
     console.log('[Ingest] Telemetry saved successfully for device:', lineageData.device_name);
 
-    // Check for threshold alerts
-    try {
-      const { data: alerts, error: alertError } = await supabase.rpc(
-        'check_absolute_thresholds',
-        {
-          p_device_id: lineageData.device_id,
-          p_temperature: payload.temperature || null,
-          p_humidity: payload.humidity || null,
-          p_mgi: null,
-          p_measurement_timestamp: capturedAt,
-        }
-      );
-
-      if (alertError) {
-        console.error('[Ingest] Error checking alerts:', alertError);
-      } else if (alerts && alerts.length > 0) {
-        console.log('[Ingest] Alerts triggered:', alerts.length, 'alerts');
-        alerts.forEach((alert: any) => {
-          console.log(`  - ${alert.type} (${alert.severity}): ${alert.message}`);
-        });
-      }
-    } catch (alertErr) {
-      console.error('[Ingest] Exception checking alerts:', alertErr);
-      // Don't fail the whole operation if alert check fails
-    }
+    // Check for threshold alerts (comprehensive)
+    await checkAllAlerts(
+      supabase,
+      lineageData.device_id,
+      payload.temperature,
+      payload.humidity,
+      capturedAt
+    );
 
   } catch (err) {
     console.error('[Ingest] Exception handling telemetry:', err);
