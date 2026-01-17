@@ -230,6 +230,9 @@ async function sendPendingCommands(device, client) {
 }
 
 async function handleStatusMessage(payload, client) {
+  console.log(`[DEBUG] ⭐ handleStatusMessage CALLED - Entry point`);
+  console.log(`[DEBUG] Raw payload:`, JSON.stringify(payload, null, 2));
+
   const deviceMac = payload.device_mac || payload.device_id;
   const normalizedMac = normalizeMacAddress(deviceMac);
 
@@ -272,7 +275,13 @@ async function handleStatusMessage(payload, client) {
   console.log(`[STATUS] Device ${device.device_code || device.device_mac} updated (status: ${device.provisioning_status})`);
 
   // Send any pending commands to the device
-  await sendPendingCommands(device, client);
+  console.log(`[DEBUG] About to call sendPendingCommands for device ${deviceMac}`);
+  try {
+    await sendPendingCommands(device, client);
+    console.log(`[DEBUG] Completed sendPendingCommands for device ${deviceMac}`);
+  } catch (pendingError) {
+    console.error(`[ERROR] sendPendingCommands failed but continuing:`, pendingError);
+  }
 
   // Per ESP32-CAM architecture: Handle device alive status
   const pendingCount = payload.pendingImg || payload.pending_count || 0;
@@ -295,15 +304,26 @@ async function handleStatusMessage(payload, client) {
   // Per BrainlyTree PDF Section 8.5: The device knows whether to capture
   // a new image or send a pending one. Server should not send ACK_OK until
   // AFTER successfully receiving and verifying the image.
+  console.log(`[DEBUG] Preparing to send capture_image command to ${deviceMac}`);
+  console.log(`[DEBUG] Client connected: ${client.connected}, deviceMac: ${deviceMac}, pendingCount: ${pendingCount}`);
+
   try {
     const captureCmd = {
       device_id: deviceMac,
       capture_image: true,
     };
-    client.publish(`ESP32CAM/${deviceMac}/cmd`, JSON.stringify(captureCmd));
-    console.log(`[CMD] Sent capture_image command to ${deviceMac} (device pending count: ${pendingCount})`);
+    const cmdTopic = `ESP32CAM/${deviceMac}/cmd`;
+    const cmdPayload = JSON.stringify(captureCmd);
+
+    console.log(`[DEBUG] Publishing to topic: ${cmdTopic}`);
+    console.log(`[DEBUG] Command payload: ${cmdPayload}`);
+
+    client.publish(cmdTopic, cmdPayload);
+
+    console.log(`[CMD] ✅ SUCCESSFULLY sent capture_image command to ${deviceMac} (device pending count: ${pendingCount})`);
   } catch (cmdError) {
-    console.error(`[ERROR] Failed to send capture_image command:`, cmdError);
+    console.error(`[ERROR] ❌ FAILED to send capture_image command:`, cmdError);
+    console.error(`[ERROR] Error stack:`, cmdError.stack);
   }
 
   return { device, pendingCount };
@@ -1119,7 +1139,10 @@ function connectToMQTT() {
         }
 
         // Process locally (full protocol implementation - sends MQTT commands to devices)
+        console.log(`[DEBUG] 🔀 Routing message - Topic: ${topic}`);
+
         if (topic.includes('/ack') && commandQueueProcessor) {
+          console.log(`[DEBUG] 📨 Route: ACK handler`);
           // Only process device command acknowledgments, not our own ACK_OK messages
           // Device ACKs have command_id or specific command fields
           // Our ACK_OK messages have ACK_OK field
@@ -1128,8 +1151,10 @@ function connectToMQTT() {
             await commandQueueProcessor.handleCommandAck(deviceMac, payload);
           }
         } else if (topic.includes('/status')) {
+          console.log(`[DEBUG] 📨 Route: STATUS handler - Calling handleStatusMessage`);
           // Handle status message - logic is now inside handleStatusMessage()
           await handleStatusMessage(payload, client);
+          console.log(`[DEBUG] 📨 STATUS handler completed`);
         } else if (topic.includes('/data')) {
           // Check for metadata message - handle both field name variations
           const hasMetadata = (payload.total_chunks_count !== undefined || payload.total_chunk_count !== undefined)
