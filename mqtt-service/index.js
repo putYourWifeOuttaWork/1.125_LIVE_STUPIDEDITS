@@ -16,10 +16,47 @@ const MQTT_USERNAME = process.env.MQTT_USERNAME || 'BrainlyTesting';
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || 'BrainlyTest@1234';
 
 const imageBuffers = new Map();
+const deviceSessions = new Map();
+const completedImages = new Set();
+const COMPLETED_IMAGE_TTL_MS = 5 * 60 * 1000;
+const SESSION_TIMEOUT_MS = 10 * 60 * 1000;
 
 function getImageKey(deviceId, imageName) {
   return `${deviceId}|${imageName}`;
 }
+
+function getOrCreateSession(deviceMac, deviceId, pendingCount) {
+  let session = deviceSessions.get(deviceMac);
+  if (!session) {
+    session = {
+      deviceMac,
+      deviceId,
+      state: 'hello_received',
+      initialPendingCount: pendingCount,
+      pendingDrained: 0,
+      currentImageName: null,
+      startedAt: new Date(),
+      lastActivityAt: new Date(),
+    };
+    deviceSessions.set(deviceMac, session);
+  }
+  session.lastActivityAt = new Date();
+  return session;
+}
+
+function cleanupSession(deviceMac) {
+  deviceSessions.delete(deviceMac);
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [mac, session] of deviceSessions.entries()) {
+    if (now - session.lastActivityAt.getTime() > SESSION_TIMEOUT_MS) {
+      console.log(`[SESSION] Timeout - cleaning up stale session for ${mac}`);
+      deviceSessions.delete(mac);
+    }
+  }
+}, 60 * 1000);
 
 async function generateDeviceCode(hardwareVersion = 'ESP32-S3') {
   const hwNormalized = hardwareVersion.replace(/[^A-Z0-9]/gi, '').toUpperCase();
@@ -303,9 +340,6 @@ async function processPendingList(device, pendingList) {
 }
 
 async function handleStatusMessage(payload, client) {
-  console.log(`[DEBUG] ⭐ handleStatusMessage CALLED - Entry point`);
-  console.log(`[DEBUG] Raw payload:`, JSON.stringify(payload, null, 2));
-
   const deviceMac = payload.device_mac || payload.device_id;
   const normalizedMac = normalizeMacAddress(deviceMac);
 
@@ -314,7 +348,7 @@ async function handleStatusMessage(payload, client) {
     return null;
   }
 
-  console.log(`[STATUS] Device ${payload.device_id} (MAC: ${deviceMac}, normalized: ${normalizedMac}) is alive, pending images: ${payload.pendingImg || payload.pending_count || 0}`);
+  console.log(`[STATUS] Device ${normalizedMac} is alive, pending images: ${payload.pendingImg || payload.pending_count || 0}`);
 
   let { data: device, error: deviceError } = await supabase
     .from('devices')
@@ -347,19 +381,14 @@ async function handleStatusMessage(payload, client) {
 
   console.log(`[STATUS] Device ${device.device_code || device.device_mac} updated (status: ${device.provisioning_status})`);
 
-  // Send any pending commands to the device
-  console.log(`[DEBUG] About to call sendPendingCommands for device ${deviceMac}`);
   try {
     await sendPendingCommands(device, client);
-    console.log(`[DEBUG] Completed sendPendingCommands for device ${deviceMac}`);
   } catch (pendingError) {
     console.error(`[ERROR] sendPendingCommands failed but continuing:`, pendingError);
   }
 
-  // Process pending_list array from device (firmware reports pending images)
   const pendingList = payload.pending_list || [];
   if (pendingList.length > 0) {
-    console.log(`[DEBUG] Device reported ${pendingList.length} pending images in pending_list`);
     try {
       await processPendingList(device, pendingList);
     } catch (pendingListError) {
@@ -367,47 +396,37 @@ async function handleStatusMessage(payload, client) {
     }
   }
 
-  // Per ESP32-CAM architecture: Handle device alive status
   const pendingCount = payload.pendingImg || payload.pending_count || 0;
+  const cmdTopic = `ESP32CAM/${deviceMac}/cmd`;
 
-  // Log pending image information for diagnostics
-  if (pendingCount > 0) {
-    console.log(`[STATUS] Device reports ${pendingCount} pending images from offline period`);
-  } else {
-    console.log(`[STATUS] Device has no pending images - will capture new image`);
-  }
-
-  // ALWAYS send capture_image command when device sends Alive message
-  // This initiates the standard protocol flow regardless of pending count:
-  // 1. Server sends capture_image
-  // 2. Device responds with metadata (from pending queue or new capture)
-  // 3. Server sends send_image to request transmission
-  // 4. Device sends chunks
-  // 5. Server verifies and sends ACK_OK with next_wake_time
-  //
-  // Per BrainlyTree PDF Section 8.5: The device knows whether to capture
-  // a new image or send a pending one. Server should not send ACK_OK until
-  // AFTER successfully receiving and verifying the image.
-  console.log(`[DEBUG] Preparing to send capture_image command to ${deviceMac}`);
-  console.log(`[DEBUG] Client connected: ${client.connected}, deviceMac: ${deviceMac}, pendingCount: ${pendingCount}`);
+  const session = getOrCreateSession(deviceMac, device.device_id, pendingCount);
 
   try {
-    const captureCmd = {
-      device_id: deviceMac,
-      capture_image: true,
-    };
-    const cmdTopic = `ESP32CAM/${deviceMac}/cmd`;
-    const cmdPayload = JSON.stringify(captureCmd);
+    if (pendingCount > 0) {
+      console.log(`[STATUS] Device reports ${pendingCount} pending images - sending send_all_pending`);
+      session.state = 'draining_pending';
+      session.initialPendingCount = pendingCount;
+      session.pendingDrained = 0;
 
-    console.log(`[DEBUG] Publishing to topic: ${cmdTopic}`);
-    console.log(`[DEBUG] Command payload: ${cmdPayload}`);
+      const drainCmd = {
+        device_id: deviceMac,
+        send_all_pending: true,
+      };
+      client.publish(cmdTopic, JSON.stringify(drainCmd));
+      console.log(`[CMD] Sent send_all_pending to ${deviceMac} (${pendingCount} pending images to drain)`);
+    } else {
+      console.log(`[STATUS] Device has no pending images - sending capture_image`);
+      session.state = 'capture_sent';
 
-    client.publish(cmdTopic, cmdPayload);
-
-    console.log(`[CMD] ✅ SUCCESSFULLY sent capture_image command to ${deviceMac} (device pending count: ${pendingCount})`);
+      const captureCmd = {
+        device_id: deviceMac,
+        capture_image: true,
+      };
+      client.publish(cmdTopic, JSON.stringify(captureCmd));
+      console.log(`[CMD] Sent capture_image to ${deviceMac}`);
+    }
   } catch (cmdError) {
-    console.error(`[ERROR] ❌ FAILED to send capture_image command:`, cmdError);
-    console.error(`[ERROR] Error stack:`, cmdError.stack);
+    console.error(`[ERROR] Failed to send command to ${deviceMac}:`, cmdError);
   }
 
   return { device, pendingCount };
@@ -611,7 +630,17 @@ async function handleMetadataMessage(payload, client) {
 
   console.log(`[METADATA] Ready to receive ${normalizedPayload.total_chunks_count} chunks for ${normalizedPayload.image_name}`);
 
-  // Send send_image command to request chunks (per PDF spec page 3, step 11)
+  const session = deviceSessions.get(normalizedMac);
+  if (session) {
+    session.currentImageName = normalizedPayload.image_name;
+    session.lastActivityAt = new Date();
+  }
+
+  if (completedImages.has(imageKey)) {
+    console.log(`[METADATA] Ignoring duplicate metadata for already-completed image ${normalizedPayload.image_name}`);
+    return;
+  }
+
   const sendImageCmd = {
     device_id: deviceMac,
     send_image: normalizedPayload.image_name
@@ -622,16 +651,28 @@ async function handleMetadataMessage(payload, client) {
 
 async function handleChunkMessage(payload, client) {
   const imageKey = getImageKey(payload.device_id, payload.image_name);
+
+  if (completedImages.has(imageKey)) {
+    return;
+  }
+
   const buffer = imageBuffers.get(imageKey);
 
   if (!buffer) {
-    console.error(`[ERROR] No metadata found for ${payload.image_name}`);
-    console.error(`[ERROR] Available keys:`, Array.from(imageBuffers.keys()));
+    console.warn(`[CHUNK] No metadata found for ${payload.image_name} - may be late arrival after completion`);
+    return;
+  }
+
+  if (buffer.completed) {
+    return;
+  }
+
+  if (buffer.chunks.has(payload.chunk_id)) {
+    console.log(`[CHUNK] Duplicate chunk ${payload.chunk_id} for ${payload.image_name} - skipping`);
     return;
   }
 
   try {
-    // Decode base64 payload to binary data
     const chunkBytes = Buffer.from(payload.payload, 'base64');
 
     // Validate chunk size
@@ -692,6 +733,24 @@ async function handleChunkMessage(payload, client) {
 
 async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
   try {
+    const imageKey = getImageKey(deviceId, imageName);
+    if (completedImages.has(imageKey) || buffer.completed) {
+      console.log(`[REASSEMBLE] Skipping already-completed image ${imageName}`);
+      return;
+    }
+
+    const { data: imgCheck } = await supabase
+      .from('device_images')
+      .select('status')
+      .eq('image_id', buffer.imageRecord.image_id)
+      .maybeSingle();
+    if (imgCheck?.status === 'complete') {
+      console.log(`[REASSEMBLE] Image ${imageName} already complete in DB - skipping`);
+      buffer.completed = true;
+      completedImages.add(imageKey);
+      return;
+    }
+
     console.log(`[REASSEMBLE] Starting reassembly for ${imageName}`);
 
     // Check for missing chunks
@@ -813,23 +872,58 @@ async function reassembleAndUploadImage(deviceId, imageName, buffer, client) {
     // Create submission and observation if device is mapped
     await createSubmissionAndObservation(buffer, urlData.publicUrl);
 
-    // Send acknowledgment to device with next wake time
-    // Per BrainlyTree PDF spec: ACK_OK message format
-    const nextWakeTime = await calculateNextWakeTime(buffer.imageRecord.device_id);
-    const ackMessage = {
-      device_id: buffer.device.device_mac, // Use MAC address for device identification
-      image_name: imageName,
-      ACK_OK: {
-        next_wake_time: nextWakeTime, // ISO 8601 UTC timestamp
-      },
-    };
+    const normalizedDeviceMac = buffer.device.device_mac;
+    const ackTopic = `ESP32CAM/${normalizedDeviceMac}/ack`;
+    const cmdTopic = `ESP32CAM/${normalizedDeviceMac}/cmd`;
+    const session = deviceSessions.get(normalizedDeviceMac);
 
-    client.publish(`ESP32CAM/${buffer.device.device_mac}/ack`, JSON.stringify(ackMessage));
-    console.log(`[ACK] Sent ACK_OK to ${buffer.device.device_code || buffer.device.device_mac} with next wake: ${nextWakeTime}`);
+    if (session && session.state === 'draining_pending') {
+      session.pendingDrained++;
+      const remaining = session.initialPendingCount - session.pendingDrained;
+      console.log(`[DRAIN] Pending image ${imageName} complete (${session.pendingDrained}/${session.initialPendingCount}, ${remaining} remaining)`);
 
-    // Clean up buffer
-    imageBuffers.delete(getImageKey(deviceId, imageName));
-    console.log(`[CLEANUP] Removed buffer for ${imageName}`);
+      const pendingAck = {
+        device_id: normalizedDeviceMac,
+        image_name: imageName,
+        ACK_OK: {},
+      };
+      client.publish(ackTopic, JSON.stringify(pendingAck));
+      console.log(`[ACK] Sent ACK_OK (no wake time) for pending image ${imageName} - device should send next pending`);
+
+      if (remaining <= 0) {
+        console.log(`[DRAIN] All pending images drained - sending capture_image`);
+        session.state = 'capture_sent';
+
+        const captureCmd = {
+          device_id: normalizedDeviceMac,
+          capture_image: true,
+        };
+        client.publish(cmdTopic, JSON.stringify(captureCmd));
+        console.log(`[CMD] Sent capture_image to ${normalizedDeviceMac} after drain complete`);
+      }
+    } else {
+      const nextWakeTime = await calculateNextWakeTime(buffer.imageRecord.device_id);
+      const ackMessage = {
+        device_id: normalizedDeviceMac,
+        image_name: imageName,
+        ACK_OK: {
+          next_wake_time: nextWakeTime,
+        },
+      };
+      client.publish(ackTopic, JSON.stringify(ackMessage));
+      console.log(`[ACK] Sent ACK_OK to ${buffer.device.device_code || normalizedDeviceMac} with next wake: ${nextWakeTime}`);
+
+      cleanupSession(normalizedDeviceMac);
+    }
+
+    const completedKey = getImageKey(deviceId, imageName);
+    buffer.completed = true;
+    completedImages.add(completedKey);
+    setTimeout(() => {
+      completedImages.delete(completedKey);
+      imageBuffers.delete(completedKey);
+    }, COMPLETED_IMAGE_TTL_MS);
+    console.log(`[CLEANUP] Marked ${imageName} as completed (buffer retained for ${COMPLETED_IMAGE_TTL_MS / 1000}s)`);
 
   } catch (error) {
     console.error(`[ERROR] Failed to reassemble image:`, error);
@@ -877,8 +971,8 @@ async function createSubmissionAndObservation(buffer, imageUrl) {
         is_device_generated: true,
         temperature: buffer.metadata?.temperature || 72,
         humidity: buffer.metadata?.humidity || 50,
-        airflow: 'moderate',
-        odor_distance: '0-5 ft',
+        airflow: 'Moderate',
+        odor_distance: 'None',
         weather: 'Clear',
         notes: `Auto-generated from ${device.device_code} at ${buffer.metadata?.capture_timestamp || new Date().toISOString()}`,
       })
@@ -1224,58 +1318,16 @@ function connectToMQTT() {
         const payload = JSON.parse(messageStr);
         console.log(`[MQTT] ✅ Parsed payload:`, JSON.stringify(payload).substring(0, 200));
 
-        // Forward to edge function with timeout
-        // NOTE: Edge Function can't send MQTT commands back (receives via HTTP webhook)
-        // Local processing below handles actual device communication
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-          const edgeResponse = await fetch(`${supabaseUrl}/functions/v1/mqtt_device_handler`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ topic, payload }),
-            signal: controller.signal
-          });
-
-          clearTimeout(timeoutId);
-
-          if (edgeResponse.ok) {
-            const result = await edgeResponse.json();
-            console.log(`[EDGE] ✅ Processed:`, result.message || 'success');
-          } else {
-            console.error(`[EDGE] ❌ Error ${edgeResponse.status}`);
-          }
-        } catch (edgeError) {
-          if (edgeError.name === 'AbortError') {
-            console.error('[EDGE] ⏱️  Timeout (5s) - continuing with local processing');
-          } else {
-            console.error('[EDGE] ❌', edgeError.message);
-          }
-        }
-
-        // Process locally (full protocol implementation - sends MQTT commands to devices)
-        console.log(`[DEBUG] 🔀 Routing message - Topic: ${topic}`);
+        console.log(`[MQTT] Routing message - Topic: ${topic}`);
 
         if (topic.includes('/ack') && commandQueueProcessor) {
-          console.log(`[DEBUG] 📨 Route: ACK handler`);
-          // Only process device command acknowledgments, not our own ACK_OK messages
-          // Device ACKs have command_id or specific command fields
-          // Our ACK_OK messages have ACK_OK field
           if (!payload.ACK_OK && !payload.missing_chunks) {
             const deviceMac = topic.split('/')[1];
             await commandQueueProcessor.handleCommandAck(deviceMac, payload);
           }
         } else if (topic.includes('/status')) {
-          console.log(`[DEBUG] 📨 Route: STATUS handler - Calling handleStatusMessage`);
-          // Handle status message - logic is now inside handleStatusMessage()
           await handleStatusMessage(payload, client);
-          console.log(`[DEBUG] 📨 STATUS handler completed`);
         } else if (topic.includes('/data')) {
-          // Check for metadata message - handle both field name variations
           const hasMetadata = (payload.total_chunks_count !== undefined || payload.total_chunk_count !== undefined)
                            && payload.chunk_id === undefined;
 
