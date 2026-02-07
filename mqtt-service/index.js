@@ -530,12 +530,9 @@ async function handleMetadataMessage(payload, client) {
             received_chunks: 0,
             status: 'receiving',
             error_code: normalizedPayload.error || 0,
-            temperature: tempF,
-            humidity: normalizedPayload.humidity,
-            pressure: normalizedPayload.pressure,
-            gas_resistance: normalizedPayload.gas_resistance,
             metadata: {
               location: normalizedPayload.location || 'Unknown',
+              temperature: normalizedPayload.temperature,
               temperature_celsius: normalizedPayload.temperature,
               temperature_fahrenheit: tempF,
               humidity: normalizedPayload.humidity,
@@ -567,12 +564,9 @@ async function handleMetadataMessage(payload, client) {
             program_id: programId,
             site_id: siteId,
             site_device_session_id: sessionId,
-            temperature: tempF,
-            humidity: normalizedPayload.humidity,
-            pressure: normalizedPayload.pressure,
-            gas_resistance: normalizedPayload.gas_resistance,
             metadata: {
               location: normalizedPayload.location || 'Unknown',
+              temperature: normalizedPayload.temperature,
               temperature_celsius: normalizedPayload.temperature,
               temperature_fahrenheit: tempF,
               humidity: normalizedPayload.humidity,
@@ -900,10 +894,32 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
 
     let completionResult = null;
 
-    if (buffer?.imageRecord?.image_id) {
+    let imageId = buffer?.imageRecord?.image_id;
+
+    if (!imageId) {
+      console.log(`[FINALIZE] No imageRecord on buffer - looking up by device+image_name`);
+      const lineage = buffer?.lineage || await resolveDeviceLineage(supabase, normalizedMac);
+      const deviceId = buffer?.device?.device_id || lineage?.device_id;
+      if (deviceId) {
+        const { data: lookedUp } = await supabase
+          .from('device_images')
+          .select('image_id')
+          .eq('device_id', deviceId)
+          .eq('image_name', imageName)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lookedUp) {
+          imageId = lookedUp.image_id;
+          console.log(`[FINALIZE] Found existing image record ${imageId} via lookup`);
+        }
+      }
+    }
+
+    if (imageId) {
       try {
         const { data: result, error: rpcError } = await supabase.rpc('fn_image_completion_handler', {
-          p_image_id: buffer.imageRecord.image_id,
+          p_image_id: imageId,
           p_image_url: imageUrl,
         });
 
@@ -917,7 +933,7 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
               received_at: new Date().toISOString(),
               received_chunks: totalChunks,
             })
-            .eq('image_id', buffer.imageRecord.image_id);
+            .eq('image_id', imageId);
         } else {
           completionResult = result;
           console.log(`[FINALIZE] Image completion RPC success:`, {
@@ -936,7 +952,39 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
             received_at: new Date().toISOString(),
             received_chunks: totalChunks,
           })
-          .eq('image_id', buffer.imageRecord.image_id);
+          .eq('image_id', imageId);
+      }
+    } else {
+      console.warn(`[FINALIZE] No image record found for ${imageName} on ${normalizedMac} - creating one now`);
+      const lineage = buffer?.lineage || await resolveDeviceLineage(supabase, normalizedMac);
+      const deviceId = buffer?.device?.device_id || lineage?.device_id;
+      if (deviceId) {
+        await supabase
+          .from('device_images')
+          .insert({
+            device_id: deviceId,
+            company_id: lineage?.company_id,
+            program_id: lineage?.program_id,
+            site_id: lineage?.site_id,
+            site_device_session_id: buffer?.sessionId,
+            image_name: imageName,
+            image_url: imageUrl,
+            image_size: buffer?.metadata?.image_size || 0,
+            captured_at: buffer?.metadata?.capture_timestamp || new Date().toISOString(),
+            total_chunks: totalChunks,
+            received_chunks: totalChunks,
+            received_at: new Date().toISOString(),
+            status: 'complete',
+            error_code: 0,
+            metadata: buffer?.metadata ? {
+              location: buffer.metadata.location || 'Unknown',
+              temperature: buffer.metadata.temperature,
+              humidity: buffer.metadata.humidity,
+              pressure: buffer.metadata.pressure,
+              gas_resistance: buffer.metadata.gas_resistance,
+            } : {},
+          });
+        console.log(`[FINALIZE] Created new complete image record for ${imageName}`);
       }
     }
 
