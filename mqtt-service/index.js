@@ -229,6 +229,79 @@ async function sendPendingCommands(device, client) {
   }
 }
 
+/**
+ * Process pending_list array from device status message
+ * UPSERTs records into device_images table for tracking
+ * Per firmware spec: device reports list of pending images that need to be uploaded
+ */
+async function processPendingList(device, pendingList) {
+  if (!pendingList || !Array.isArray(pendingList) || pendingList.length === 0) {
+    return;
+  }
+
+  console.log(`[PENDING_LIST] Processing ${pendingList.length} pending images for device ${device.device_code || device.device_mac}`);
+
+  for (const imageName of pendingList) {
+    try {
+      // Check if image already exists
+      const { data: existing, error: checkError } = await supabase
+        .from('device_images')
+        .select('image_id, status')
+        .eq('device_id', device.device_id)
+        .eq('image_name', imageName)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error(`[PENDING_LIST] Error checking image ${imageName}:`, checkError);
+        continue;
+      }
+
+      if (existing) {
+        // Image already exists - don't overwrite if complete
+        if (existing.status === 'complete') {
+          console.log(`[PENDING_LIST] Image ${imageName} already complete - skipping`);
+          continue;
+        }
+        console.log(`[PENDING_LIST] Image ${imageName} exists with status ${existing.status} - will be resumed on next wake`);
+        continue;
+      }
+
+      // Create new pending image record
+      // We don't know captured_at, total_chunks, or image_size yet - will be updated when metadata arrives
+      const { data: newImage, error: insertError } = await supabase
+        .from('device_images')
+        .insert({
+          device_id: device.device_id,
+          company_id: device.company_id,
+          program_id: device.program_id,
+          site_id: device.site_id,
+          image_name: imageName,
+          captured_at: new Date().toISOString(), // Estimate - will be updated with actual timestamp from metadata
+          status: 'pending',
+          total_chunks: 0, // Unknown until metadata
+          received_chunks: 0,
+          metadata: {
+            source: 'pending_list',
+            reported_at: new Date().toISOString()
+          }
+        })
+        .select('image_id')
+        .single();
+
+      if (insertError) {
+        console.error(`[PENDING_LIST] Error creating pending image ${imageName}:`, insertError);
+        continue;
+      }
+
+      console.log(`[PENDING_LIST] Created pending image record: ${imageName} (${newImage.image_id})`);
+    } catch (err) {
+      console.error(`[PENDING_LIST] Exception processing ${imageName}:`, err);
+    }
+  }
+
+  console.log(`[PENDING_LIST] Completed processing pending images`);
+}
+
 async function handleStatusMessage(payload, client) {
   console.log(`[DEBUG] ⭐ handleStatusMessage CALLED - Entry point`);
   console.log(`[DEBUG] Raw payload:`, JSON.stringify(payload, null, 2));
@@ -283,6 +356,17 @@ async function handleStatusMessage(payload, client) {
     console.error(`[ERROR] sendPendingCommands failed but continuing:`, pendingError);
   }
 
+  // Process pending_list array from device (firmware reports pending images)
+  const pendingList = payload.pending_list || [];
+  if (pendingList.length > 0) {
+    console.log(`[DEBUG] Device reported ${pendingList.length} pending images in pending_list`);
+    try {
+      await processPendingList(device, pendingList);
+    } catch (pendingListError) {
+      console.error(`[ERROR] processPendingList failed but continuing:`, pendingListError);
+    }
+  }
+
   // Per ESP32-CAM architecture: Handle device alive status
   const pendingCount = payload.pendingImg || payload.pending_count || 0;
 
@@ -329,17 +413,52 @@ async function handleStatusMessage(payload, client) {
   return { device, pendingCount };
 }
 
-async function handleMetadataMessage(payload, client) {
-  // Normalize field names from device format to server format
-  const normalizedPayload = {
+/**
+ * Normalize metadata payload from firmware format to backend format
+ * Firmware sends: timestamp, sensor_data (nested), max_chunks_size (with 's'), total_chunk_count (singular)
+ * Backend expects: capture_timestamp, temperature (flat), max_chunk_size (no 's'), total_chunks_count (plural)
+ */
+function normalizeMetadataPayload(payload) {
+  // Extract sensor data from nested structure or use flat fields (backward compatibility)
+  const sensorData = payload.sensor_data || {};
+
+  const normalized = {
     ...payload,
-    // Handle timestamp field variations
-    capture_timestamp: payload.capture_timestamp || payload.capture_timeStamp,
-    // Handle chunk count field variations
-    total_chunks_count: payload.total_chunks_count || payload.total_chunk_count,
+    // Field name mappings (firmware → backend)
+    capture_timestamp: payload.timestamp || payload.capture_timestamp || payload.capture_timeStamp,
+    max_chunk_size: payload.max_chunks_size || payload.max_chunk_size,
+    total_chunks_count: payload.total_chunk_count || payload.total_chunks_count,
+
+    // Extract sensor data from nested object (firmware sends nested, backend expects flat)
+    temperature: sensorData.temperature ?? payload.temperature,
+    humidity: sensorData.humidity ?? payload.humidity,
+    pressure: sensorData.pressure ?? payload.pressure,
+    gas_resistance: sensorData.gas_resistance ?? payload.gas_resistance,
+
+    // Preserve other fields
+    device_id: payload.device_id,
+    image_name: payload.image_name,
+    image_id: payload.image_id,
+    image_size: payload.image_size,
+    location: payload.location,
+    error: payload.error,
   };
 
-  console.log(`[METADATA] Normalized payload fields - timestamp: ${normalizedPayload.capture_timestamp}, chunks: ${normalizedPayload.total_chunks_count}`);
+  console.log(`[NORMALIZE] Firmware format detected - extracted sensor_data:`, {
+    temp: normalized.temperature,
+    humidity: normalized.humidity,
+    pressure: normalized.pressure,
+    gas: normalized.gas_resistance
+  });
+
+  return normalized;
+}
+
+async function handleMetadataMessage(payload, client) {
+  // Normalize field names from firmware format to backend format
+  const normalizedPayload = normalizeMetadataPayload(payload);
+
+  console.log(`[METADATA] Normalized payload - timestamp: ${normalizedPayload.capture_timestamp}, chunks: ${normalizedPayload.total_chunks_count}, temp: ${normalizedPayload.temperature}°C`);
 
   const deviceMac = normalizedPayload.device_mac || normalizedPayload.device_id;
   const normalizedMac = normalizeMacAddress(deviceMac);

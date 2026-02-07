@@ -22,13 +22,29 @@ export interface DeviceStatusMessage {
 
 export interface ImageMetadata {
   device_id: string; // MAC address
-  capture_timestamp: string; // ISO 8601
+  // Timestamp field variations (firmware sends 'timestamp', backend expects 'capture_timestamp')
+  capture_timestamp?: string; // ISO 8601 - backend format
+  timestamp?: string; // ISO 8601 - firmware format
+  capture_timeStamp?: string; // Legacy format
   image_name: string; // stable identifier
+  image_id?: number; // firmware sends image_id
   image_size: number;
-  max_chunk_size: number;
-  total_chunks_count: number;
+  // Chunk size field variations (firmware sends 'max_chunks_size', backend expects 'max_chunk_size')
+  max_chunk_size?: number; // backend format
+  max_chunks_size?: number; // firmware format (with 's')
+  // Chunk count field variations (firmware sends 'total_chunk_count', backend expects 'total_chunks_count')
+  total_chunks_count?: number; // backend format (plural)
+  total_chunk_count?: number; // firmware format (singular)
   location?: string;
   error: number;
+  // Sensor data can be nested (firmware format) or flat (backend format)
+  sensor_data?: {
+    temperature?: number;
+    humidity?: number;
+    pressure?: number;
+    gas_resistance?: number;
+  };
+  // Flat sensor fields (backend format)
   temperature?: number;
   humidity?: number;
   pressure?: number;
@@ -40,8 +56,10 @@ export interface ImageChunk {
   device_id: string; // MAC address
   image_name: string;
   chunk_id: number; // 0-indexed
-  max_chunk_size: number;
-  payload: number[]; // byte array
+  max_chunk_size?: number;
+  max_chunks_size?: number; // firmware format
+  // Payload can be base64 string (firmware) or number array (processed)
+  payload: string | number[]; // base64 string from firmware, or byte array after processing
 }
 
 export interface MissingChunksRequest {

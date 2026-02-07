@@ -416,6 +416,49 @@ export async function handleHelloStatus(
 }
 
 /**
+ * Normalize metadata payload from firmware format to backend format
+ * Firmware sends: timestamp, sensor_data (nested), max_chunks_size (with 's'), total_chunk_count (singular)
+ * Backend expects: capture_timestamp, temperature (flat), max_chunk_size (no 's'), total_chunks_count (plural)
+ */
+function normalizeMetadataPayload(payload: ImageMetadata): ImageMetadata {
+  // Extract sensor data from nested structure or use flat fields (backward compatibility)
+  const sensorData = payload.sensor_data || {};
+
+  const normalized: ImageMetadata = {
+    ...payload,
+    // Field name mappings (firmware → backend)
+    capture_timestamp: payload.timestamp || payload.capture_timestamp || payload.capture_timeStamp || new Date().toISOString(),
+    max_chunk_size: payload.max_chunks_size || payload.max_chunk_size || 1024,
+    total_chunks_count: payload.total_chunk_count || payload.total_chunks_count || 0,
+
+    // Extract sensor data from nested object (firmware sends nested, backend expects flat)
+    temperature: sensorData.temperature ?? payload.temperature,
+    humidity: sensorData.humidity ?? payload.humidity,
+    pressure: sensorData.pressure ?? payload.pressure,
+    gas_resistance: sensorData.gas_resistance ?? payload.gas_resistance,
+
+    // Preserve other fields
+    device_id: payload.device_id,
+    image_name: payload.image_name,
+    image_id: payload.image_id,
+    image_size: payload.image_size,
+    location: payload.location,
+    error: payload.error,
+    slot_index: payload.slot_index,
+  };
+
+  console.log('[Ingest] Normalized firmware metadata:', {
+    timestamp_field: payload.timestamp ? 'timestamp' : payload.capture_timestamp ? 'capture_timestamp' : 'generated',
+    sensor_data_nested: !!payload.sensor_data,
+    temp: normalized.temperature,
+    humidity: normalized.humidity,
+    chunks_field: payload.total_chunk_count ? 'total_chunk_count (singular)' : 'total_chunks_count (plural)'
+  });
+
+  return normalized;
+}
+
+/**
  * Handle image metadata message
  * CALLS fn_wake_ingestion_handler - NO INLINE SQL
  */
@@ -424,13 +467,16 @@ export async function handleMetadata(
   client: MqttClient,
   payload: ImageMetadata
 ): Promise<void> {
-  console.log('[Ingest] Metadata received:', payload.image_name, 'chunks:', payload.total_chunks_count);
+  // Normalize firmware format to backend format
+  const normalized = normalizeMetadataPayload(payload);
+
+  console.log('[Ingest] Metadata received:', normalized.image_name, 'chunks:', normalized.total_chunks_count, 'temp:', normalized.temperature);
 
   try {
     // Normalize MAC address (remove separators, uppercase)
-    const normalizedMac = normalizeMacAddress(payload.device_id);
+    const normalizedMac = normalizeMacAddress(normalized.device_id);
     if (!normalizedMac) {
-      console.error('[Ingest] Invalid MAC address format:', payload.device_id);
+      console.error('[Ingest] Invalid MAC address format:', normalized.device_id);
       return;
     }
 
@@ -472,28 +518,28 @@ export async function handleMetadata(
 
     const deviceId = lineageData.device_id;
 
-    // Prepare telemetry data JSON with schema-compliant field names
+    // Prepare telemetry data JSON with schema-compliant field names (use normalized payload)
     const telemetryData = {
-      captured_at: payload.capture_timestamp, // Use schema name
-      total_chunks: payload.total_chunks_count, // Fix name
-      image_size: payload.image_size,
-      max_chunk_size: payload.max_chunk_size,
-      temperature: payload.temperature,
-      humidity: payload.humidity,
-      pressure: payload.pressure,
-      gas_resistance: payload.gas_resistance,
-      battery_voltage: (payload as any).battery_voltage, // Include if present (telemetry payloads)
-      wifi_rssi: (payload as any).wifi_rssi,             // Include if present (telemetry payloads)
-      location: payload.location,
-      error_code: payload.error,
-      slot_index: payload.slot_index,
+      captured_at: normalized.capture_timestamp, // Use schema name
+      total_chunks: normalized.total_chunks_count, // Fix name
+      image_size: normalized.image_size,
+      max_chunk_size: normalized.max_chunk_size,
+      temperature: normalized.temperature,
+      humidity: normalized.humidity,
+      pressure: normalized.pressure,
+      gas_resistance: normalized.gas_resistance,
+      battery_voltage: (normalized as any).battery_voltage, // Include if present (telemetry payloads)
+      wifi_rssi: (normalized as any).wifi_rssi,             // Include if present (telemetry payloads)
+      location: normalized.location,
+      error_code: normalized.error,
+      slot_index: normalized.slot_index,
     };
 
     // Call SQL handler: fn_wake_ingestion_handler
     const { data: result, error } = await supabase.rpc('fn_wake_ingestion_handler', {
       p_device_id: deviceId,
-      p_captured_at: payload.capture_timestamp,
-      p_image_name: payload.image_name,
+      p_captured_at: normalized.capture_timestamp!,
+      p_image_name: normalized.image_name,
       p_telemetry_data: telemetryData,
     });
 
@@ -523,7 +569,7 @@ export async function handleMetadata(
           image_id: result.image_id,
           image_status: 'receiving',
           wake_type: 'image_wake',
-          chunk_count: payload.total_chunks_count,
+          chunk_count: normalized.total_chunks_count,
           chunks_received: 0,
         })
         .eq('payload_id', result.payload_id);
@@ -537,8 +583,8 @@ export async function handleMetadata(
     }
 
     // Create historical telemetry record if environmental data present
-    if (payload.temperature !== undefined || payload.humidity !== undefined ||
-        payload.pressure !== undefined || payload.gas_resistance !== undefined) {
+    if (normalized.temperature !== undefined || normalized.humidity !== undefined ||
+        normalized.pressure !== undefined || normalized.gas_resistance !== undefined) {
 
       // Get active session for context
       let sessionId = null;
@@ -565,11 +611,11 @@ export async function handleMetadata(
           site_id: lineageData.site_id,               // ✅ INHERIT FROM DEVICE
           site_device_session_id: sessionId,          // ✅ ACTIVE SESSION
           wake_payload_id: result.payload_id,         // ✅ LINK TO WAKE PAYLOAD
-          captured_at: payload.capture_timestamp,
-          temperature: celsiusToFahrenheit(payload.temperature),  // Convert Celsius → Fahrenheit
-          humidity: payload.humidity,
-          pressure: payload.pressure,
-          gas_resistance: payload.gas_resistance,
+          captured_at: normalized.capture_timestamp!,
+          temperature: celsiusToFahrenheit(normalized.temperature),  // Convert Celsius → Fahrenheit
+          humidity: normalized.humidity,
+          pressure: normalized.pressure,
+          gas_resistance: normalized.gas_resistance,
           // battery_voltage and wifi_rssi not in metadata payload
         });
 
@@ -577,19 +623,19 @@ export async function handleMetadata(
         console.error('[Ingest] Error creating telemetry from metadata:', telemetryError);
         // Don't fail - telemetry is secondary
       } else {
-        console.log('[Ingest] Telemetry recorded: temp=', payload.temperature, 'rh=', payload.humidity);
+        console.log('[Ingest] Telemetry recorded: temp=', normalized.temperature, 'rh=', normalized.humidity);
       }
     }
 
     // Store in buffer for chunk assembly
     const buffer = await getOrCreateBuffer(
       supabase,
-      payload.device_id,
-      payload.image_name,
-      payload.total_chunks_count
+      normalized.device_id,
+      normalized.image_name,
+      normalized.total_chunks_count!
     );
 
-    buffer.metadata = payload;
+    buffer.metadata = normalized;
     buffer.imageRecord = {
       image_id: result.image_id,
       wake_payload_id: result.payload_id  // Link to wake payload for finalization
@@ -618,6 +664,7 @@ export async function handleMetadata(
 /**
  * Handle image chunk message
  * Stores chunk in buffer and updates received count
+ * Firmware sends base64-encoded payload, we decode to binary
  */
 export async function handleChunk(
   supabase: SupabaseClient,
@@ -625,7 +672,46 @@ export async function handleChunk(
   payload: ImageChunk
 ): Promise<void> {
   try {
-    const chunkData = new Uint8Array(payload.payload);
+    let chunkData: Uint8Array;
+
+    // Handle both base64 string (firmware format) and number array (processed format)
+    if (typeof payload.payload === 'string') {
+      // Firmware sends base64-encoded string - decode it
+      console.log('[Ingest] Decoding base64 chunk:', payload.chunk_id, 'length:', payload.payload.length);
+
+      // Use Deno's built-in atob for base64 decoding
+      const binaryString = atob(payload.payload);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      chunkData = bytes;
+
+      console.log('[Ingest] Decoded chunk size:', chunkData.length, 'bytes');
+    } else if (Array.isArray(payload.payload)) {
+      // Already processed as number array
+      chunkData = new Uint8Array(payload.payload);
+    } else {
+      console.error('[Ingest] Invalid payload format:', typeof payload.payload);
+      return;
+    }
+
+    // Validate chunk has data
+    if (chunkData.length === 0) {
+      console.error('[Ingest] Chunk', payload.chunk_id, 'has zero length after decoding');
+      return;
+    }
+
+    // For first chunk, verify JPEG header
+    if (payload.chunk_id === 0) {
+      const jpegHeader = chunkData.slice(0, 3);
+      if (jpegHeader[0] === 0xFF && jpegHeader[1] === 0xD8 && jpegHeader[2] === 0xFF) {
+        console.log('[Ingest] ✅ Valid JPEG header detected in first chunk');
+      } else {
+        console.warn('[Ingest] ⚠️ Warning: First chunk may not have valid JPEG header:',
+          Array.from(jpegHeader).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      }
+    }
 
     // Store chunk in buffer (idempotent via Postgres)
     const isFirstTime = await storeChunk(
@@ -637,12 +723,13 @@ export async function handleChunk(
     );
 
     if (isFirstTime) {
-      console.log('[Ingest] Chunk received:', payload.chunk_id, 'for', payload.image_name);
+      console.log('[Ingest] Chunk received:', payload.chunk_id, 'for', payload.image_name, '(', chunkData.length, 'bytes)');
     } else {
       console.log('[Ingest] Duplicate chunk ignored:', payload.chunk_id, 'for', payload.image_name);
     }
   } catch (err) {
     console.error('[Ingest] Exception handling chunk:', err);
+    console.error('[Ingest] Payload type:', typeof payload.payload, 'chunk_id:', payload.chunk_id);
   }
 }
 
