@@ -42,8 +42,10 @@ const STORAGE_BUCKET = 'device-images';
 const imageBuffers = new Map();
 const deviceSessions = new Map();
 const completedImages = new Set();
+const missingChunkTimers = new Map();
 const COMPLETED_IMAGE_TTL_MS = 5 * 60 * 1000;
 const SESSION_TIMEOUT_MS = 10 * 60 * 1000;
+const MISSING_CHUNK_CHECK_DELAY_MS = 15000;
 
 function getOrCreateSession(deviceMac, deviceId, pendingCount) {
   let session = deviceSessions.get(deviceMac);
@@ -57,6 +59,7 @@ function getOrCreateSession(deviceMac, deviceId, pendingCount) {
       currentImageName: null,
       startedAt: new Date(),
       lastActivityAt: new Date(),
+      lastCaptureSentAt: null,
     };
     deviceSessions.set(deviceMac, session);
   }
@@ -128,6 +131,8 @@ async function autoProvisionDevice(deviceMac) {
 }
 
 async function sendPendingCommands(device, client) {
+  const sentTypes = new Set();
+
   const { data: commands, error } = await supabase
     .from('device_commands')
     .select('*')
@@ -138,18 +143,27 @@ async function sendPendingCommands(device, client) {
 
   if (error) {
     console.error(`[CMD] Error fetching commands:`, error);
-    return;
+    return sentTypes;
   }
 
   if (!commands || commands.length === 0) {
     console.log(`[CMD] No pending commands for device ${device.device_code || device.device_mac}`);
-    return;
+    return sentTypes;
   }
 
   console.log(`[CMD] Found ${commands.length} pending commands for ${device.device_code || device.device_mac}`);
 
   for (const command of commands) {
     try {
+      if (command.command_type === 'capture_image' && sentTypes.has('capture_image')) {
+        console.log(`[CMD] Skipping duplicate capture_image command ${command.command_id} - already sent one this cycle`);
+        await supabase
+          .from('device_commands')
+          .update({ status: 'superseded', delivered_at: new Date().toISOString() })
+          .eq('command_id', command.command_id);
+        continue;
+      }
+
       let message = {};
 
       switch (command.command_type) {
@@ -192,6 +206,7 @@ async function sendPendingCommands(device, client) {
       const topic = `ESP32CAM/${device.device_mac}/cmd`;
       client.publish(topic, JSON.stringify(message));
       console.log(`[CMD] Sent ${command.command_type} to ${device.device_code || device.device_mac} on ${topic}`);
+      sentTypes.add(command.command_type);
 
       await logMqttMessage(supabase, device.device_mac, 'outbound', topic, message, `cmd_${command.command_type}`);
 
@@ -214,6 +229,8 @@ async function sendPendingCommands(device, client) {
         .eq('command_id', command.command_id);
     }
   }
+
+  return sentTypes;
 }
 
 async function processPendingList(device, pendingList, lineage) {
@@ -346,8 +363,9 @@ async function handleStatusMessage(payload, client) {
 
   console.log(`[STATUS] Device ${device.device_code || device.device_mac} updated (status: ${device.provisioning_status})`);
 
+  let sentCommandTypes = new Set();
   try {
-    await sendPendingCommands(device, client);
+    sentCommandTypes = await sendPendingCommands(device, client) || new Set();
   } catch (pendingError) {
     console.error(`[ERROR] sendPendingCommands failed but continuing:`, pendingError);
   }
@@ -380,9 +398,23 @@ async function handleStatusMessage(payload, client) {
       client.publish(cmdTopic, JSON.stringify(drainCmd));
       await logMqttMessage(supabase, normalizedMac, 'outbound', cmdTopic, drainCmd, 'cmd_send_all_pending');
       console.log(`[CMD] Sent send_all_pending to ${normalizedMac} (${pendingCount} pending images to drain)`);
+    } else if (sentCommandTypes.has('capture_image')) {
+      console.log(`[STATUS] capture_image already sent via pending commands queue - skipping duplicate`);
+      session.state = 'capture_sent';
+      session.lastCaptureSentAt = Date.now();
+    } else if (session.lastCaptureSentAt && (Date.now() - session.lastCaptureSentAt) < 30000) {
+      console.log(`[STATUS] capture_image sent ${Math.round((Date.now() - session.lastCaptureSentAt) / 1000)}s ago - skipping duplicate`);
     } else {
       console.log(`[STATUS] Device has no pending images - sending capture_image`);
       session.state = 'capture_sent';
+      session.lastCaptureSentAt = Date.now();
+
+      await supabase
+        .from('device_commands')
+        .update({ status: 'superseded', delivered_at: new Date().toISOString() })
+        .eq('device_id', device.device_id)
+        .eq('command_type', 'capture_image')
+        .eq('status', 'pending');
 
       const captureCmd = {
         device_id: normalizedMac,
@@ -455,6 +487,13 @@ async function handleMetadataMessage(payload, client) {
   const programId = lineage?.program_id || device.program_id;
   const siteId = lineage?.site_id || device.site_id;
   const sessionId = lineage?.site_id ? await findActiveSession(supabase, lineage.site_id) : null;
+
+  const existingBuffer = imageBuffers.get(imageKey);
+  if (existingBuffer && !existingBuffer.completed && existingBuffer.chunks.size > 0) {
+    console.log(`[METADATA] Stale buffer found for ${normalizedPayload.image_name} with ${existingBuffer.chunks.size} in-memory chunks - clearing for fresh reception`);
+    await clearChunkBuffer(supabase, normalizedMac, normalizedPayload.image_name);
+    clearMissingChunkTimer(imageKey);
+  }
 
   imageBuffers.set(imageKey, {
     metadata: normalizedPayload,
@@ -679,6 +718,68 @@ async function handleMetadataMessage(payload, client) {
   }
 }
 
+function clearMissingChunkTimer(imageKey) {
+  const existing = missingChunkTimers.get(imageKey);
+  if (existing) {
+    clearTimeout(existing);
+    missingChunkTimers.delete(imageKey);
+  }
+}
+
+function resetMissingChunkTimer(imageKey, normalizedMac, imageName, buffer, client) {
+  clearMissingChunkTimer(imageKey);
+
+  const timer = setTimeout(async () => {
+    missingChunkTimers.delete(imageKey);
+
+    if (completedImages.has(imageKey) || (buffer && buffer.completed)) {
+      return;
+    }
+
+    const totalChunks = buffer?.totalChunks || 0;
+    if (totalChunks === 0) return;
+
+    const missing = await getMissingChunks(supabase, normalizedMac, imageName, totalChunks);
+    if (missing.length === 0) {
+      console.log(`[RECOVERY] No missing chunks for ${imageName} - triggering finalization`);
+      await finalizeAndUploadImage(normalizedMac, imageName, buffer, client);
+      return;
+    }
+
+    console.log(`[RECOVERY] ${missing.length} missing chunks for ${imageName} after ${MISSING_CHUNK_CHECK_DELAY_MS / 1000}s idle: [${missing.slice(0, 10).join(', ')}${missing.length > 10 ? '...' : ''}]`);
+
+    const session = deviceSessions.get(normalizedMac);
+    if (session) {
+      const missingRequest = {
+        device_id: normalizedMac,
+        image_name: imageName,
+        missing_chunks: missing,
+      };
+      client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(missingRequest));
+      await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, missingRequest, 'missing_chunks_recovery', null, null, imageName);
+      console.log(`[RECOVERY] Sent missing_chunks request for ${imageName} (${missing.length} chunks)`);
+    } else {
+      console.log(`[RECOVERY] Device ${normalizedMac} session expired - marking image as incomplete`);
+      if (buffer?.imageRecord?.image_id) {
+        await supabase
+          .from('device_images')
+          .update({
+            status: 'incomplete',
+            error_code: 3,
+            metadata: {
+              ...(buffer.imageRecord.metadata || {}),
+              missing_chunks: missing,
+              incomplete_reason: 'device_disconnected_before_all_chunks_received',
+            },
+          })
+          .eq('image_id', buffer.imageRecord.image_id);
+      }
+    }
+  }, MISSING_CHUNK_CHECK_DELAY_MS);
+
+  missingChunkTimers.set(imageKey, timer);
+}
+
 async function handleChunkMessage(payload, client) {
   const deviceMac = payload.device_mac || payload.device_id;
   const normalizedMac = normalizeMacAddress(deviceMac) || deviceMac;
@@ -748,7 +849,10 @@ async function handleChunkMessage(payload, client) {
 
     if (totalChunks > 0 && pgCount >= totalChunks) {
       console.log(`[COMPLETE] All ${totalChunks} chunks received for ${payload.image_name} (verified via Postgres)`);
+      clearMissingChunkTimer(imageKey);
       await finalizeAndUploadImage(normalizedMac, payload.image_name, buffer, client);
+    } else if (totalChunks > 0 && pgCount < totalChunks) {
+      resetMissingChunkTimer(imageKey, normalizedMac, payload.image_name, buffer, client);
     } else if (!buffer && totalChunks === 0) {
       console.log(`[CHUNK] No metadata buffer yet for ${payload.image_name} - chunk ${payload.chunk_id} stored in Postgres, will assemble when metadata arrives`);
     }
@@ -1019,16 +1123,21 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
       console.log(`[ACK] Sent ACK_OK (no wake time) for pending image ${imageName} - device should send next pending`);
 
       if (remaining <= 0) {
-        console.log(`[DRAIN] All pending images drained - sending capture_image`);
-        session.state = 'capture_sent';
+        if (session.lastCaptureSentAt && (Date.now() - session.lastCaptureSentAt) < 30000) {
+          console.log(`[DRAIN] All pending drained but capture_image sent ${Math.round((Date.now() - session.lastCaptureSentAt) / 1000)}s ago - skipping duplicate`);
+        } else {
+          console.log(`[DRAIN] All pending images drained - sending capture_image`);
+          session.state = 'capture_sent';
+          session.lastCaptureSentAt = Date.now();
 
-        const captureCmd = {
-          device_id: normalizedMac,
-          capture_image: true,
-        };
-        client.publish(cmdTopic, JSON.stringify(captureCmd));
-        await logMqttMessage(supabase, normalizedMac, 'outbound', cmdTopic, captureCmd, 'cmd_capture_image');
-        console.log(`[CMD] Sent capture_image to ${normalizedMac} after drain complete`);
+          const captureCmd = {
+            device_id: normalizedMac,
+            capture_image: true,
+          };
+          client.publish(cmdTopic, JSON.stringify(captureCmd));
+          await logMqttMessage(supabase, normalizedMac, 'outbound', cmdTopic, captureCmd, 'cmd_capture_image');
+          console.log(`[CMD] Sent capture_image to ${normalizedMac} after drain complete`);
+        }
       }
     } else {
       const nextWakeTime = await calculateNextWakeTime(buffer?.imageRecord?.device_id || buffer?.device?.device_id);
@@ -1048,6 +1157,7 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
     }
 
     await clearChunkBuffer(supabase, normalizedMac, imageName);
+    clearMissingChunkTimer(imageKey);
 
     if (buffer) buffer.completed = true;
     completedImages.add(imageKey);
@@ -1380,6 +1490,7 @@ async function startService() {
       pollInterval: 5000,
       maxRetries: 3,
       retryDelay: 30000,
+      getDeviceSessions: () => deviceSessions,
     });
     commandQueueProcessor.start();
     console.log('[COMMAND_QUEUE] Command queue processor started');

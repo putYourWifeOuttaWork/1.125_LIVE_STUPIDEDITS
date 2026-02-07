@@ -14,6 +14,7 @@ export class CommandQueueProcessor {
     this.retryDelay = options.retryDelay || 30000; // 30 seconds
     this.isRunning = false;
     this.pollTimer = null;
+    this.getDeviceSessions = options.getDeviceSessions || (() => new Map());
   }
 
   /**
@@ -109,8 +110,28 @@ export class CommandQueueProcessor {
     const deviceMac = command.devices.device_mac;
     const deviceName = command.devices.device_name || deviceMac;
 
+    if (command.command_type === 'capture_image') {
+      const sessions = this.getDeviceSessions();
+      const session = sessions.get(deviceMac);
+      if (session && (session.state === 'capture_sent' || session.state === 'draining_pending')) {
+        console.log(`[CommandQueue] Skipping capture_image for ${deviceName} - active session in state: ${session.state}`);
+        await this.supabase
+          .from('device_commands')
+          .update({ status: 'superseded', delivered_at: new Date().toISOString() })
+          .eq('command_id', command.command_id);
+        return;
+      }
+      if (session?.lastCaptureSentAt && (Date.now() - session.lastCaptureSentAt) < 30000) {
+        console.log(`[CommandQueue] Skipping capture_image for ${deviceName} - one sent ${Math.round((Date.now() - session.lastCaptureSentAt) / 1000)}s ago`);
+        await this.supabase
+          .from('device_commands')
+          .update({ status: 'superseded', delivered_at: new Date().toISOString() })
+          .eq('command_id', command.command_id);
+        return;
+      }
+    }
+
     try {
-      // Build MQTT payload based on command type
       const payload = this.buildCommandPayload(command, deviceMac);
 
       // Determine topic (per BrainlyTree PDF spec)
