@@ -1,11 +1,16 @@
 /**
  * Phase 3 - MQTT Device Handler (HTTP Webhook Mode) - BUNDLED SINGLE FILE
- * Version 3.4.0 - Pending Image Resume Support
+ * Version 3.5.0 - Pending Image List Processing
  *
  * HTTP webhook receiver that processes MQTT messages forwarded from local MQTT service
  * All modules bundled into single file for Supabase Dashboard deployment
  *
- * NEW in 3.4.0:
+ * NEW in 3.5.0:
+ * - Pending image list support: Device can now send array of pending image names
+ * - Automatic RPC call to process_pending_list() for batch cleanup
+ * - Enhanced HELLO handling with pending_list field
+ *
+ * Version 3.4.0:
  * - Pending image resume: Detects incomplete images and sends ACK to resume transfer
  * - Protocol state tracking: ack_pending_sent for resumed transfers
  * - Improved HELLO handling: Checks database for pending images
@@ -24,6 +29,7 @@ interface DeviceStatusMessage {
   status: "alive";
   pending_count?: number;
   pendingImg?: number;
+  pending_list?: string[];
   firmware_version?: string;
   hardware_version?: string;
   wifi_rssi?: number;
@@ -100,6 +106,7 @@ const PROTOCOL_FIELDS = {
   DEVICE_ID: 'device_id',
   STATUS: 'status',
   PENDING_IMG: 'pendingImg',
+  PENDING_LIST: 'pending_list',
   CAPTURE_IMAGE: 'capture_image',
   SEND_IMAGE: 'send_image',
   NEXT_WAKE: 'next_wake',
@@ -815,6 +822,29 @@ async function handleHelloStatus(
       if (pendingCount > 0) {
         console.log('[Ingest] Device reports', pendingCount, 'pending images - firmware will auto-resume on next transfer');
       }
+
+      // Process pending_list if provided (v3.5.0+)
+      if (payload.pending_list && Array.isArray(payload.pending_list) && payload.pending_list.length > 0) {
+        console.log('[Ingest] Device sent pending_list with', payload.pending_list.length, 'images:', payload.pending_list);
+
+        try {
+          const { data: cleanupResult, error: cleanupError } = await supabase.rpc(
+            'process_pending_list',
+            {
+              p_device_id: existingDevice.device_id,
+              p_pending_list: payload.pending_list
+            }
+          );
+
+          if (cleanupError) {
+            console.error('[Ingest] Error processing pending_list:', cleanupError);
+          } else {
+            console.log('[Ingest] Pending list processed:', cleanupResult);
+          }
+        } catch (err) {
+          console.error('[Ingest] Exception processing pending_list:', err);
+        }
+      }
     }
 
     console.log('[Ingest] Device updated:', existingDevice.device_id);
@@ -1334,9 +1364,11 @@ Deno.serve(async (req: Request) => {
         success: true,
         message: 'MQTT Device Handler V3 (HTTP Webhook Mode) - BUNDLED',
         mode: 'HTTP POST webhook (no persistent MQTT connection)',
-        version: '3.4.0-bundled',
-        phase: 'Phase 3 - HTTP Webhook Integration + Pending Image Resume',
+        version: '3.5.0-bundled',
+        phase: 'Phase 3 - HTTP Webhook Integration + Pending List Processing',
         features: [
+          'Pending image list processing (v3.5.0)',
+          'Automatic batch cleanup via process_pending_list RPC',
           'Pending image detection and resume',
           'Protocol state tracking (ack_pending_sent)',
           'Database-backed chunk recovery',
