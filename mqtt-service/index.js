@@ -714,18 +714,18 @@ async function handleMetadataMessage(payload, client) {
     session.lastActivityAt = new Date();
   }
 
-  const shouldSendImage = session?.state === 'draining_pending';
+  const isBatchMode = session?.state === 'draining_pending';
 
-  if (shouldSendImage) {
+  if (isBatchMode) {
+    console.log(`[METADATA] Batch mode (send_all_pending) - device auto-sends chunks, skipping send_image`);
+  } else {
     const sendImageCmd = {
       device_id: normalizedMac,
       send_image: normalizedPayload.image_name
     };
     client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
     await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendImageCmd, 'cmd_send_image', null, payloadId, normalizedPayload.image_name);
-    console.log(`[CMD] Sent send_image command for ${normalizedPayload.image_name} to ${normalizedMac} (draining pending)`);
-  } else {
-    console.log(`[METADATA] Device is actively transmitting after capture - skipping send_image to avoid restart loop`);
+    console.log(`[CMD] Sent send_image for ${normalizedPayload.image_name} to ${normalizedMac} (standard flow)`);
   }
 
   const pgComplete = await isComplete(supabase, normalizedMac, normalizedPayload.image_name, normalizedPayload.total_chunks_count);
@@ -1129,32 +1129,23 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
       const remaining = session.initialPendingCount - session.pendingDrained;
       console.log(`[DRAIN] Pending image ${imageName} complete (${session.pendingDrained}/${session.initialPendingCount}, ${remaining} remaining)`);
 
+      const nextWakeTime = await calculateNextWakeTime(buffer?.imageRecord?.device_id);
+
       const pendingAck = {
         device_id: normalizedMac,
         image_name: imageName,
-        ACK_OK: {},
+        ACK_OK: {
+          next_wake_time: nextWakeTime,
+        },
       };
       client.publish(ackTopic, JSON.stringify(pendingAck));
       await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, pendingAck, 'ack_pending', null, buffer?.payloadId, imageName);
       await logAckToAudit(supabase, normalizedMac, imageName, 'PENDING_IMAGE_ACK', ackTopic, pendingAck, true);
-      console.log(`[ACK] Sent ACK_OK (no wake time) for pending image ${imageName} - device should send next pending`);
+      console.log(`[ACK] Sent ACK_OK for pending image ${imageName} with next wake: ${nextWakeTime}`);
 
       if (remaining <= 0) {
-        if (session.lastCaptureSentAt && (Date.now() - session.lastCaptureSentAt) < 30000) {
-          console.log(`[DRAIN] All pending drained but capture_image sent ${Math.round((Date.now() - session.lastCaptureSentAt) / 1000)}s ago - skipping duplicate`);
-        } else {
-          console.log(`[DRAIN] All pending images drained - sending capture_image`);
-          session.state = 'capture_sent';
-          session.lastCaptureSentAt = Date.now();
-
-          const captureCmd = {
-            device_id: normalizedMac,
-            capture_image: true,
-          };
-          client.publish(cmdTopic, JSON.stringify(captureCmd));
-          await logMqttMessage(supabase, normalizedMac, 'outbound', cmdTopic, captureCmd, 'cmd_capture_image');
-          console.log(`[CMD] Sent capture_image to ${normalizedMac} after drain complete`);
-        }
+        console.log(`[DRAIN] All pending images drained - device will re-publish status`);
+        session.state = 'idle';
       }
     } else {
       const nextWakeTime = await calculateNextWakeTime(buffer?.imageRecord?.device_id || buffer?.device?.device_id);
