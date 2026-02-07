@@ -468,6 +468,24 @@ async function handleMetadataMessage(payload, client) {
 
   const imageKey = getImageKey(normalizedMac, normalizedPayload.image_name);
 
+  const existingBuffer = imageBuffers.get(imageKey);
+  if (existingBuffer && !existingBuffer.completed && existingBuffer.chunks.size > 0) {
+    const sameCapture =
+      existingBuffer.totalChunks === normalizedPayload.total_chunks_count &&
+      existingBuffer.metadata?.capture_timestamp === normalizedPayload.capture_timestamp;
+
+    if (sameCapture) {
+      console.log(`[METADATA] Duplicate metadata for ${normalizedPayload.image_name} (${existingBuffer.chunks.size} chunks in buffer) - ignoring to preserve reception progress`);
+      const session = deviceSessions.get(normalizedMac);
+      if (session) session.lastActivityAt = new Date();
+      return;
+    }
+
+    console.log(`[METADATA] New capture params for ${normalizedPayload.image_name} (chunks: ${existingBuffer.totalChunks} -> ${normalizedPayload.total_chunks_count}) - clearing old buffer`);
+    await clearChunkBuffer(supabase, normalizedMac, normalizedPayload.image_name);
+    clearMissingChunkTimer(imageKey);
+  }
+
   const tempF = celsiusToFahrenheit(normalizedPayload.temperature);
 
   const telemetryData = {
@@ -487,13 +505,6 @@ async function handleMetadataMessage(payload, client) {
   const programId = lineage?.program_id || device.program_id;
   const siteId = lineage?.site_id || device.site_id;
   const sessionId = lineage?.site_id ? await findActiveSession(supabase, lineage.site_id) : null;
-
-  const existingBuffer = imageBuffers.get(imageKey);
-  if (existingBuffer && !existingBuffer.completed && existingBuffer.chunks.size > 0) {
-    console.log(`[METADATA] Stale buffer found for ${normalizedPayload.image_name} with ${existingBuffer.chunks.size} in-memory chunks - clearing for fresh reception`);
-    await clearChunkBuffer(supabase, normalizedMac, normalizedPayload.image_name);
-    clearMissingChunkTimer(imageKey);
-  }
 
   imageBuffers.set(imageKey, {
     metadata: normalizedPayload,
@@ -703,13 +714,19 @@ async function handleMetadataMessage(payload, client) {
     session.lastActivityAt = new Date();
   }
 
-  const sendImageCmd = {
-    device_id: normalizedMac,
-    send_image: normalizedPayload.image_name
-  };
-  client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
-  await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendImageCmd, 'cmd_send_image', null, payloadId, normalizedPayload.image_name);
-  console.log(`[CMD] Sent send_image command for ${normalizedPayload.image_name} to ${normalizedMac}`);
+  const shouldSendImage = session?.state === 'draining_pending';
+
+  if (shouldSendImage) {
+    const sendImageCmd = {
+      device_id: normalizedMac,
+      send_image: normalizedPayload.image_name
+    };
+    client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
+    await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendImageCmd, 'cmd_send_image', null, payloadId, normalizedPayload.image_name);
+    console.log(`[CMD] Sent send_image command for ${normalizedPayload.image_name} to ${normalizedMac} (draining pending)`);
+  } else {
+    console.log(`[METADATA] Device is actively transmitting after capture - skipping send_image to avoid restart loop`);
+  }
 
   const pgComplete = await isComplete(supabase, normalizedMac, normalizedPayload.image_name, normalizedPayload.total_chunks_count);
   if (pgComplete) {
