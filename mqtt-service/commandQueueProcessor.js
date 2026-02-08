@@ -110,17 +110,15 @@ export class CommandQueueProcessor {
     const deviceMac = command.devices.device_mac;
     const deviceName = command.devices.device_name || deviceMac;
 
+    const sessions = this.getDeviceSessions();
+    const session = sessions.get(deviceMac);
+
+    if (session && (session.state === 'draining_pending' || session.state === 'capture_sent')) {
+      console.log(`[CommandQueue] Deferring ${command.command_type} for ${deviceName} - device has active transfer (state: ${session.state})`);
+      return;
+    }
+
     if (command.command_type === 'capture_image') {
-      const sessions = this.getDeviceSessions();
-      const session = sessions.get(deviceMac);
-      if (session && (session.state === 'capture_sent' || session.state === 'draining_pending')) {
-        console.log(`[CommandQueue] Skipping capture_image for ${deviceName} - active session in state: ${session.state}`);
-        await this.supabase
-          .from('device_commands')
-          .update({ status: 'superseded', delivered_at: new Date().toISOString() })
-          .eq('command_id', command.command_id);
-        return;
-      }
       if (session?.lastCaptureSentAt && (Date.now() - session.lastCaptureSentAt) < 30000) {
         console.log(`[CommandQueue] Skipping capture_image for ${deviceName} - one sent ${Math.round((Date.now() - session.lastCaptureSentAt) / 1000)}s ago`);
         await this.supabase

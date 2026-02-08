@@ -44,9 +44,11 @@ const imageBuffers = new Map();
 const deviceSessions = new Map();
 const completedImages = new Set();
 const missingChunkTimers = new Map();
+const imageRetryCounters = new Map();
 const COMPLETED_IMAGE_TTL_MS = 5 * 60 * 1000;
 const SESSION_TIMEOUT_MS = 10 * 60 * 1000;
 const MISSING_CHUNK_CHECK_DELAY_MS = 15000;
+const MAX_IMAGE_RETRIES = 3;
 
 function getOrCreateSession(deviceMac, deviceId, pendingCount) {
   let session = deviceSessions.get(deviceMac);
@@ -813,13 +815,19 @@ async function handleMetadataMessage(payload, client) {
   } else if (isBatchMode) {
     console.log(`[METADATA] Batch mode (send_all_pending) - device auto-sends chunks, skipping send_image`);
   } else {
-    const sendImageCmd = {
+    const sendAllCmd = {
       device_id: normalizedMac,
-      send_image: normalizedPayload.image_name
+      send_all_pending: true,
     };
-    client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
-    await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendImageCmd, 'cmd_send_image', null, payloadId, normalizedPayload.image_name);
-    console.log(`[CMD] Sent send_image for ${normalizedPayload.image_name} to ${normalizedMac} (standard flow)`);
+    client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendAllCmd));
+    await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendAllCmd, 'cmd_send_all_pending', null, payloadId, normalizedPayload.image_name);
+    console.log(`[CMD] Sent send_all_pending to ${normalizedMac} after capture (protocol Scenario 1)`);
+
+    if (session) {
+      session.state = 'draining_pending';
+      session.initialPendingCount = session.initialPendingCount || 1;
+      session.pendingDrained = 0;
+    }
   }
 }
 
@@ -855,14 +863,35 @@ function resetMissingChunkTimer(imageKey, normalizedMac, imageName, buffer, clie
 
     const session = deviceSessions.get(normalizedMac);
     if (session) {
-      const missingRequest = {
-        device_id: normalizedMac,
-        image_name: imageName,
-        missing_chunks: missing,
-      };
-      client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(missingRequest));
-      await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, missingRequest, 'missing_chunks_recovery', null, null, imageName);
-      console.log(`[RECOVERY] Sent missing_chunks request for ${imageName} (${missing.length} chunks)`);
+      const retryCount = imageRetryCounters.get(imageKey) || 0;
+      if (retryCount >= MAX_IMAGE_RETRIES) {
+        console.log(`[RECOVERY] Max retries (${MAX_IMAGE_RETRIES}) reached for ${imageName} - marking incomplete`);
+        if (buffer?.imageRecord?.image_id) {
+          await supabase
+            .from('device_images')
+            .update({
+              status: 'incomplete',
+              error_code: 3,
+              metadata: {
+                ...(buffer.imageRecord.metadata || {}),
+                missing_chunks: missing,
+                incomplete_reason: 'max_retries_exceeded',
+                retry_count: retryCount,
+              },
+            })
+            .eq('image_id', buffer.imageRecord.image_id);
+        }
+        imageRetryCounters.delete(imageKey);
+      } else {
+        imageRetryCounters.set(imageKey, retryCount + 1);
+        const sendImageCmd = {
+          device_id: normalizedMac,
+          send_image: imageName,
+        };
+        client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
+        await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendImageCmd, 'send_image_retry', null, null, imageName);
+        console.log(`[RECOVERY] Sent send_image retry ${retryCount + 1}/${MAX_IMAGE_RETRIES} for ${imageName} (${missing.length} missing chunks)`);
+      }
     } else {
       console.log(`[RECOVERY] Device ${normalizedMac} session expired - marking image as incomplete`);
       if (buffer?.imageRecord?.image_id) {
@@ -962,15 +991,7 @@ async function handleChunkMessage(payload, client) {
       console.log(`[CHUNK] No metadata buffer yet for ${payload.image_name} - chunk ${payload.chunk_id} stored in Postgres, will assemble when metadata arrives`);
     }
   } catch (error) {
-    console.error(`[ERROR] Failed to process chunk ${payload.chunk_id}:`, error.message);
-
-    const retryRequest = {
-      device_id: normalizedMac,
-      image_name: payload.image_name,
-      missing_chunks: [payload.chunk_id],
-    };
-    client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(retryRequest));
-    await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, retryRequest, 'missing_chunks', null, null, payload.image_name);
+    console.error(`[ERROR] Failed to process chunk ${payload.chunk_id} for ${payload.image_name}:`, error.message);
   }
 }
 
@@ -1006,22 +1027,46 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
 
     const missing = await getMissingChunks(supabase, normalizedMac, imageName, totalChunks);
     if (missing.length > 0) {
-      console.log(`[MISSING] Requesting ${missing.length} missing chunks: [${missing.join(', ')}]`);
-      const missingRequest = {
+      const imageKey = getImageKey(normalizedMac, imageName);
+      const retryCount = imageRetryCounters.get(imageKey) || 0;
+
+      if (retryCount >= MAX_IMAGE_RETRIES) {
+        console.log(`[FINALIZE] Max retries (${MAX_IMAGE_RETRIES}) reached for ${imageName} with ${missing.length} missing chunks - marking incomplete`);
+        if (buffer?.imageRecord?.image_id) {
+          await supabase
+            .from('device_images')
+            .update({
+              status: 'incomplete',
+              error_code: 3,
+              metadata: {
+                ...(buffer.imageRecord.metadata || {}),
+                missing_chunks: missing,
+                incomplete_reason: 'max_retries_exceeded',
+                retry_count: retryCount,
+              },
+            })
+            .eq('image_id', buffer.imageRecord.image_id);
+        }
+        imageRetryCounters.delete(imageKey);
+        return;
+      }
+
+      imageRetryCounters.set(imageKey, retryCount + 1);
+      console.log(`[FINALIZE] ${missing.length} missing chunks - sending send_image retry ${retryCount + 1}/${MAX_IMAGE_RETRIES}`);
+      const sendImageCmd = {
         device_id: normalizedMac,
-        image_name: imageName,
-        missing_chunks: missing,
+        send_image: imageName,
       };
-      client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(missingRequest));
-      await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, missingRequest, 'missing_chunks', null, null, imageName);
-      await logAckToAudit(supabase, normalizedMac, imageName, 'MISSING_CHUNKS', `ESP32CAM/${normalizedMac}/cmd`, missingRequest, true);
+      client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
+      await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendImageCmd, 'send_image_retry', null, null, imageName);
+      await logAckToAudit(supabase, normalizedMac, imageName, 'SEND_IMAGE_RETRY', `ESP32CAM/${normalizedMac}/cmd`, sendImageCmd, true);
 
       if (buffer?.imageRecord?.image_id) {
         await supabase
           .from('device_images')
           .update({
             status: 'receiving',
-            retry_count: (buffer.imageRecord.retry_count || 0) + 1,
+            retry_count: retryCount + 1,
           })
           .eq('image_id', buffer.imageRecord.image_id);
       }
@@ -1217,32 +1262,35 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
       const remaining = session.initialPendingCount - session.pendingDrained;
       console.log(`[DRAIN] Pending image ${imageName} complete (${session.pendingDrained}/${session.initialPendingCount}, ${remaining} remaining)`);
 
-      const nextWakeTime = await calculateNextWakeTime(buffer?.imageRecord?.device_id);
+      const isLastInBatch = remaining <= 0;
 
-      const pendingAck = {
-        device_id: normalizedMac,
-        image_name: imageName,
-        ACK_OK: {
-          next_wake_time: nextWakeTime,
-        },
-      };
-      client.publish(ackTopic, JSON.stringify(pendingAck));
-      await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, pendingAck, 'ack_pending', null, buffer?.payloadId, imageName);
-      await logAckToAudit(supabase, normalizedMac, imageName, 'PENDING_IMAGE_ACK', ackTopic, pendingAck, true);
-      console.log(`[ACK] Sent ACK_OK for pending image ${imageName} with next wake: ${nextWakeTime}`);
-
-      if (remaining <= 0) {
+      if (isLastInBatch) {
+        const nextWakeTime = await calculateNextWakeTime(buffer?.imageRecord?.device_id);
+        const finalAck = {
+          ACK_OK: { next_wake_time: nextWakeTime },
+          image_name: imageName,
+        };
+        client.publish(ackTopic, JSON.stringify(finalAck));
+        await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, finalAck, 'ack_ok_final', null, buffer?.payloadId, imageName);
+        await logAckToAudit(supabase, normalizedMac, imageName, 'ACK_OK_FINAL', ackTopic, finalAck, true);
+        console.log(`[ACK] Sent final batch ACK_OK for ${imageName} with next wake: ${nextWakeTime}`);
         console.log(`[DRAIN] All pending images drained - device will re-publish status`);
         session.state = 'idle';
+      } else {
+        const simpleAck = {
+          ACK_OK: true,
+          image_name: imageName,
+        };
+        client.publish(ackTopic, JSON.stringify(simpleAck));
+        await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, simpleAck, 'ack_ok_batch', null, buffer?.payloadId, imageName);
+        await logAckToAudit(supabase, normalizedMac, imageName, 'ACK_OK_BATCH', ackTopic, simpleAck, true);
+        console.log(`[ACK] Sent simple ACK_OK for batch image ${imageName} (${remaining} remaining)`);
       }
     } else {
       const nextWakeTime = await calculateNextWakeTime(buffer?.imageRecord?.device_id || buffer?.device?.device_id);
       const ackMessage = {
-        device_id: normalizedMac,
+        ACK_OK: { next_wake_time: nextWakeTime },
         image_name: imageName,
-        ACK_OK: {
-          next_wake_time: nextWakeTime,
-        },
       };
       client.publish(ackTopic, JSON.stringify(ackMessage));
       await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, ackMessage, 'ack_ok', null, buffer?.payloadId, imageName);
@@ -1254,6 +1302,7 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
 
     await clearChunkBuffer(supabase, normalizedMac, imageName);
     clearMissingChunkTimer(imageKey);
+    imageRetryCounters.delete(imageKey);
 
     if (buffer) buffer.completed = true;
     completedImages.add(imageKey);
@@ -1562,8 +1611,8 @@ app.get('/docs', (req, res) => {
         'ESP32CAM/+/data - Image metadata, chunks, and telemetry',
       ],
       published: [
-        'ESP32CAM/{MAC}/cmd - Commands (capture_image, send_image, send_all_pending, MISSING_CHUNKS)',
-        'ESP32CAM/{MAC}/ack - Acknowledgments (ACK_OK with next_wake_time)',
+        'ESP32CAM/{MAC}/cmd - Commands (capture_image, send_image, send_all_pending)',
+        'ESP32CAM/{MAC}/ack - Acknowledgments (ACK_OK with optional next_wake_time)',
       ],
     },
     storage: {

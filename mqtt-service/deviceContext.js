@@ -125,12 +125,52 @@ export function normalizeMacAddress(identifier) {
   return identifier.replace(/[:\-\s]/g, '').toUpperCase();
 }
 
+export function parseDeviceTimestamp(raw) {
+  if (!raw || typeof raw !== 'string') {
+    return { timestamp: new Date().toISOString(), source: 'server_fallback' };
+  }
+
+  let iso = raw.trim();
+
+  if (/^\d{1,4}-\d{1,2}-\d{1,2} \d{1,2}:\d{1,2}:\d{1,2}$/.test(iso)) {
+    iso = iso.replace(' ', 'T') + 'Z';
+  }
+
+  if (!iso.includes('T') && !iso.endsWith('Z')) {
+    iso = raw;
+  }
+
+  try {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) {
+      console.warn(`[TIMESTAMP] Invalid device timestamp: "${raw}" - using server time`);
+      return { timestamp: new Date().toISOString(), source: 'server_fallback' };
+    }
+
+    const year = date.getUTCFullYear();
+    if (year < 2020 || year > 2100) {
+      console.warn(`[TIMESTAMP] Device timestamp year ${year} out of range: "${raw}" - using server time`);
+      return { timestamp: new Date().toISOString(), source: 'server_fallback', device_raw: raw };
+    }
+
+    return { timestamp: date.toISOString(), source: 'device' };
+  } catch {
+    console.warn(`[TIMESTAMP] Failed to parse device timestamp: "${raw}" - using server time`);
+    return { timestamp: new Date().toISOString(), source: 'server_fallback' };
+  }
+}
+
 export function normalizeMetadataPayload(payload) {
   const sensorData = payload.sensor_data || {};
 
+  const rawTimestamp = payload.timestamp || payload.capture_timestamp || payload.capture_timeStamp;
+  const { timestamp: parsedTimestamp, source: timestampSource, device_raw } = parseDeviceTimestamp(rawTimestamp);
+
   const normalized = {
     ...payload,
-    capture_timestamp: payload.timestamp || payload.capture_timestamp || payload.capture_timeStamp,
+    capture_timestamp: parsedTimestamp,
+    timestamp_source: timestampSource,
+    device_raw_timestamp: device_raw || rawTimestamp,
     max_chunk_size: payload.max_chunks_size || payload.max_chunk_size,
     total_chunks_count: payload.total_chunk_count || payload.total_chunks_count,
     temperature: sensorData.temperature ?? payload.temperature,
@@ -146,6 +186,7 @@ export function normalizeMetadataPayload(payload) {
   };
 
   console.log(`[NORMALIZE] Sensor data: temp=${normalized.temperature}, humidity=${normalized.humidity}, pressure=${normalized.pressure}, gas=${normalized.gas_resistance}`);
+  console.log(`[NORMALIZE] Timestamp: "${rawTimestamp}" -> "${parsedTimestamp}" (source: ${timestampSource})`);
 
   return normalized;
 }
