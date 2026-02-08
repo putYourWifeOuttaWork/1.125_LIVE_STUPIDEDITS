@@ -1,0 +1,480 @@
+/*
+  # Fix Wake Ingestion: Add Resume Support and Image Completion Resilience
+  # APPLY VIA SUPABASE SQL EDITOR: https://supabase.com/dashboard/project/jycxolmevsvrxmeinxff/sql
+
+  ## Problem
+  1. fn_wake_ingestion_handler only accepts 4 parameters, but MQTT service passes 5
+     (including p_existing_image_id for resume). This causes the RPC to fail, falling
+     back to direct inserts that skip device_wake_payloads creation entirely.
+  2. fn_image_completion_handler fails with "Payload not found for image" when no
+     device_wake_payloads row is linked to the image.
+
+  ## Changes
+  1. Updated fn_wake_ingestion_handler - Added optional 5th param p_existing_image_id
+  2. Updated fn_image_completion_handler - Added graceful fallback when no payload exists
+  3. New table: duplicate_images_log (audit for duplicate metadata events)
+  4. New functions: fn_log_duplicate_image, fn_check_image_resumable
+  5. New indexes for resume detection
+  6. RLS on duplicate_images_log
+*/
+
+-- ==========================================
+-- STEP 1: DUPLICATE IMAGES LOG TABLE
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS duplicate_images_log (
+  log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id UUID NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+  image_id UUID REFERENCES device_images(image_id) ON DELETE SET NULL,
+  image_name TEXT NOT NULL,
+  original_captured_at TIMESTAMPTZ,
+  duplicate_received_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  duplicate_metadata JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_duplicate_images_device
+  ON duplicate_images_log(device_id, duplicate_received_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_duplicate_images_image
+  ON duplicate_images_log(image_id) WHERE image_id IS NOT NULL;
+
+ALTER TABLE duplicate_images_log ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'duplicate_images_log' AND policyname = 'Users see duplicate logs for devices in their company'
+  ) THEN
+    CREATE POLICY "Users see duplicate logs for devices in their company"
+      ON duplicate_images_log FOR SELECT TO authenticated
+      USING (
+        device_id IN (
+          SELECT d.device_id
+          FROM devices d
+          JOIN device_site_assignments dsa ON d.device_id = dsa.device_id
+          JOIN sites s ON dsa.site_id = s.site_id
+          JOIN pilot_programs p ON s.program_id = p.program_id
+          WHERE p.company_id = get_active_company_id()
+            AND dsa.is_active = TRUE
+        )
+      );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'duplicate_images_log' AND policyname = 'Service role manages duplicate logs'
+  ) THEN
+    CREATE POLICY "Service role manages duplicate logs"
+      ON duplicate_images_log FOR ALL TO service_role
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END $$;
+
+-- ==========================================
+-- STEP 2: INDEXES FOR RESUME DETECTION
+-- ==========================================
+
+CREATE INDEX IF NOT EXISTS idx_device_images_resume
+  ON device_images(device_id, image_name, status);
+
+CREATE INDEX IF NOT EXISTS idx_device_images_incomplete
+  ON device_images(device_id, status)
+  WHERE status IN ('pending', 'receiving');
+
+-- ==========================================
+-- STEP 3: HELPER FUNCTIONS
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION fn_log_duplicate_image(
+  p_device_id UUID,
+  p_image_name TEXT,
+  p_duplicate_metadata JSONB
+)
+RETURNS UUID AS $$
+DECLARE
+  v_image_id UUID;
+  v_original_captured_at TIMESTAMPTZ;
+  v_log_id UUID;
+BEGIN
+  SELECT image_id, captured_at
+  INTO v_image_id, v_original_captured_at
+  FROM device_images
+  WHERE device_id = p_device_id
+    AND image_name = p_image_name
+    AND status = 'complete'
+  LIMIT 1;
+
+  INSERT INTO duplicate_images_log (
+    device_id, image_id, image_name, original_captured_at, duplicate_metadata
+  ) VALUES (
+    p_device_id, v_image_id, p_image_name, v_original_captured_at, p_duplicate_metadata
+  )
+  RETURNING log_id INTO v_log_id;
+
+  RETURN v_log_id;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'fn_log_duplicate_image error: %', SQLERRM;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_check_image_resumable(
+  p_device_id UUID,
+  p_image_name TEXT
+)
+RETURNS TABLE (
+  image_id UUID,
+  status TEXT,
+  received_chunks INT,
+  total_chunks INT,
+  is_resumable BOOLEAN
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    di.image_id,
+    di.status,
+    di.received_chunks,
+    di.total_chunks,
+    (di.status IN ('pending', 'receiving')) AS is_resumable
+  FROM device_images di
+  WHERE di.device_id = p_device_id
+    AND di.image_name = p_image_name
+  LIMIT 1;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ==========================================
+-- STEP 4: UPDATE fn_wake_ingestion_handler WITH RESUME SUPPORT
+-- ==========================================
+
+DROP FUNCTION IF EXISTS fn_wake_ingestion_handler(UUID, TIMESTAMPTZ, TEXT, JSONB);
+
+CREATE OR REPLACE FUNCTION fn_wake_ingestion_handler(
+  p_device_id UUID,
+  p_captured_at TIMESTAMPTZ,
+  p_image_name TEXT,
+  p_telemetry_data JSONB,
+  p_existing_image_id UUID DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_company_id UUID;
+  v_program_id UUID;
+  v_site_id UUID;
+  v_session_id UUID;
+  v_session_date DATE;
+  v_wake_index INT;
+  v_is_overage BOOLEAN;
+  v_cron_expression TEXT;
+  v_payload_id UUID;
+  v_image_id UUID;
+BEGIN
+  SELECT
+    dsa.site_id,
+    s.program_id,
+    p.company_id,
+    d.wake_schedule_cron
+  INTO v_site_id, v_program_id, v_company_id, v_cron_expression
+  FROM devices d
+  JOIN device_site_assignments dsa ON d.device_id = dsa.device_id
+  JOIN sites s ON dsa.site_id = s.site_id
+  JOIN pilot_programs p ON s.program_id = p.program_id
+  WHERE d.device_id = p_device_id
+    AND dsa.is_active = TRUE
+    AND dsa.is_primary = TRUE;
+
+  IF v_site_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Device not assigned to active site'
+    );
+  END IF;
+
+  v_session_date := DATE(p_captured_at);
+
+  SELECT session_id INTO v_session_id
+  FROM site_device_sessions
+  WHERE site_id = v_site_id
+    AND session_date = v_session_date;
+
+  IF v_session_id IS NULL THEN
+    INSERT INTO site_device_sessions (
+      company_id, program_id, site_id,
+      session_date, session_start_time, session_end_time,
+      expected_wake_count, status
+    ) VALUES (
+      v_company_id, v_program_id, v_site_id,
+      v_session_date,
+      DATE_TRUNC('day', p_captured_at),
+      DATE_TRUNC('day', p_captured_at) + INTERVAL '1 day',
+      0, 'in_progress'
+    )
+    RETURNING session_id INTO v_session_id;
+  END IF;
+
+  SELECT wake_index, is_overage
+  INTO v_wake_index, v_is_overage
+  FROM fn_infer_wake_window_index(p_captured_at, v_cron_expression);
+
+  INSERT INTO device_wake_payloads (
+    company_id, program_id, site_id, site_device_session_id, device_id,
+    captured_at, wake_window_index, overage_flag,
+    temperature, humidity, pressure, gas_resistance, battery_voltage, wifi_rssi,
+    telemetry_data, image_status, payload_status, wake_type, protocol_state
+  ) VALUES (
+    v_company_id, v_program_id, v_site_id, v_session_id, p_device_id,
+    p_captured_at, v_wake_index, v_is_overage,
+    (p_telemetry_data->>'temperature')::NUMERIC,
+    (p_telemetry_data->>'humidity')::NUMERIC,
+    (p_telemetry_data->>'pressure')::NUMERIC,
+    (p_telemetry_data->>'gas_resistance')::NUMERIC,
+    (p_telemetry_data->>'battery_voltage')::NUMERIC,
+    (p_telemetry_data->>'wifi_rssi')::INT,
+    p_telemetry_data,
+    CASE WHEN p_image_name IS NOT NULL THEN 'pending' ELSE NULL END,
+    'complete',
+    CASE WHEN p_image_name IS NOT NULL THEN 'image_wake' ELSE 'telemetry_only' END,
+    CASE WHEN p_existing_image_id IS NOT NULL THEN 'metadata_received_resume' ELSE 'metadata_received' END
+  )
+  RETURNING payload_id INTO v_payload_id;
+
+  IF p_image_name IS NOT NULL THEN
+    IF p_existing_image_id IS NOT NULL THEN
+      v_image_id := p_existing_image_id;
+
+      UPDATE device_images
+      SET captured_at = p_captured_at,
+          status = 'receiving',
+          company_id = v_company_id,
+          program_id = v_program_id,
+          site_id = v_site_id,
+          site_device_session_id = v_session_id,
+          updated_at = NOW()
+      WHERE image_id = v_image_id;
+    ELSE
+      INSERT INTO device_images (
+        device_id, image_name, captured_at, status, total_chunks, metadata,
+        company_id, program_id, site_id, site_device_session_id
+      ) VALUES (
+        p_device_id, p_image_name, p_captured_at, 'receiving', 0, '{}'::JSONB,
+        v_company_id, v_program_id, v_site_id, v_session_id
+      )
+      RETURNING image_id INTO v_image_id;
+    END IF;
+
+    UPDATE device_wake_payloads
+    SET image_id = v_image_id
+    WHERE payload_id = v_payload_id;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'payload_id', v_payload_id,
+    'image_id', v_image_id,
+    'session_id', v_session_id,
+    'wake_index', v_wake_index,
+    'is_resume', (p_existing_image_id IS NOT NULL)
+  );
+
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object(
+    'success', false,
+    'error', SQLERRM,
+    'message', 'Wake ingestion failed'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION fn_wake_ingestion_handler IS
+'Handle wake event ingestion with resume support. Creates wake payload (immediately complete) and image record. If p_existing_image_id provided, updates existing image instead of creating new one.';
+
+-- ==========================================
+-- STEP 5: UPDATE fn_image_completion_handler WITH FALLBACK
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION fn_image_completion_handler(
+  p_image_id UUID,
+  p_image_url TEXT
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_image_record RECORD;
+  v_payload_record RECORD;
+  v_session_record RECORD;
+  v_observation_id UUID;
+  v_slot_index INT;
+  v_device_submission_id UUID;
+BEGIN
+  SELECT * INTO v_image_record
+  FROM device_images
+  WHERE image_id = p_image_id;
+
+  IF v_image_record.image_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Image not found'
+    );
+  END IF;
+
+  UPDATE device_images
+  SET image_url = p_image_url,
+      status = 'complete',
+      received_at = NOW(),
+      updated_at = NOW()
+  WHERE image_id = p_image_id;
+
+  SELECT * INTO v_payload_record
+  FROM device_wake_payloads
+  WHERE image_id = p_image_id;
+
+  IF v_payload_record.payload_id IS NULL THEN
+    IF v_image_record.site_id IS NOT NULL AND v_image_record.company_id IS NOT NULL THEN
+      v_session_record := NULL;
+      SELECT * INTO v_session_record
+      FROM site_device_sessions
+      WHERE site_id = v_image_record.site_id
+        AND session_date = DATE(v_image_record.captured_at)
+      LIMIT 1;
+
+      IF v_session_record IS NOT NULL AND v_session_record.session_id IS NOT NULL THEN
+        v_device_submission_id := v_session_record.device_submission_id;
+
+        IF v_device_submission_id IS NULL THEN
+          v_device_submission_id := fn_get_or_create_device_submission(
+            v_image_record.site_id,
+            v_session_record.session_date
+          );
+          UPDATE site_device_sessions
+          SET device_submission_id = v_device_submission_id
+          WHERE session_id = v_session_record.session_id;
+        END IF;
+
+        v_slot_index := COALESCE(
+          (v_image_record.metadata->>'slot_index')::INT,
+          1
+        );
+
+        INSERT INTO petri_observations (
+          submission_id, site_id, program_id, company_id,
+          image_url, order_index, is_device_generated,
+          device_capture_metadata, created_at
+        ) VALUES (
+          v_device_submission_id, v_image_record.site_id,
+          v_image_record.program_id, v_image_record.company_id,
+          p_image_url, v_slot_index, TRUE,
+          v_image_record.metadata, NOW()
+        )
+        RETURNING observation_id INTO v_observation_id;
+
+        UPDATE device_images
+        SET observation_id = v_observation_id,
+            observation_type = 'petri'
+        WHERE image_id = p_image_id;
+
+        UPDATE site_device_sessions
+        SET completed_wake_count = completed_wake_count + 1
+        WHERE session_id = v_session_record.session_id;
+
+        RETURN jsonb_build_object(
+          'success', true,
+          'image_id', p_image_id,
+          'observation_id', v_observation_id,
+          'session_id', v_session_record.session_id,
+          'device_submission_id', v_device_submission_id,
+          'slot_index', v_slot_index,
+          'note', 'Completed via image-lineage fallback (no payload row)'
+        );
+      END IF;
+    END IF;
+
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Payload not found for image and insufficient lineage for fallback'
+    );
+  END IF;
+
+  SELECT * INTO v_session_record
+  FROM site_device_sessions
+  WHERE session_id = v_payload_record.site_device_session_id;
+
+  IF v_session_record.session_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Session not found for payload'
+    );
+  END IF;
+
+  v_device_submission_id := v_session_record.device_submission_id;
+
+  IF v_device_submission_id IS NULL THEN
+    v_device_submission_id := fn_get_or_create_device_submission(
+      v_payload_record.site_id,
+      v_session_record.session_date
+    );
+    UPDATE site_device_sessions
+    SET device_submission_id = v_device_submission_id
+    WHERE session_id = v_session_record.session_id;
+  END IF;
+
+  UPDATE device_wake_payloads
+  SET image_status = 'complete',
+      payload_status = 'complete',
+      received_at = NOW()
+  WHERE payload_id = v_payload_record.payload_id;
+
+  v_slot_index := COALESCE(
+    (v_image_record.metadata->>'slot_index')::INT,
+    v_payload_record.wake_window_index,
+    1
+  );
+
+  INSERT INTO petri_observations (
+    submission_id, site_id, program_id, company_id,
+    image_url, order_index, is_device_generated,
+    device_capture_metadata, created_at
+  ) VALUES (
+    v_device_submission_id,
+    v_payload_record.site_id,
+    v_payload_record.program_id,
+    v_payload_record.company_id,
+    p_image_url,
+    v_slot_index,
+    TRUE,
+    v_payload_record.telemetry_data,
+    NOW()
+  )
+  RETURNING observation_id INTO v_observation_id;
+
+  UPDATE device_images
+  SET observation_id = v_observation_id,
+      observation_type = 'petri'
+  WHERE image_id = p_image_id;
+
+  UPDATE site_device_sessions
+  SET completed_wake_count = completed_wake_count + 1
+  WHERE session_id = v_payload_record.site_device_session_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'image_id', p_image_id,
+    'observation_id', v_observation_id,
+    'payload_id', v_payload_record.payload_id,
+    'session_id', v_payload_record.site_device_session_id,
+    'device_submission_id', v_device_submission_id,
+    'slot_index', v_slot_index
+  );
+
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object(
+    'success', false,
+    'message', SQLERRM,
+    'error_detail', SQLSTATE
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION fn_image_completion_handler(UUID, TEXT) IS
+'Handle successful image transmission. Creates observation with submission_id, updates counters, links records. Falls back to image lineage when no payload row exists.';

@@ -350,15 +350,24 @@ async function handleStatusMessage(payload, client) {
     return null;
   }
 
+  const statusUpdate = {
+    last_seen_at: new Date().toISOString(),
+    is_active: true,
+    firmware_version: payload.firmware_version || device.firmware_version,
+    battery_voltage: payload.battery_voltage || device.battery_voltage,
+    wifi_rssi: payload.wifi_rssi || device.wifi_rssi,
+  };
+
+  if (device.manual_wake_override) {
+    statusUpdate.manual_wake_override = false;
+    statusUpdate.manual_wake_requested_by = null;
+    statusUpdate.manual_wake_requested_at = null;
+    console.log(`[STATUS] Clearing manual_wake_override for device ${device.device_code || device.device_mac}`);
+  }
+
   await supabase
     .from('devices')
-    .update({
-      last_seen_at: new Date().toISOString(),
-      is_active: true,
-      firmware_version: payload.firmware_version || device.firmware_version,
-      battery_voltage: payload.battery_voltage || device.battery_voltage,
-      wifi_rssi: payload.wifi_rssi || device.wifi_rssi,
-    })
+    .update(statusUpdate)
     .eq('device_id', device.device_id);
 
   console.log(`[STATUS] Device ${device.device_code || device.device_mac} updated (status: ${device.provisioning_status})`);
@@ -520,7 +529,7 @@ async function handleMetadataMessage(payload, client) {
 
   const { data: existingImage, error: existingError } = await supabase
     .from('device_images')
-    .select('image_id, status, received_chunks, total_chunks')
+    .select('image_id, status, received_chunks, total_chunks, metadata')
     .eq('device_id', device.device_id)
     .eq('image_name', normalizedPayload.image_name)
     .maybeSingle();
@@ -530,10 +539,7 @@ async function handleMetadataMessage(payload, client) {
   }
 
   if (existingImage && existingImage.status === 'complete') {
-    console.log(`[METADATA] Image ${normalizedPayload.image_name} was complete but device is re-sending - resetting for upsert re-reception`);
-
-    await clearChunkBuffer(supabase, normalizedMac, normalizedPayload.image_name);
-    completedImages.delete(imageKey);
+    console.log(`[METADATA] Image ${normalizedPayload.image_name} already complete - logging duplicate metadata, skipping re-reception`);
 
     await supabase.rpc('fn_log_duplicate_image', {
       p_device_id: device.device_id,
@@ -543,9 +549,46 @@ async function handleMetadataMessage(payload, client) {
         total_chunks: normalizedPayload.total_chunks_count,
         image_size: normalizedPayload.image_size,
         temperature: normalizedPayload.temperature,
-        note: 'Reset for re-reception - device insists image is pending',
+        note: 'Duplicate metadata for complete image - preserving existing',
       },
     }).catch(err => console.warn('[METADATA] Failed to log duplicate:', err));
+
+    await supabase
+      .from('device_images')
+      .update({
+        metadata: {
+          ...((existingImage.metadata && typeof existingImage.metadata === 'object') ? existingImage.metadata : {}),
+          last_duplicate_at: new Date().toISOString(),
+          last_duplicate_temp: normalizedPayload.temperature,
+          last_duplicate_humidity: normalizedPayload.humidity,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('image_id', existingImage.image_id);
+
+    if (normalizedPayload.temperature !== undefined) {
+      const telemetryInsert = {
+        device_id: device.device_id,
+        company_id: companyId,
+        program_id: programId,
+        site_id: siteId,
+        site_device_session_id: sessionId,
+        captured_at: normalizedPayload.capture_timestamp || new Date().toISOString(),
+        temperature: tempF,
+        humidity: normalizedPayload.humidity,
+        pressure: normalizedPayload.pressure,
+        gas_resistance: normalizedPayload.gas_resistance,
+        battery_voltage: device.battery_voltage,
+      };
+      await supabase.from('device_telemetry').insert(telemetryInsert)
+        .then(() => console.log(`[METADATA] Saved telemetry from duplicate metadata for ${normalizedPayload.image_name}`))
+        .catch(err => console.warn(`[METADATA] Failed to save duplicate telemetry:`, err));
+    }
+
+    completedImages.add(imageKey);
+    const session = deviceSessions.get(normalizedMac);
+    if (session) session.lastActivityAt = new Date();
+    return;
   }
 
   let imageRecord;
@@ -638,6 +681,48 @@ async function handleMetadataMessage(payload, client) {
         imageRecord = updatedImage;
         console.log(`[SUCCESS] Updated image record ${imageRecord.image_id} for resume (fallback)`);
       }
+
+      if (imageRecord && companyId && programId && siteId && sessionId) {
+        try {
+          const capturedAt = normalizedPayload.capture_timestamp || new Date().toISOString();
+          const { data: fallbackPayload, error: payloadError } = await supabase
+            .from('device_wake_payloads')
+            .insert({
+              device_id: device.device_id,
+              company_id: companyId,
+              program_id: programId,
+              site_id: siteId,
+              site_device_session_id: sessionId,
+              captured_at: capturedAt,
+              received_at: new Date().toISOString(),
+              image_id: imageRecord.image_id,
+              image_status: 'receiving',
+              payload_status: 'complete',
+              wake_type: 'image_wake',
+              protocol_state: 'metadata_received',
+              temperature: telemetryData.temperature,
+              humidity: telemetryData.humidity,
+              pressure: telemetryData.pressure,
+              gas_resistance: telemetryData.gas_resistance,
+              battery_voltage: device.battery_voltage,
+              wifi_rssi: device.wifi_rssi,
+              telemetry_data: telemetryData,
+            })
+            .select('payload_id')
+            .single();
+
+          if (payloadError) {
+            console.error(`[METADATA] Failed to create fallback wake payload:`, payloadError);
+          } else {
+            payloadId = fallbackPayload.payload_id;
+            console.log(`[SUCCESS] Created fallback wake payload ${payloadId} linked to image ${imageRecord.image_id}`);
+          }
+        } catch (payloadErr) {
+          console.error(`[METADATA] Exception creating fallback wake payload:`, payloadErr);
+        }
+      } else {
+        console.warn(`[METADATA] Skipping fallback payload creation - missing required lineage (company: ${companyId}, program: ${programId}, site: ${siteId}, session: ${sessionId})`);
+      }
     } else {
       console.log(`[METADATA] Wake ingestion RPC success:`, {
         payload_id: result.payload_id,
@@ -716,7 +801,14 @@ async function handleMetadataMessage(payload, client) {
 
   const isBatchMode = session?.state === 'draining_pending';
 
-  if (isBatchMode) {
+  const pgComplete = await isComplete(supabase, normalizedMac, normalizedPayload.image_name, normalizedPayload.total_chunks_count);
+
+  if (pgComplete) {
+    console.log(`[METADATA] All chunks already in Postgres for ${normalizedPayload.image_name} - triggering reassembly (skipping send_image)`);
+    await finalizeAndUploadImage(normalizedMac, normalizedPayload.image_name, buffer, client);
+  } else if (completedImages.has(imageKey)) {
+    console.log(`[METADATA] Image ${normalizedPayload.image_name} recently completed - skipping send_image`);
+  } else if (isBatchMode) {
     console.log(`[METADATA] Batch mode (send_all_pending) - device auto-sends chunks, skipping send_image`);
   } else {
     const sendImageCmd = {
@@ -726,12 +818,6 @@ async function handleMetadataMessage(payload, client) {
     client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
     await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendImageCmd, 'cmd_send_image', null, payloadId, normalizedPayload.image_name);
     console.log(`[CMD] Sent send_image for ${normalizedPayload.image_name} to ${normalizedMac} (standard flow)`);
-  }
-
-  const pgComplete = await isComplete(supabase, normalizedMac, normalizedPayload.image_name, normalizedPayload.total_chunks_count);
-  if (pgComplete) {
-    console.log(`[METADATA] All chunks already in Postgres for ${normalizedPayload.image_name} - triggering reassembly`);
-    await finalizeAndUploadImage(normalizedMac, normalizedPayload.image_name, buffer, client);
   }
 }
 
@@ -1246,6 +1332,17 @@ async function calculateNextWakeTime(deviceId) {
 
       nextWakeISO = nextWake;
       console.log(`[SCHEDULE] Calculated next wake for device ${deviceId}: ${nextWake} (cron: ${cronExpression})`);
+
+      const { error: updateError } = await supabase
+        .from('devices')
+        .update({ next_wake_at: nextWakeISO })
+        .eq('device_id', deviceId);
+
+      if (updateError) {
+        console.error(`[SCHEDULE] Failed to persist next_wake_at:`, updateError);
+      } else {
+        console.log(`[SCHEDULE] Persisted next_wake_at=${nextWakeISO} for device ${deviceId}`);
+      }
     }
 
     const simpleTime = formatTimeForDevice(nextWakeISO);
