@@ -138,6 +138,38 @@ Deno.serve(async (req: Request) => {
 
     console.log('[MGI Scoring] Successfully scored image:', image_id, 'Score:', mgiScore);
 
+    const scoredAt = new Date().toISOString();
+
+    const { data: imageRecord } = await supabaseClient
+      .from('device_images')
+      .select('device_id')
+      .eq('image_id', image_id)
+      .maybeSingle();
+
+    if (imageRecord?.device_id) {
+      const mgiAlertChecks = [
+        { fn: 'check_absolute_thresholds', params: { p_device_id: imageRecord.device_id, p_temperature: null, p_humidity: null, p_mgi: mgiScore, p_measurement_timestamp: scoredAt } },
+        { fn: 'check_mgi_velocity', params: { p_device_id: imageRecord.device_id, p_current_mgi: mgiScore, p_measurement_timestamp: scoredAt } },
+        { fn: 'check_mgi_program_speed', params: { p_device_id: imageRecord.device_id, p_current_mgi: mgiScore, p_measurement_timestamp: scoredAt } },
+      ];
+
+      for (const check of mgiAlertChecks) {
+        try {
+          const { data: alerts, error: alertErr } = await supabaseClient.rpc(check.fn, check.params);
+          if (alertErr) {
+            console.error(`[MGI Scoring] ${check.fn} error:`, alertErr.message);
+          } else {
+            const parsed = Array.isArray(alerts) ? alerts : (alerts ? JSON.parse(alerts) : []);
+            if (parsed.length > 0) {
+              console.log(`[MGI Scoring] ${check.fn}: ${parsed.length} alert(s) triggered`);
+            }
+          }
+        } catch (e) {
+          console.error(`[MGI Scoring] ${check.fn} exception:`, e);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

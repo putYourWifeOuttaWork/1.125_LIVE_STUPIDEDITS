@@ -25,6 +25,7 @@ import {
   getImageKey,
   generateDeviceCode,
 } from './deviceContext.js';
+import { checkTelemetryAlerts, checkMgiAlerts } from './alertChecker.js';
 
 dotenv.config();
 
@@ -788,6 +789,7 @@ async function handleMetadataMessage(payload, client) {
       console.error(`[ERROR] Failed to create telemetry record:`, telemetryError);
     } else {
       console.log(`[SUCCESS] Created telemetry record for device ${device.device_code} (temp: ${normalizedPayload.temperature}C -> ${tempF}F)`);
+      checkTelemetryAlerts(supabase, device.device_id, tempF, normalizedPayload.humidity, telemetryInsert.captured_at);
     }
   }
 
@@ -1490,6 +1492,7 @@ async function handleTelemetryOnly(payload) {
     console.error(`[TELEMETRY] Insert failed:`, error);
   } else {
     console.log(`[TELEMETRY] Saved (temp: ${payload.temperature}C -> ${celsiusToFahrenheit(payload.temperature)}F)`);
+    checkTelemetryAlerts(supabase, lineage.device_id, celsiusToFahrenheit(payload.temperature), payload.humidity, capturedAt);
   }
 }
 
