@@ -542,56 +542,96 @@ async function handleMetadataMessage(payload, client) {
   }
 
   if (existingImage && existingImage.status === 'complete') {
-    console.log(`[METADATA] Image ${normalizedPayload.image_name} already complete - logging duplicate metadata, skipping re-reception`);
-
-    await supabase.rpc('fn_log_duplicate_image', {
-      p_device_id: device.device_id,
-      p_image_name: normalizedPayload.image_name,
-      p_duplicate_metadata: {
-        captured_at: normalizedPayload.capture_timestamp,
-        total_chunks: normalizedPayload.total_chunks_count,
-        image_size: normalizedPayload.image_size,
-        temperature: normalizedPayload.temperature,
-        note: 'Duplicate metadata for complete image - preserving existing',
-      },
-    }).catch(err => console.warn('[METADATA] Failed to log duplicate:', err));
-
-    await supabase
-      .from('device_images')
-      .update({
-        metadata: {
-          ...((existingImage.metadata && typeof existingImage.metadata === 'object') ? existingImage.metadata : {}),
-          last_duplicate_at: new Date().toISOString(),
-          last_duplicate_temp: normalizedPayload.temperature,
-          last_duplicate_humidity: normalizedPayload.humidity,
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('image_id', existingImage.image_id);
-
-    if (normalizedPayload.temperature !== undefined) {
-      const telemetryInsert = {
-        device_id: device.device_id,
-        company_id: companyId,
-        program_id: programId,
-        site_id: siteId,
-        site_device_session_id: sessionId,
-        captured_at: normalizedPayload.capture_timestamp || new Date().toISOString(),
-        temperature: tempF,
-        humidity: normalizedPayload.humidity,
-        pressure: normalizedPayload.pressure,
-        gas_resistance: normalizedPayload.gas_resistance,
-        battery_voltage: device.battery_voltage,
-      };
-      await supabase.from('device_telemetry').insert(telemetryInsert)
-        .then(() => console.log(`[METADATA] Saved telemetry from duplicate metadata for ${normalizedPayload.image_name}`))
-        .catch(err => console.warn(`[METADATA] Failed to save duplicate telemetry:`, err));
-    }
-
-    completedImages.add(imageKey);
     const session = deviceSessions.get(normalizedMac);
-    if (session) session.lastActivityAt = new Date();
-    return;
+    const isFreshCapture = session && (session.state === 'capture_sent' || session.state === 'pending_drained');
+
+    if (isFreshCapture) {
+      console.log(`[METADATA] Image ${normalizedPayload.image_name} was complete from prior session - resetting for fresh capture (session state: ${session.state})`);
+      await supabase
+        .from('device_images')
+        .update({
+          status: 'pending',
+          received_chunks: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('image_id', existingImage.image_id);
+
+      await clearChunkBuffer(supabase, normalizedMac, normalizedPayload.image_name);
+      completedImages.delete(imageKey);
+      imageBuffers.delete(imageKey);
+
+      existingImage.status = 'pending';
+      existingImage.received_chunks = 0;
+
+      imageBuffers.set(imageKey, {
+        metadata: normalizedPayload,
+        chunks: new Map(),
+        totalChunks: normalizedPayload.total_chunks_count,
+        imageRecord: null,
+        device,
+        lineage,
+        payloadId: null,
+        sessionId,
+        completed: false,
+      });
+    } else {
+      console.log(`[METADATA] Image ${normalizedPayload.image_name} already complete - logging duplicate metadata, skipping re-reception`);
+
+      try {
+        await supabase.rpc('fn_log_duplicate_image', {
+          p_device_id: device.device_id,
+          p_image_name: normalizedPayload.image_name,
+          p_duplicate_metadata: {
+            captured_at: normalizedPayload.capture_timestamp,
+            total_chunks: normalizedPayload.total_chunks_count,
+            image_size: normalizedPayload.image_size,
+            temperature: normalizedPayload.temperature,
+            note: 'Duplicate metadata for complete image - preserving existing',
+          },
+        });
+      } catch (err) {
+        console.warn('[METADATA] Failed to log duplicate:', err);
+      }
+
+      await supabase
+        .from('device_images')
+        .update({
+          metadata: {
+            ...((existingImage.metadata && typeof existingImage.metadata === 'object') ? existingImage.metadata : {}),
+            last_duplicate_at: new Date().toISOString(),
+            last_duplicate_temp: normalizedPayload.temperature,
+            last_duplicate_humidity: normalizedPayload.humidity,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('image_id', existingImage.image_id);
+
+      if (normalizedPayload.temperature !== undefined) {
+        const telemetryInsert = {
+          device_id: device.device_id,
+          company_id: companyId,
+          program_id: programId,
+          site_id: siteId,
+          site_device_session_id: sessionId,
+          captured_at: normalizedPayload.capture_timestamp || new Date().toISOString(),
+          temperature: tempF,
+          humidity: normalizedPayload.humidity,
+          pressure: normalizedPayload.pressure,
+          gas_resistance: normalizedPayload.gas_resistance,
+          battery_voltage: device.battery_voltage,
+        };
+        try {
+          await supabase.from('device_telemetry').insert(telemetryInsert);
+          console.log(`[METADATA] Saved telemetry from duplicate metadata for ${normalizedPayload.image_name}`);
+        } catch (err) {
+          console.warn(`[METADATA] Failed to save duplicate telemetry:`, err);
+        }
+      }
+
+      completedImages.add(imageKey);
+      if (session) session.lastActivityAt = new Date();
+      return;
+    }
   }
 
   let imageRecord;
@@ -823,7 +863,7 @@ async function handleMetadataMessage(payload, client) {
     await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendAllCmd, 'cmd_send_all_pending', null, payloadId, normalizedPayload.image_name);
     console.log(`[CMD] Sent send_all_pending to ${normalizedMac} after capture (protocol Scenario 1)`);
 
-    if (session) {
+    if (session && session.state !== 'capture_sent' && session.state !== 'pending_drained') {
       session.state = 'draining_pending';
       session.initialPendingCount = session.initialPendingCount || 1;
       session.pendingDrained = 0;
@@ -1265,17 +1305,16 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
       const isLastInBatch = remaining <= 0;
 
       if (isLastInBatch) {
-        const nextWakeTime = await calculateNextWakeTime(buffer?.imageRecord?.device_id);
-        const finalAck = {
-          ACK_OK: { next_wake_time: nextWakeTime },
+        const simpleAck = {
+          ACK_OK: true,
           image_name: imageName,
         };
-        client.publish(ackTopic, JSON.stringify(finalAck));
-        await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, finalAck, 'ack_ok_final', null, buffer?.payloadId, imageName);
-        await logAckToAudit(supabase, normalizedMac, imageName, 'ACK_OK_FINAL', ackTopic, finalAck, true);
-        console.log(`[ACK] Sent final batch ACK_OK for ${imageName} with next wake: ${nextWakeTime}`);
-        console.log(`[DRAIN] All pending images drained - device will re-publish status`);
-        session.state = 'idle';
+        client.publish(ackTopic, JSON.stringify(simpleAck));
+        await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, simpleAck, 'ack_ok_batch_final', null, buffer?.payloadId, imageName);
+        await logAckToAudit(supabase, normalizedMac, imageName, 'ACK_OK_BATCH_FINAL', ackTopic, simpleAck, true);
+        console.log(`[ACK] Sent simple ACK_OK for last batch image ${imageName} (pending drain complete, awaiting fresh capture)`);
+        console.log(`[DRAIN] All pending images drained - device will re-publish status for fresh capture`);
+        session.state = 'pending_drained';
       } else {
         const simpleAck = {
           ACK_OK: true,

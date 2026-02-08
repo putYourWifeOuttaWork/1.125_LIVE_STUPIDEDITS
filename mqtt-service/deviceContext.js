@@ -136,6 +136,12 @@ export function parseDeviceTimestamp(raw) {
     iso = iso.replace(' ', 'T') + 'Z';
   }
 
+  const isoNoPadMatch = iso.match(/^(\d{1,4})-(\d{1,2})-(\d{1,2})T(\d{1,2}):(\d{1,2}):(\d{1,2})Z?$/);
+  if (isoNoPadMatch) {
+    const [, yr, mo, dy, hr, mn, sc] = isoNoPadMatch;
+    iso = `${yr.padStart(4, '0')}-${mo.padStart(2, '0')}-${dy.padStart(2, '0')}T${hr.padStart(2, '0')}:${mn.padStart(2, '0')}:${sc.padStart(2, '0')}Z`;
+  }
+
   if (!iso.includes('T') && !iso.endsWith('Z')) {
     iso = raw;
   }
