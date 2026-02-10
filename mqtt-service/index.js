@@ -861,10 +861,17 @@ async function handleMetadataMessage(payload, client) {
     console.log(`[METADATA] Image ${normalizedPayload.image_name} recently completed - skipping send_image`);
   } else if (isBatchMode) {
     console.log(`[METADATA] Batch mode (send_all_pending) - device auto-sends chunks, skipping send_image`);
-  } else if (session && session.state === 'capture_sent') {
-    console.log(`[METADATA] Fresh capture in progress (state: capture_sent) - device auto-sends after capture_image, no command needed`);
-  } else if (session && session.state === 'pending_drained') {
-    console.log(`[METADATA] Post-batch fresh capture in progress (state: pending_drained) - device auto-sends after capture_image, no command needed`);
+  } else if (session && (session.state === 'capture_sent' || session.state === 'pending_drained')) {
+    const priorState = session.state;
+    const cmdTopic = `ESP32CAM/${normalizedMac}/cmd`;
+    const sendImageCmd = {
+      device_id: normalizedMac,
+      send_image: normalizedPayload.image_name,
+    };
+    client.publish(cmdTopic, JSON.stringify(sendImageCmd));
+    await logMqttMessage(supabase, normalizedMac, 'outbound', cmdTopic, sendImageCmd, 'cmd_send_image', null, null, normalizedPayload.image_name);
+    session.state = 'send_image_sent';
+    console.log(`[CMD] Sent send_image for ${normalizedPayload.image_name} (fresh capture metadata received, prior state: ${priorState})`);
   } else {
     console.log(`[METADATA] Unexpected session state (${session?.state || 'no session'}) for ${normalizedPayload.image_name} - no command sent`);
   }
@@ -1311,9 +1318,24 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
         client.publish(ackTopic, JSON.stringify(simpleAck));
         await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, simpleAck, 'ack_ok_batch_final', null, buffer?.payloadId, imageName);
         await logAckToAudit(supabase, normalizedMac, imageName, 'ACK_OK_BATCH_FINAL', ackTopic, simpleAck, true);
-        console.log(`[ACK] Sent simple ACK_OK for last batch image ${imageName} (pending drain complete, awaiting fresh capture)`);
-        console.log(`[DRAIN] All pending images drained - device will re-publish status for fresh capture`);
-        session.state = 'pending_drained';
+        console.log(`[ACK] Sent simple ACK_OK for last batch image ${imageName} (pending drain complete)`);
+
+        await supabase
+          .from('device_commands')
+          .update({ status: 'superseded', delivered_at: new Date().toISOString() })
+          .eq('device_id', buffer?.imageRecord?.device_id || buffer?.device?.device_id)
+          .eq('command_type', 'capture_image')
+          .eq('status', 'pending');
+
+        const captureCmd = {
+          device_id: normalizedMac,
+          capture_image: true,
+        };
+        client.publish(cmdTopic, JSON.stringify(captureCmd));
+        await logMqttMessage(supabase, normalizedMac, 'outbound', cmdTopic, captureCmd, 'cmd_capture_image');
+        session.state = 'capture_sent';
+        session.lastCaptureSentAt = Date.now();
+        console.log(`[DRAIN] All pending images drained - immediately sent capture_image to ${normalizedMac}`);
       } else {
         const simpleAck = {
           ACK_OK: true,
