@@ -59,6 +59,7 @@ function getOrCreateSession(deviceMac, deviceId, pendingCount) {
       state: 'hello_received',
       initialPendingCount: pendingCount,
       pendingDrained: 0,
+      captureCompletedCount: 0,
       currentImageName: null,
       startedAt: new Date(),
       lastActivityAt: new Date(),
@@ -397,6 +398,12 @@ async function handleStatusMessage(payload, client) {
   const session = getOrCreateSession(normalizedMac, device.device_id, pendingCount);
 
   try {
+    if (session.state === 'sleep_ack_sent') {
+      console.log(`[STATUS] Device re-published status after sleep ACK was sent - ignoring (device should be entering deep sleep)`);
+      console.log(`[STATUS] Sleep ACK was sent ${Math.round((Date.now() - (session.sleepAckSentAt || 0)) / 1000)}s ago, captureCompletedCount: ${session.captureCompletedCount || 0}`);
+      return { device, pendingCount };
+    }
+
     if (pendingCount > 0) {
       console.log(`[STATUS] Device reports ${pendingCount} pending images - sending send_all_pending`);
       session.state = 'draining_pending';
@@ -854,20 +861,12 @@ async function handleMetadataMessage(payload, client) {
     console.log(`[METADATA] Image ${normalizedPayload.image_name} recently completed - skipping send_image`);
   } else if (isBatchMode) {
     console.log(`[METADATA] Batch mode (send_all_pending) - device auto-sends chunks, skipping send_image`);
+  } else if (session && session.state === 'capture_sent') {
+    console.log(`[METADATA] Fresh capture in progress (state: capture_sent) - device auto-sends after capture_image, no command needed`);
+  } else if (session && session.state === 'pending_drained') {
+    console.log(`[METADATA] Post-batch fresh capture in progress (state: pending_drained) - device auto-sends after capture_image, no command needed`);
   } else {
-    const sendAllCmd = {
-      device_id: normalizedMac,
-      send_all_pending: true,
-    };
-    client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendAllCmd));
-    await logMqttMessage(supabase, normalizedMac, 'outbound', `ESP32CAM/${normalizedMac}/cmd`, sendAllCmd, 'cmd_send_all_pending', null, payloadId, normalizedPayload.image_name);
-    console.log(`[CMD] Sent send_all_pending to ${normalizedMac} after capture (protocol Scenario 1)`);
-
-    if (session && session.state !== 'capture_sent' && session.state !== 'pending_drained') {
-      session.state = 'draining_pending';
-      session.initialPendingCount = session.initialPendingCount || 1;
-      session.pendingDrained = 0;
-    }
+    console.log(`[METADATA] Unexpected session state (${session?.state || 'no session'}) for ${normalizedPayload.image_name} - no command sent`);
   }
 }
 
@@ -1336,7 +1335,14 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
       await logAckToAudit(supabase, normalizedMac, imageName, 'ACK_OK', ackTopic, ackMessage, true);
       console.log(`[ACK] Sent ACK_OK to ${buffer?.device?.device_code || normalizedMac} with next wake: ${nextWakeTime}`);
 
-      cleanupSession(normalizedMac);
+      if (session) {
+        session.captureCompletedCount = (session.captureCompletedCount || 0) + 1;
+        session.state = 'sleep_ack_sent';
+        session.sleepAckSentAt = Date.now();
+        setTimeout(() => cleanupSession(normalizedMac), 60000);
+      } else {
+        cleanupSession(normalizedMac);
+      }
     }
 
     await clearChunkBuffer(supabase, normalizedMac, imageName);
