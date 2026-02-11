@@ -173,7 +173,6 @@ async function sendPendingCommands(device, client) {
       switch (command.command_type) {
         case 'ping':
           message = {
-            device_id: device.device_mac,
             ping: true,
             timestamp: command.command_payload?.timestamp || new Date().toISOString()
           };
@@ -181,7 +180,6 @@ async function sendPendingCommands(device, client) {
 
         case 'capture_image':
           message = {
-            device_id: device.device_mac,
             capture_image: true
           };
           break;
@@ -189,7 +187,6 @@ async function sendPendingCommands(device, client) {
         case 'set_wake_schedule': {
           const nextWake = await calculateNextWakeTime(device.device_id);
           message = {
-            device_id: device.device_mac,
             next_wake: nextWake
           };
           break;
@@ -197,7 +194,6 @@ async function sendPendingCommands(device, client) {
 
         case 'send_image':
           message = {
-            device_id: device.device_mac,
             send_image: command.command_payload?.image_name
           };
           break;
@@ -411,7 +407,6 @@ async function handleStatusMessage(payload, client) {
       session.pendingDrained = 0;
 
       const drainCmd = {
-        device_id: normalizedMac,
         send_all_pending: true,
       };
       client.publish(cmdTopic, JSON.stringify(drainCmd));
@@ -436,7 +431,6 @@ async function handleStatusMessage(payload, client) {
         .eq('status', 'pending');
 
       const captureCmd = {
-        device_id: normalizedMac,
         capture_image: true,
       };
       client.publish(cmdTopic, JSON.stringify(captureCmd));
@@ -865,7 +859,6 @@ async function handleMetadataMessage(payload, client) {
     const priorState = session.state;
     const cmdTopic = `ESP32CAM/${normalizedMac}/cmd`;
     const sendImageCmd = {
-      device_id: normalizedMac,
       send_image: normalizedPayload.image_name,
     };
     client.publish(cmdTopic, JSON.stringify(sendImageCmd));
@@ -931,7 +924,6 @@ function resetMissingChunkTimer(imageKey, normalizedMac, imageName, buffer, clie
       } else {
         imageRetryCounters.set(imageKey, retryCount + 1);
         const sendImageCmd = {
-          device_id: normalizedMac,
           send_image: imageName,
         };
         client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
@@ -1100,7 +1092,6 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
       imageRetryCounters.set(imageKey, retryCount + 1);
       console.log(`[FINALIZE] ${missing.length} missing chunks - sending send_image retry ${retryCount + 1}/${MAX_IMAGE_RETRIES}`);
       const sendImageCmd = {
-        device_id: normalizedMac,
         send_image: imageName,
       };
       client.publish(`ESP32CAM/${normalizedMac}/cmd`, JSON.stringify(sendImageCmd));
@@ -1328,7 +1319,6 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
           .eq('status', 'pending');
 
         const captureCmd = {
-          device_id: normalizedMac,
           capture_image: true,
         };
         client.publish(cmdTopic, JSON.stringify(captureCmd));
