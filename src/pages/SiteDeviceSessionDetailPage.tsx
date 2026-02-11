@@ -1099,6 +1099,47 @@ const SiteDeviceSessionDetailPage = () => {
     };
   }, [processedSnapshots]);
 
+  // Build stable device color map
+  const deviceColorMap = useMemo(() => {
+    if (!timeSeriesData) return {};
+
+    // Curated palette of well-separated, readable colors
+    const palette = [
+      '#2563eb', // blue
+      '#059669', // green
+      '#d97706', // amber
+      '#dc2626', // red
+      '#0891b2', // teal
+      '#7c3aed', // violet
+      '#e11d48', // rose
+      '#65a30d', // lime
+    ];
+
+    // Extract all unique device codes across all metrics
+    const allCodes = new Set<string>();
+    [
+      timeSeriesData.temperature,
+      timeSeriesData.humidity,
+      timeSeriesData.battery,
+      timeSeriesData.mgi,
+    ]
+      .flat()
+      .forEach(d => {
+        if (d.deviceCode) allCodes.add(d.deviceCode);
+      });
+
+    // Sort device codes alphabetically for deterministic assignment
+    const sortedCodes = Array.from(allCodes).sort();
+
+    // Build the color map
+    const map: Record<string, string> = {};
+    sortedCodes.forEach((code, i) => {
+      map[code] = palette[i % palette.length];
+    });
+
+    return map;
+  }, [timeSeriesData]);
+
   // Prepare histogram data (all values as flat arrays)
   const histogramData = useMemo(() => {
     if (!timeSeriesData) return null;
@@ -2301,6 +2342,8 @@ const SiteDeviceSessionDetailPage = () => {
                       unit="°F"
                       color="#f97316"
                       height={300}
+                      showDeviceBreakdown={true}
+                      deviceColorMap={deviceColorMap}
                       thresholds={[
                         { value: 85, label: 'High Alert', color: '#dc2626' },
                         { value: 65, label: 'Low Alert', color: '#2563eb' },
@@ -2317,6 +2360,8 @@ const SiteDeviceSessionDetailPage = () => {
                       unit="%"
                       color="#06b6d4"
                       height={300}
+                      showDeviceBreakdown={true}
+                      deviceColorMap={deviceColorMap}
                       thresholds={[
                         { value: 70, label: 'High Alert', color: '#dc2626' },
                       ]}
@@ -2332,6 +2377,8 @@ const SiteDeviceSessionDetailPage = () => {
                       unit="%"
                       color="#10b981"
                       height={300}
+                      showDeviceBreakdown={true}
+                      deviceColorMap={deviceColorMap}
                       thresholds={[
                         { value: 20, label: 'Critical', color: '#dc2626' },
                         { value: 50, label: 'Low', color: '#f59e0b' },
@@ -2348,6 +2395,8 @@ const SiteDeviceSessionDetailPage = () => {
                       unit=""
                       color="#a855f7"
                       height={300}
+                      showDeviceBreakdown={true}
+                      deviceColorMap={deviceColorMap}
                       thresholds={[
                         { value: 70, label: 'High Growth', color: '#dc2626' },
                       ]}
