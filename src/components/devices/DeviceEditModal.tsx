@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Clock, Info, RefreshCw } from 'lucide-react';
+import { X, Clock, Info, RefreshCw, AlertTriangle, Battery } from 'lucide-react';
 import Button from '../common/Button';
 import Input from '../common/Input';
 import Modal from '../common/Modal';
@@ -175,13 +175,73 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
   };
 
   const cronPresets = [
-    { label: 'Every hour', value: '0 * * * *' },
-    { label: 'Every 6 hours', value: '0 */6 * * *' },
-    { label: 'Every 12 hours', value: '0 */12 * * *' },
-    { label: 'Daily at noon', value: '0 12 * * *' },
-    { label: 'Daily at midnight', value: '0 0 * * *' },
-    { label: 'Twice daily (6am, 6pm)', value: '0 6,18 * * *' },
+    { label: 'Every 15 minutes', value: '*/15 * * * *', wakesPerDay: 96, batteryImpact: 'high' },
+    { label: 'Every 30 minutes', value: '*/30 * * * *', wakesPerDay: 48, batteryImpact: 'high' },
+    { label: 'Every hour', value: '0 * * * *', wakesPerDay: 24, batteryImpact: 'medium' },
+    { label: 'Every 6 hours', value: '0 */6 * * *', wakesPerDay: 4, batteryImpact: 'low' },
+    { label: 'Every 12 hours', value: '0 */12 * * *', wakesPerDay: 2, batteryImpact: 'low' },
+    { label: 'Daily at noon', value: '0 12 * * *', wakesPerDay: 1, batteryImpact: 'low' },
+    { label: 'Daily at midnight', value: '0 0 * * *', wakesPerDay: 1, batteryImpact: 'low' },
+    { label: 'Twice daily (6am, 6pm)', value: '0 6,18 * * *', wakesPerDay: 2, batteryImpact: 'low' },
   ];
+
+  // Helper function to calculate estimated wakes per day
+  const estimateWakesPerDay = (cron: string): number => {
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length < 2) return 0;
+
+    const minutePart = parts[0];
+    const hourPart = parts[1];
+
+    // Minute interval pattern */N
+    if (minutePart.includes('*/')) {
+      const interval = parseInt(minutePart.split('/')[1], 10);
+      return Math.floor((24 * 60) / interval);
+    }
+
+    // Specific minutes pattern N,N,N
+    if (minutePart.includes(',')) {
+      const minuteCount = minutePart.split(',').length;
+      // If hour is *, multiply by 24, else count hours
+      if (hourPart === '*') {
+        return minuteCount * 24;
+      }
+      if (hourPart.includes(',')) {
+        const hourCount = hourPart.split(',').length;
+        return minuteCount * hourCount;
+      }
+      if (hourPart.includes('*/')) {
+        const hourInterval = parseInt(hourPart.split('/')[1], 10);
+        return minuteCount * Math.floor(24 / hourInterval);
+      }
+      return minuteCount;
+    }
+
+    // Hour interval pattern */N
+    if (hourPart.includes('*/')) {
+      const interval = parseInt(hourPart.split('/')[1], 10);
+      return Math.floor(24 / interval);
+    }
+
+    // Specific hours pattern N,N,N
+    if (hourPart.includes(',')) {
+      return hourPart.split(',').length;
+    }
+
+    // Single time per day
+    return 1;
+  };
+
+  const getBatteryImpact = (wakesPerDay: number): 'low' | 'medium' | 'high' => {
+    if (wakesPerDay >= 48) return 'high';
+    if (wakesPerDay >= 12) return 'medium';
+    return 'low';
+  };
+
+  const currentWakesPerDay = formData.wake_schedule_cron
+    ? estimateWakesPerDay(formData.wake_schedule_cron)
+    : 0;
+  const currentBatteryImpact = currentWakesPerDay > 0 ? getBatteryImpact(currentWakesPerDay) : null;
 
   const isScheduleChanged = formData.wake_schedule_cron !== device.wake_schedule_cron;
 
@@ -238,7 +298,7 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
               <p className="text-sm text-error-600 mt-1">{errors.wake_schedule_cron}</p>
             )}
             <p className="text-xs text-gray-500 mt-1">
-              Format: minute hour day month weekday (e.g., "0 */12 * * *" for every 12 hours)
+              Format: minute hour day month weekday (e.g., "*/15 * * * *" for every 15 minutes, "0 */12 * * *" for every 12 hours)
             </p>
 
             {/* Cron Presets */}
@@ -250,14 +310,57 @@ const DeviceEditModal = ({ isOpen, onClose, device, onSubmit }: DeviceEditModalP
                     key={preset.value}
                     type="button"
                     onClick={() => handleChange('wake_schedule_cron', preset.value)}
-                    className="text-left px-3 py-2 text-xs border border-gray-300 rounded hover:bg-gray-50 hover:border-primary-500 transition-colors"
+                    className={`text-left px-3 py-2 text-xs border rounded hover:bg-gray-50 transition-colors ${
+                      preset.batteryImpact === 'high'
+                        ? 'border-yellow-300 hover:border-yellow-500'
+                        : 'border-gray-300 hover:border-primary-500'
+                    }`}
                   >
-                    <span className="block font-medium text-gray-900">{preset.label}</span>
+                    <div className="flex items-start justify-between">
+                      <span className="block font-medium text-gray-900">{preset.label}</span>
+                      {preset.batteryImpact === 'high' && (
+                        <Battery size={12} className="text-yellow-600 flex-shrink-0 ml-1" title="High battery usage" />
+                      )}
+                    </div>
                     <span className="block text-gray-500 font-mono mt-1">{preset.value}</span>
+                    <span className="block text-gray-400 text-[10px] mt-1">
+                      {preset.wakesPerDay} wakes/day
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* Battery Impact Warning */}
+            {currentBatteryImpact === 'high' && currentWakesPerDay > 0 && (
+              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg">
+                <div className="flex items-start">
+                  <AlertTriangle size={16} className="text-yellow-600 mr-2 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-yellow-800">
+                    <p className="font-medium">High Battery Usage Warning</p>
+                    <p className="mt-1 text-xs">
+                      This schedule requires <strong>{currentWakesPerDay} wakes per day</strong>.
+                      Sub-hourly wake intervals significantly increase battery drain (~12x faster than every 3 hours).
+                      Monitor device battery health closely and consider using less frequent wakes if possible.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {currentBatteryImpact === 'medium' && currentWakesPerDay > 0 && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start">
+                  <Info size={16} className="text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium">Moderate Battery Usage</p>
+                    <p className="mt-1 text-xs">
+                      This schedule requires <strong>{currentWakesPerDay} wakes per day</strong>.
+                      Battery life will be impacted but should remain reasonable for most deployments.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Next Wake Times Display */}
             {formData.wake_schedule_cron && validateCronExpression(formData.wake_schedule_cron) && (
