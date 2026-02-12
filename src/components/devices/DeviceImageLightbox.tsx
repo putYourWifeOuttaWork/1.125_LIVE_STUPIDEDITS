@@ -31,10 +31,8 @@ interface DeviceImageLightboxProps {
   onNavigate?: (newIndex: number) => void;
 }
 
-// Helper function to convert Celsius to Fahrenheit
-const celsiusToFahrenheit = (celsius: number): number => {
-  return (celsius * 9/5) + 32;
-};
+// Note: Temperature values in database are already in Fahrenheit
+// No conversion needed - removed celsiusToFahrenheit function
 
 // Helper function to get temperature color based on Fahrenheit value
 const getTemperatureColor = (tempF: number): string => {
@@ -312,7 +310,7 @@ const DeviceImageLightbox = ({
               <h3 className="text-sm font-medium mb-3 text-gray-700 flex items-center justify-between">
                 <span>Conditions Snapshot</span>
                 {hasExtremeConditions(
-                  currentImage.temperature ? celsiusToFahrenheit(currentImage.temperature) : null,
+                  currentImage.temperature,
                   currentImage.humidity
                 ) && (
                   <span className="flex items-center text-xs text-red-600 font-semibold bg-red-100 px-2 py-1 rounded">
@@ -364,7 +362,7 @@ const DeviceImageLightbox = ({
                   <span className="flex items-center text-gray-600">
                     <Thermometer className="w-4 h-4 mr-2" style={{
                       color: currentImage.temperature != null
-                        ? getTemperatureColor(celsiusToFahrenheit(currentImage.temperature))
+                        ? getTemperatureColor(currentImage.temperature)
                         : '#9ca3af'
                     }} />
                     Temperature
@@ -374,20 +372,20 @@ const DeviceImageLightbox = ({
                       className="font-medium"
                       style={{
                         color: currentImage.temperature != null
-                          ? getTemperatureColor(celsiusToFahrenheit(currentImage.temperature))
+                          ? getTemperatureColor(currentImage.temperature)
                           : '#9ca3af'
                       }}
                     >
                       {currentImage.temperature != null
-                        ? `${celsiusToFahrenheit(currentImage.temperature).toFixed(1)}°F`
+                        ? `${currentImage.temperature.toFixed(1)}°F`
                         : 'N/A'}
                     </span>
-                    {currentImage.temperature != null && celsiusToFahrenheit(currentImage.temperature) > 80 && (
+                    {currentImage.temperature != null && currentImage.temperature > 80 && (
                       <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">
                         HIGH
                       </span>
                     )}
-                    {currentImage.temperature != null && celsiusToFahrenheit(currentImage.temperature) >= 75 && celsiusToFahrenheit(currentImage.temperature) <= 80 && (
+                    {currentImage.temperature != null && currentImage.temperature >= 75 && currentImage.temperature <= 80 && (
                       <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">
                         MOD
                       </span>

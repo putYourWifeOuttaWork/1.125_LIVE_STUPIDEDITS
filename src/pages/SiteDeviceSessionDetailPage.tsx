@@ -2936,7 +2936,7 @@ const SiteDeviceSessionDetailPage = () => {
                                     {image.temperature != null && (
                                       <div className="flex items-center">
                                         <Thermometer className="w-3 h-3 mr-1 text-orange-500" />
-                                        <span className="text-gray-600">{((image.temperature * 9/5) + 32).toFixed(1)}°F</span>
+                                        <span className="text-gray-600">{image.temperature.toFixed(1)}°F</span>
                                       </div>
                                     )}
                                     {image.humidity != null && (

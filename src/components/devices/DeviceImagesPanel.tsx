@@ -342,10 +342,10 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
                     <p className="text-xs text-gray-500 mt-1">
                       {format(new Date(image.received_at), 'MMM d, yyyy HH:mm')}
                     </p>
-                    {image.metadata && image.metadata.temperature && (
+                    {(image.temperature != null || image.humidity != null) && (
                       <div className="mt-2 flex gap-3 text-xs text-gray-600">
-                        <span>{image.metadata.temperature}°F</span>
-                        <span>{image.metadata.humidity}%</span>
+                        {image.temperature != null && <span>{image.temperature.toFixed(1)}°F</span>}
+                        {image.humidity != null && <span>{image.humidity.toFixed(1)}%</span>}
                       </div>
                     )}
                   </div>
@@ -404,32 +404,32 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
                 </div>
               </div>
 
-              {selectedImage.metadata && (
+              {(selectedImage.temperature != null || selectedImage.humidity != null || selectedImage.pressure != null || selectedImage.gas_resistance != null) && (
                 <div className="mt-4 bg-gray-50 rounded p-4">
                   <p className="font-medium text-sm text-gray-700 mb-2">Environmental Data</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                    {selectedImage.metadata.temperature && (
+                    {selectedImage.temperature != null && (
                       <div>
                         <p className="text-gray-500">Temperature</p>
-                        <p className="font-medium">{selectedImage.metadata.temperature}°F</p>
+                        <p className="font-medium">{selectedImage.temperature.toFixed(1)}°F</p>
                       </div>
                     )}
-                    {selectedImage.metadata.humidity && (
+                    {selectedImage.humidity != null && (
                       <div>
                         <p className="text-gray-500">Humidity</p>
-                        <p className="font-medium">{selectedImage.metadata.humidity}%</p>
+                        <p className="font-medium">{selectedImage.humidity.toFixed(1)}%</p>
                       </div>
                     )}
-                    {selectedImage.metadata.pressure && (
+                    {selectedImage.pressure != null && (
                       <div>
                         <p className="text-gray-500">Pressure</p>
-                        <p className="font-medium">{selectedImage.metadata.pressure} hPa</p>
+                        <p className="font-medium">{selectedImage.pressure.toFixed(1)} hPa</p>
                       </div>
                     )}
-                    {selectedImage.metadata.gas_resistance && (
+                    {selectedImage.gas_resistance != null && (
                       <div>
                         <p className="text-gray-500">Gas Resistance</p>
-                        <p className="font-medium">{selectedImage.metadata.gas_resistance} Ω</p>
+                        <p className="font-medium">{selectedImage.gas_resistance.toFixed(2)} Ω</p>
                       </div>
                     )}
                   </div>
