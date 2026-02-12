@@ -1,33 +1,28 @@
 /*
-  # Fix Alert Detection Functions - Critical Bug Fix
+  # Fix Alert Detection Functions - Overload Ambiguity + Column Fix
 
   1. Problem
-    - `create_device_alert()` references non-existent column `d.device_coords` or `d.placement_json`
-    - Devices table uses `x_position` and `y_position` columns for coordinates
-    - This causes ALL threshold alerts to fail silently with SQL error
-    - `alert_type` CHECK constraint on `device_alerts` only allows system alert types
-      but threshold alerts use types like `temp_max_warning`, `temp_max_critical`, etc.
+    - TWO overloads of `create_device_alert` exist in the database:
+      - Overload 1 (9 params): from migration 20251116120001
+      - Overload 2 (12 params): from APPLY_SESSION_CONTEXT_MIGRATION
+    - PostgreSQL error 42725: "function name is not unique"
+    - Overload 2 references non-existent columns: d.device_coords, s.site_name,
+      p.program_name, c.company_name
+    - `alert_type` CHECK constraint blocks threshold alert types
 
   2. Fixes Applied
-    - Updated `create_device_alert()` to use `d.x_position` and `d.y_position`
-    - Dropped restrictive `alert_type` CHECK constraint to allow threshold alert types
-    - All detection functions (`check_absolute_thresholds`, `check_combination_zones`,
-      `check_intra_session_shifts`) are unmodified as the bug is in `create_device_alert`
+    - DROP both overloads explicitly by full type signature
+    - Create ONE unified function with 12 parameters (session/snapshot/wake optional)
+    - Use correct column names: d.x_position, d.y_position, s.name, p.name, c.name
+    - Drop restrictive alert_type CHECK constraint
 
-  3. Impact
-    - Temperature, humidity, and MGI alerts will now generate correctly
-    - Company default thresholds (e.g., 70F max warning) will trigger alerts as expected
-    - Existing system alerts (missed_wake, low_battery, etc.) continue working
-
-  4. Security
+  3. Security
     - No RLS changes
-    - Functions remain SECURITY DEFINER for system-level alert creation
+    - Function remains SECURITY DEFINER for system-level alert creation
 */
 
 -- ============================================
 -- STEP 1: Drop restrictive alert_type CHECK constraint
--- The original constraint only allows system alert types.
--- Threshold alerts need types like temp_max_warning, rh_min_critical, etc.
 -- ============================================
 
 DO $$
@@ -45,8 +40,18 @@ BEGIN
 END $$;
 
 -- ============================================
--- STEP 2: Fix create_device_alert function
--- Use x_position/y_position instead of placement_json/device_coords
+-- STEP 2: Drop BOTH overloads of create_device_alert
+-- Overload 1: 9-param (original from migration 20251116120001)
+-- Overload 2: 12-param (from APPLY_SESSION_CONTEXT_MIGRATION)
+-- ============================================
+
+DROP FUNCTION IF EXISTS public.create_device_alert(uuid, text, text, text, text, numeric, numeric, jsonb, timestamptz);
+DROP FUNCTION IF EXISTS public.create_device_alert(uuid, text, text, text, text, numeric, numeric, jsonb, timestamptz, uuid, uuid, integer);
+
+-- ============================================
+-- STEP 3: Create unified create_device_alert function
+-- 12 parameters, last 3 (session/snapshot/wake) default to NULL
+-- Uses correct column names from production schema
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.create_device_alert(
@@ -58,7 +63,10 @@ CREATE OR REPLACE FUNCTION public.create_device_alert(
   p_actual_value numeric DEFAULT NULL,
   p_threshold_value numeric DEFAULT NULL,
   p_threshold_context jsonb DEFAULT '{}'::jsonb,
-  p_measurement_timestamp timestamptz DEFAULT now()
+  p_measurement_timestamp timestamptz DEFAULT now(),
+  p_session_id uuid DEFAULT NULL,
+  p_snapshot_id uuid DEFAULT NULL,
+  p_wake_number integer DEFAULT NULL
 )
 RETURNS uuid
 LANGUAGE plpgsql
@@ -110,6 +118,9 @@ BEGIN
       threshold_value = p_threshold_value,
       threshold_context = p_threshold_context,
       measurement_timestamp = p_measurement_timestamp,
+      session_id = COALESCE(p_session_id, device_alerts.session_id),
+      snapshot_id = COALESCE(p_snapshot_id, device_alerts.snapshot_id),
+      wake_number = COALESCE(p_wake_number, device_alerts.wake_number),
       updated_at = now()
     WHERE alert_id = v_alert_id;
 
@@ -134,6 +145,9 @@ BEGIN
     program_name,
     company_id,
     company_name,
+    session_id,
+    snapshot_id,
+    wake_number,
     metadata
   ) VALUES (
     p_device_id,
@@ -153,6 +167,9 @@ BEGIN
     v_device_record.program_name,
     v_device_record.company_id,
     v_device_record.company_name,
+    p_session_id,
+    p_snapshot_id,
+    p_wake_number,
     jsonb_build_object(
       'device_code', v_device_record.device_code,
       'device_name', v_device_record.device_name
@@ -164,4 +181,4 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.create_device_alert IS 'Creates device alert with full routing context (zone/site/program/company). Fixed to use x_position/y_position columns.';
+COMMENT ON FUNCTION public.create_device_alert IS 'Creates device alert with full routing context and optional session/snapshot/wake linkage. Unified function replacing previous overloads.';
