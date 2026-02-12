@@ -23,6 +23,9 @@ import useCompanies from '../hooks/useCompanies';
 import { DeviceService } from '../services/deviceService';
 import { toast } from 'react-toastify';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('DeviceDetail');
 
 type TabType = 'overview' | 'programs' | 'environmental' | 'history' | 'images';
 
@@ -601,7 +604,7 @@ const DeviceDetailPage = () => {
                       ? JSON.parse(device.placement_json)
                       : device.placement_json;
                   } catch (e) {
-                    console.error('Failed to parse placement_json:', e);
+                    log.error('Failed to parse placement_json:', e);
                   }
                 }
 
@@ -778,7 +781,7 @@ const DeviceDetailPage = () => {
                     className="mt-3 w-full border-error-300 text-error-700 hover:bg-error-100"
                     onClick={() => {
                       // TODO: Implement retry all failed images
-                      console.log('Retry all failed images for device:', device.device_id);
+                      log.debug('Retry all failed images for device:', device.device_id);
                     }}
                   >
                     Retry All Failed Images

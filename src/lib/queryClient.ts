@@ -2,59 +2,52 @@ import { QueryClient } from '@tanstack/react-query';
 import { AuthError, NetworkError } from './errors';
 import { toast } from 'react-toastify';
 import { supabase } from './supabaseClient';
+import { createLogger } from '../utils/logger';
 
-// Store for global auth error handlers
+const log = createLogger('QueryClient');
+
 const authErrorHandlers: Array<() => void> = [];
 
-// Register a global auth error handler
-// Returns an unregister function to clean up
 export const registerAuthErrorHandler = (handler: () => void): (() => void) => {
-  // Prevent duplicate registrations
   if (authErrorHandlers.includes(handler)) {
-    console.log('Auth error handler already registered, skipping');
-    return () => {}; // Return no-op unregister function
+    log.debug('Auth error handler already registered, skipping');
+    return () => {};
   }
 
   authErrorHandlers.push(handler);
-  console.log('Auth error handler registered, total handlers:', authErrorHandlers.length);
+  log.debug('Auth error handler registered, total:', authErrorHandlers.length);
 
-  // Return unregister function
   return () => {
     const index = authErrorHandlers.indexOf(handler);
     if (index > -1) {
       authErrorHandlers.splice(index, 1);
-      console.log('Auth error handler unregistered, total handlers:', authErrorHandlers.length);
+      log.debug('Auth error handler unregistered, total:', authErrorHandlers.length);
     }
   };
 };
 
-// Trigger all registered auth error handlers
 export const handleAuthError = async () => {
-  console.log('Global auth error handling triggered');
-  
-  // Attempt to sign out from Supabase
+  log.warn('Global auth error handling triggered');
+
   try {
     await supabase.auth.signOut();
   } catch (err) {
-    console.error('Error signing out during auth error handling:', err);
+    log.error('Error signing out during auth error handling:', err);
   }
-  
-  // Call all registered handlers
+
   for (const handler of authErrorHandlers) {
     try {
       handler();
     } catch (error) {
-      console.error('Error in auth error handler:', error);
+      log.error('Error in auth error handler:', error);
     }
   }
-  
-  // Show toast message
+
   toast.error(
     'Your session has expired. Please sign in again.',
     { autoClose: 5000 }
   );
-  
-  // Redirect to login
+
   window.location.href = '/login';
 };
 
@@ -68,15 +61,13 @@ export const queryClient = new QueryClient({
       gcTime: 10 * 60 * 1000,
       // Retry failed queries 3 times with exponential backoff
       retry: 3,
-      // Disable refetch on window focus - we force reload instead
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: 'always',
       // Use our own error handling
       useErrorBoundary: false,
       // Global error handler for auth errors
       onError: (error) => {
-        console.error('Query error:', error);
-        
-        // If this is an auth error, trigger the global auth error handling
+        log.error('Query error:', error);
+
         if (error instanceof AuthError) {
           handleAuthError();
         } else if (error instanceof NetworkError) {
@@ -88,11 +79,9 @@ export const queryClient = new QueryClient({
       },
     },
     mutations: {
-      // Global error handler for mutations
       onError: (error) => {
-        console.error('Mutation error:', error);
-        
-        // If this is an auth error, trigger the global auth error handling
+        log.error('Mutation error:', error);
+
         if (error instanceof AuthError) {
           handleAuthError();
         }
@@ -106,8 +95,7 @@ export const queryClient = new QueryClient({
 // React Query's refetchOnWindowFocus handles this more gracefully
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
-    console.log('Connection restored. Invalidating stale queries...');
-    // Only invalidate stale queries, not all queries
+    log.info('Connection restored. Invalidating stale queries...');
     queryClient.invalidateQueries({
       refetchType: 'active',
       stale: true

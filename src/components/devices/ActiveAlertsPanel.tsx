@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, CheckCircle, X, ExternalLink, Bell, BellOff, Settings } from 'lucide-react';
+import { AlertTriangle, CheckCircle, X, ExternalLink, Bell, BellOff, Settings, Clock } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
 import { supabase } from '../../lib/supabaseClient';
@@ -8,6 +8,41 @@ import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import useCompanies from '../../hooks/useCompanies';
 import CompanyAlertThresholdsModal from '../companies/CompanyAlertThresholdsModal';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('ActiveAlerts');
+
+type TimeRange = '24h' | '7d' | '30d' | 'all';
+
+const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
+  { value: '24h', label: '24h' },
+  { value: '7d', label: '7d' },
+  { value: '30d', label: '30d' },
+  { value: 'all', label: 'All' },
+];
+
+const STORAGE_KEY = 'alerts_panel_time_range';
+
+function getTimeRangeCutoff(range: TimeRange): string | null {
+  if (range === 'all') return null;
+  const now = Date.now();
+  const ms: Record<string, number> = {
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+    '30d': 30 * 24 * 60 * 60 * 1000,
+  };
+  return new Date(now - ms[range]).toISOString();
+}
+
+function loadSavedTimeRange(): TimeRange {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved && ['24h', '7d', '30d', 'all'].includes(saved)) {
+      return saved as TimeRange;
+    }
+  } catch { /* ignore storage errors */ }
+  return '7d';
+}
 
 interface DeviceAlert {
   alert_id: string;
@@ -23,7 +58,6 @@ interface DeviceAlert {
   triggered_at: string;
   resolved_at: string | null;
 
-  // Routing context
   device_coords: string | null;
   zone_label: string | null;
   site_id: string | null;
@@ -34,7 +68,6 @@ interface DeviceAlert {
   company_name: string | null;
   metadata: any;
 
-  // Session context (new)
   session_id: string | null;
   snapshot_id: string | null;
   wake_number: number | null;
@@ -46,23 +79,34 @@ const ActiveAlertsPanel = () => {
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
+  const [timeRange, setTimeRange] = useState<TimeRange>(loadSavedTimeRange);
   const [showThresholdsModal, setShowThresholdsModal] = useState(false);
 
-  // Load active alerts
+  const handleTimeRangeChange = (range: TimeRange) => {
+    setTimeRange(range);
+    try { localStorage.setItem(STORAGE_KEY, range); } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     if (!userCompany) return;
 
     const loadAlerts = async () => {
       try {
+        const limit = timeRange === 'all' ? 25 : 10;
         let query = supabase
           .from('device_alerts')
           .select('*')
           .eq('company_id', userCompany.company_id)
           .order('triggered_at', { ascending: false })
-          .limit(10);
+          .limit(limit);
 
         if (!showResolved) {
           query = query.is('resolved_at', null);
+        }
+
+        const cutoff = getTimeRangeCutoff(timeRange);
+        if (cutoff) {
+          query = query.gte('triggered_at', cutoff);
         }
 
         const { data, error } = await query;
@@ -71,7 +115,7 @@ const ActiveAlertsPanel = () => {
 
         setAlerts(data || []);
       } catch (error) {
-        console.error('Error loading alerts:', error);
+        log.error('Error loading alerts:', error);
       } finally {
         setLoading(false);
       }
@@ -79,9 +123,8 @@ const ActiveAlertsPanel = () => {
 
     loadAlerts();
 
-    // Subscribe to real-time updates
     const subscription = supabase
-      .channel('device_alerts')
+      .channel(`device_alerts_${timeRange}`)
       .on(
         'postgres_changes',
         {
@@ -91,7 +134,7 @@ const ActiveAlertsPanel = () => {
           filter: `company_id=eq.${userCompany.company_id}`,
         },
         () => {
-          loadAlerts(); // Reload on any change
+          loadAlerts();
         }
       )
       .subscribe();
@@ -99,7 +142,7 @@ const ActiveAlertsPanel = () => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [userCompany, showResolved]);
+  }, [userCompany, showResolved, timeRange]);
 
   const handleViewSession = async (alert: DeviceAlert) => {
     // If we have a direct session_id, use it
@@ -136,7 +179,7 @@ const ActiveAlertsPanel = () => {
         toast.error('No session found for this site on this date');
       }
     } catch (error) {
-      console.error('Error finding session:', error);
+      log.error('Error finding session:', error);
       toast.error('Failed to find session');
     }
   };
@@ -152,16 +195,15 @@ const ActiveAlertsPanel = () => {
         .eq('alert_id', alertId);
 
       if (error) {
-        console.error('Acknowledge error:', error);
+        log.error('Acknowledge error:', error);
         throw error;
       }
 
       toast.success('Alert acknowledged');
 
-      // Remove from list immediately
       setAlerts(alerts.filter(a => a.alert_id !== alertId));
     } catch (error: any) {
-      console.error('Error acknowledging alert:', error);
+      log.error('Error acknowledging alert:', error);
       toast.error(error.message || 'Failed to acknowledge alert');
     }
   };
@@ -262,6 +304,21 @@ const ActiveAlertsPanel = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="flex items-center bg-gray-100 rounded-md p-0.5">
+              {TIME_RANGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleTimeRangeChange(opt.value)}
+                  className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                    timeRange === opt.value
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             {isAdmin && (
               <Button
                 variant="outline"

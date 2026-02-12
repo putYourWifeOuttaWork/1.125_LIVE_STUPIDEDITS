@@ -7,6 +7,9 @@ import {
   EventSeverity,
   DeviceSessionStatus
 } from '../lib/types';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('DeviceHistory');
 
 interface UseDeviceHistoryProps {
   deviceId?: string;
@@ -138,7 +141,7 @@ export function useDeviceHistory({
       setTotalCount(count || 0);
       setCurrentFilters({});
     } catch (err) {
-      console.error('Error fetching device history:', err);
+      log.error('Error fetching device history:', err);
       setError('Failed to load device history');
     } finally {
       setLoading(false);
@@ -177,14 +180,14 @@ export function useDeviceHistory({
 
       if (error) {
         // Table might not exist yet, just return empty array
-        console.warn('Device wake sessions table not found:', error);
+        log.warn('Device wake sessions table not found:', error);
         setSessions([]);
       } else {
         setSessions(data || []);
       }
       setCurrentSessionFilters({});
     } catch (err) {
-      console.error('Error fetching device sessions:', err);
+      log.error('Error fetching device sessions:', err);
       // Don't set error state, just return empty array
       setSessions([]);
     } finally {
@@ -253,7 +256,7 @@ export function useDeviceHistory({
       setTotalCount(count || 0);
       setCurrentFilters(filters);
     } catch (err) {
-      console.error('Error filtering device history:', err);
+      log.error('Error filtering device history:', err);
       setError('Failed to filter device history');
     } finally {
       setLoading(false);
@@ -288,7 +291,7 @@ export function useDeviceHistory({
       setSessions(data || []);
       setCurrentSessionFilters(filters);
     } catch (err) {
-      console.error('Error filtering device sessions:', err);
+      log.error('Error filtering device sessions:', err);
       setError('Failed to filter device sessions');
     } finally {
       setLoading(false);
@@ -317,7 +320,7 @@ export function useDeviceHistory({
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error('Error exporting device history:', err);
+      log.error('Error exporting device history:', err);
       setError('Failed to export device history');
       return null;
     } finally {
@@ -345,7 +348,7 @@ export function useDeviceHistory({
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error('Error exporting device sessions:', err);
+      log.error('Error exporting device sessions:', err);
       setError('Failed to export device sessions');
       return null;
     } finally {
@@ -379,7 +382,7 @@ export function useDeviceHistory({
 
       setAvailablePrograms(programs || []);
     } catch (err) {
-      console.error('Error fetching programs:', err);
+      log.error('Error fetching programs:', err);
     } finally {
       setLoadingFilters(false);
     }
@@ -412,7 +415,7 @@ export function useDeviceHistory({
 
       setAvailableSites(sites || []);
     } catch (err) {
-      console.error('Error fetching sites:', err);
+      log.error('Error fetching sites:', err);
     } finally {
       setLoadingFilters(false);
     }
@@ -433,7 +436,7 @@ export function useDeviceHistory({
         .order('session_date', { ascending: false });
 
       if (error) {
-        console.warn('site_device_sessions not found, checking device_history');
+        log.warn('site_device_sessions not found, checking device_history');
         // Fallback: check for session_id in device_history
         const { data: historyData, error: histError } = await supabase
           .from('device_history')
@@ -481,7 +484,7 @@ export function useDeviceHistory({
         setAvailableSessions(sessionOptions);
       }
     } catch (err) {
-      console.error('Error fetching sessions:', err);
+      log.error('Error fetching sessions:', err);
       setAvailableSessions([]);
     } finally {
       setLoadingFilters(false);

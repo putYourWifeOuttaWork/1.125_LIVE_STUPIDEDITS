@@ -44,6 +44,9 @@ import TimeSeriesChart from '../components/lab/TimeSeriesChart';
 import HistogramChart from '../components/lab/HistogramChart';
 import DeviceImageLightbox from '../components/devices/DeviceImageLightbox';
 import ManualWakeModal from '../components/devices/ManualWakeModal';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('SessionDetail');
 
 interface DeviceSessionData {
   device_id: string;
@@ -150,13 +153,14 @@ const SiteDeviceSessionDetailPage = () => {
           .in('device_id', deviceIds)
           .gte('triggered_at', session.session_start_time)
           .lte('triggered_at', session.session_end_time)
-          .order('triggered_at', { ascending: false });
+          .order('triggered_at', { ascending: false })
+          .limit(500);
 
         if (error) throw error;
 
         setSessionAlerts(data || []);
       } catch (error: any) {
-        console.error('Error fetching session alerts:', error);
+        log.error('Error fetching session alerts:', error);
       } finally {
         setAlertsLoading(false);
       }
@@ -190,7 +194,7 @@ const SiteDeviceSessionDetailPage = () => {
         program_name: data.pilot_programs?.name || 'Unknown Program',
       } as SiteDeviceSession);
     } catch (error: any) {
-      console.error('Error fetching session:', error);
+      log.error('Error fetching session:', error);
       toast.error('Failed to load session details');
     } finally {
       setLoading(false);
@@ -212,7 +216,7 @@ const SiteDeviceSessionDetailPage = () => {
         setDevices(data.devices);
       }
     } catch (error: any) {
-      console.error('Error fetching devices:', error);
+      log.error('Error fetching devices:', error);
       toast.error('Failed to load device data');
     } finally {
       setDevicesLoading(false);
@@ -232,10 +236,10 @@ const SiteDeviceSessionDetailPage = () => {
           .single();
 
         if (siteError) throw siteError;
-        console.log('[SiteDeviceSessionDetail] Site data loaded:', site);
+        log.debug('Site data loaded:', site);
         setSiteData(site);
       } catch (error: any) {
-        console.error('Error fetching site data:', error);
+        log.error('Error fetching site data:', error);
       }
     };
 
@@ -271,7 +275,7 @@ const SiteDeviceSessionDetailPage = () => {
         setEnhancedDeviceData(dataMap);
       }
     } catch (error: any) {
-      console.error('Error fetching enhanced device data:', error);
+      log.error('Error fetching enhanced device data:', error);
     } finally {
       setEnhancedDeviceDataLoading(false);
     }
@@ -413,7 +417,7 @@ const SiteDeviceSessionDetailPage = () => {
         const completeDevices = Array.from(deviceStateCache.values())
           .filter(d => d.position && d.position.x !== null && d.position.y !== null);
 
-        console.log(`✅ Snapshot #${snapshot.wake_number}: ${currentDevices.length} raw → ${completeDevices.length} with LOCF`);
+        log.debug(`Snapshot #${snapshot.wake_number}: ${currentDevices.length} raw -> ${completeDevices.length} with LOCF`);
 
         processed.push({
           ...snapshot,
@@ -423,25 +427,25 @@ const SiteDeviceSessionDetailPage = () => {
           },
         });
       } catch (error) {
-        console.error('Error processing snapshot:', error);
+        log.error('Error processing snapshot:', error);
         processed.push(snapshot);
       }
     }
 
-    console.log(`[SiteDeviceSessionDetail] Processed ${processed.length} snapshots for session ${sessionId} with LOCF`);
+    log.debug(`Processed ${processed.length} snapshots for session ${sessionId} with LOCF`);
     return processed;
   }, [sessionSnapshots, sessionId]);
 
   // Transform snapshot data with smooth transitions
   const displayDevices = useMemo(() => {
     if (processedSnapshots.length === 0) {
-      console.log('[SiteDeviceSessionDetail] No processed snapshots available');
+      log.debug('No processed snapshots available');
       return [];
     }
 
     const currentSnapshot = processedSnapshots[currentSnapshotIndex];
     if (!currentSnapshot || !currentSnapshot.site_state) {
-      console.log('[SiteDeviceSessionDetail] Current snapshot has no site_state');
+      log.debug('Current snapshot has no site_state');
       return [];
     }
 
@@ -451,7 +455,7 @@ const SiteDeviceSessionDetailPage = () => {
         : currentSnapshot.site_state;
 
       const currentDevices = currentState.devices || [];
-      console.log(`[SiteDeviceSessionDetail] Current snapshot has ${currentDevices.length} devices`);
+      log.debug(`Current snapshot has ${currentDevices.length} devices`);
 
       // Get next snapshot for interpolation
       const nextSnapshot = processedSnapshots[currentSnapshotIndex + 1];
@@ -468,7 +472,7 @@ const SiteDeviceSessionDetailPage = () => {
       );
 
       const devicesWithPositions = currentDevices.filter((d: any) => d.position && d.position.x !== null && d.position.y !== null);
-      console.log(`[SiteDeviceSessionDetail] ${devicesWithPositions.length} devices have valid positions (out of ${currentDevices.length})`);
+      log.debug(`${devicesWithPositions.length} devices have valid positions (out of ${currentDevices.length})`);
 
       const transformedDevices = devicesWithPositions.map((d: any) => {
         const nextDevice = nextDeviceMap.get(d.device_id);
@@ -506,10 +510,10 @@ const SiteDeviceSessionDetailPage = () => {
         };
       });
 
-      console.log(`[SiteDeviceSessionDetail] Returning ${transformedDevices.length} display devices`);
+      log.debug(`Returning ${transformedDevices.length} display devices`);
       return transformedDevices;
     } catch (error) {
-      console.error('Error parsing snapshot data:', error);
+      log.error('Error parsing snapshot data:', error);
       return [];
     }
   }, [processedSnapshots, currentSnapshotIndex, transitionProgress]);
@@ -661,7 +665,7 @@ const SiteDeviceSessionDetailPage = () => {
           if (mgiScore != null) allMGI.push(mgiScore);
         });
       } catch (error) {
-        console.error('Error processing snapshot for aggregates:', error);
+        log.error('Error processing snapshot for aggregates:', error);
       }
     });
 
@@ -806,7 +810,7 @@ const SiteDeviceSessionDetailPage = () => {
           }
         });
       } catch (error) {
-        console.error('Error calculating velocities:', error);
+        log.error('Error calculating velocities:', error);
       }
     }
 
@@ -950,7 +954,7 @@ const SiteDeviceSessionDetailPage = () => {
           }
         });
       } catch (error) {
-        console.error('Error calculating deltas:', error);
+        log.error('Error calculating deltas:', error);
       }
     }
 
@@ -1025,7 +1029,7 @@ const SiteDeviceSessionDetailPage = () => {
           }
         });
       } catch (error) {
-        console.error('Error detecting outliers:', error);
+        log.error('Error detecting outliers:', error);
       }
     });
 
@@ -1087,7 +1091,7 @@ const SiteDeviceSessionDetailPage = () => {
           }
         });
       } catch (error) {
-        console.error('Error processing snapshot for time series:', error);
+        log.error('Error processing snapshot for time series:', error);
       }
     });
 

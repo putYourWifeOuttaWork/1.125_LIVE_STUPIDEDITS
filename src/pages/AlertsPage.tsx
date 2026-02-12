@@ -22,6 +22,9 @@ import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { useActiveCompany } from '../hooks/useActiveCompany';
 import useCompanies from '../hooks/useCompanies';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('AlertsPage');
 
 interface DeviceAlert {
   alert_id: string;
@@ -211,7 +214,7 @@ const AlertsPage = () => {
       setAlerts(data || []);
       setTotalCount(count || 0);
     } catch (error) {
-      console.error('Error loading alerts:', error);
+      log.error('Error loading alerts:', error);
       toast.error('Failed to load alerts');
     } finally {
       setLoading(false);
@@ -270,7 +273,7 @@ const AlertsPage = () => {
 
       setStats(newStats);
     } catch (error) {
-      console.error('Error loading stats:', error);
+      log.error('Error loading stats:', error);
     }
   }, [companyFilter, isSuperAdmin]);
 
@@ -326,7 +329,7 @@ const AlertsPage = () => {
       loadAlerts();
       loadStats();
     } catch (error: any) {
-      console.error('Error acknowledging alert:', error);
+      log.error('Error acknowledging alert:', error);
       toast.error('Failed to acknowledge alert');
     }
   };
@@ -403,7 +406,7 @@ const AlertsPage = () => {
         toast.error('No session found for this site on this date');
       }
     } catch (error) {
-      console.error('Error finding session:', error);
+      log.error('Error finding session:', error);
       toast.error('Failed to find session');
     }
   };

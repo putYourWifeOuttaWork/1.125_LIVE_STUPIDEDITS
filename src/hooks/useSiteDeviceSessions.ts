@@ -1,6 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabaseClient';
 import { withRetry } from '../utils/helpers';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('SiteDeviceSessions');
 
 export interface DeviceWakePayload {
   payload_id: string;
@@ -54,7 +57,7 @@ export function useSiteDeviceSessions(siteId?: string) {
     queryFn: async () => {
       if (!siteId) return [];
 
-      console.log(`Fetching device sessions for site ${siteId}`);
+      log.debug(`Fetching device sessions for site ${siteId}`);
 
       try {
         const { data, error } = await withRetry(() =>
@@ -76,11 +79,11 @@ export function useSiteDeviceSessions(siteId?: string) {
         );
 
         if (error) {
-          console.error('Error fetching device sessions:', error);
+          log.error('Error fetching device sessions:', error);
           throw error;
         }
 
-        console.log(`Successfully fetched ${data?.length || 0} device sessions`);
+        log.debug(`Successfully fetched ${data?.length || 0} device sessions`);
 
         // For each session, calculate actual counts from device_wake_payloads
         const sessionsWithActualCounts = await Promise.all(
@@ -113,7 +116,7 @@ export function useSiteDeviceSessions(siteId?: string) {
 
         return sessionsWithActualCounts as SiteDeviceSession[];
       } catch (err) {
-        console.error('Error in device sessions query:', err);
+        log.error('Error in device sessions query:', err);
         throw err;
       }
     },
@@ -123,7 +126,7 @@ export function useSiteDeviceSessions(siteId?: string) {
   });
 
   const fetchWakePayloads = async (sessionId: string): Promise<DeviceWakePayload[]> => {
-    console.log(`Fetching wake payloads for session ${sessionId}`);
+    log.debug(`Fetching wake payloads for session ${sessionId}`);
 
     try {
       const { data, error } = await withRetry(() =>
@@ -144,7 +147,7 @@ export function useSiteDeviceSessions(siteId?: string) {
       );
 
       if (error) {
-        console.error('Error fetching wake payloads:', error);
+        log.error('Error fetching wake payloads:', error);
         throw error;
       }
 
@@ -155,14 +158,14 @@ export function useSiteDeviceSessions(siteId?: string) {
         image_url: payload.device_images?.image_url,
       })) as DeviceWakePayload[];
     } catch (err) {
-      console.error('Error fetching wake payloads:', err);
+      log.error('Error fetching wake payloads:', err);
       throw err;
     }
   };
 
   const refetchSessions = async () => {
     if (!siteId) return;
-    console.log('Forcing device sessions refetch');
+    log.debug('Forcing device sessions refetch');
     await queryClient.invalidateQueries({ queryKey: ['siteDeviceSessions', siteId] });
     await queryClient.refetchQueries({ queryKey: ['siteDeviceSessions', siteId] });
   };

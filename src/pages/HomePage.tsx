@@ -17,6 +17,9 @@ import ActiveSessionsGrid, { ActiveSession } from '../components/devices/ActiveS
 import SessionDetailsPanel from '../components/devices/SessionDetailsPanel';
 import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
 import { useActiveCompany } from '../hooks/useActiveCompany';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('HomePage');
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -81,11 +84,14 @@ const HomePage = () => {
 
       // Fetch latest telemetry
       const deviceIds = (devicesData || []).map(d => d.device_id);
-      const { data: telemetryData } = await supabase
-        .from('device_telemetry')
-        .select('device_id, temperature, humidity, captured_at')
-        .in('device_id', deviceIds)
-        .order('captured_at', { ascending: false });
+      const { data: telemetryData } = deviceIds.length > 0
+        ? await supabase
+            .from('device_telemetry')
+            .select('device_id, temperature, humidity, captured_at')
+            .in('device_id', deviceIds)
+            .order('captured_at', { ascending: false })
+            .limit(deviceIds.length * 2)
+        : { data: [] };
 
       // Get latest telemetry per device
       const telemetryMap = new Map();
@@ -119,7 +125,7 @@ const HomePage = () => {
 
       setSessionDevices(formattedDevices);
     } catch (error: any) {
-      console.error('Error loading session site data:', error);
+      log.error('Error loading session site data:', error);
     } finally {
       setDevicesLoading(false);
     }

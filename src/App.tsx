@@ -19,9 +19,12 @@ import sessionManager from './lib/sessionManager';
 import { useSessionStore } from './stores/sessionStore';
 import { usePilotProgramStore } from './stores/pilotProgramStore';
 import NetworkStatusIndicator from './components/common/NetworkStatusIndicator';
-import { registerAuthErrorHandler } from './lib/queryClient';
+import { registerAuthErrorHandler, queryClient } from './lib/queryClient';
 import RequireSuperAdmin from './components/routing/RequireSuperAdmin';
 import RequireCompanyAdmin from './components/routing/RequireCompanyAdmin';
+import { createLogger } from './utils/logger';
+
+const log = createLogger('Auth');
 
 // Lazy load pages to improve initial load time
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -68,7 +71,7 @@ function App() {
   useEffect(() => {
     // Register a handler for auth errors
     const unregister = registerAuthErrorHandler(() => {
-      console.log('Auth error handler triggered in App.tsx');
+      log.debug('Auth error handler triggered');
       setUser(null);
       setCurrentSessionId(null);
       resetAll();
@@ -116,27 +119,37 @@ function App() {
     };
   }, [user]);
 
-  // Handle visibility change event to detect when app comes back into focus
   useEffect(() => {
-    // Only set up once and only if we have a user
     if (visibilityChangeInitialized.current || !user) return;
-    
+
     visibilityChangeInitialized.current = true;
-    
-    const handleVisibilityChange = async () => {
+
+    const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && user) {
-        console.log('App regained focus - forcing full page reload');
-        window.location.reload();
+        (async () => {
+          try {
+            const { data, error } = await supabase.auth.getSession();
+            if (error || !data.session) {
+              setUser(null);
+              setCurrentSessionId(null);
+              resetAll();
+              return;
+            }
+            queryClient.invalidateQueries({ refetchType: 'active', stale: true });
+          } catch {
+            // Silently handle -- network may be unavailable
+          }
+        })();
       }
     };
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       visibilityChangeInitialized.current = false;
     };
-  }, [user, isOnline, navigate, setUser, resetAll, setCurrentSessionId, setActiveSessions, setIsLoading]);
+  }, [user, setUser, setCurrentSessionId, resetAll]);
 
   // Check if user is deactivated and redirect if necessary
   const checkUserActive = async (userId: string) => {
@@ -156,8 +169,8 @@ function App() {
       
       return true;
     } catch (error) {
-      console.error('Error checking user status:', error);
-      return true; // Default to active if there's an error
+      log.error('Error checking user status:', error);
+      return true;
     }
   };
 
@@ -168,57 +181,49 @@ function App() {
 
     const setupAuth = async () => {
       try {
-        console.log('Setting up auth...');
+        log.debug('Setting up auth...');
 
-        // Check initial session
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError) {
-          console.error('Session error:', sessionError);
+          log.error('Session error:', sessionError);
           throw sessionError;
         }
 
         if (sessionData.session) {
-          console.log('User is authenticated:', sessionData.session.user.email);
+          log.debug('User is authenticated:', sessionData.session.user.email);
 
-          // Check if user is active
           const isActive = await checkUserActive(sessionData.session.user.id);
 
           if (!isActive) {
-            console.log('User is deactivated');
-            // Still set the user in auth store for DeactivatedUserPage to use
+            log.warn('User is deactivated');
             setUser(sessionData.session.user);
             navigate('/deactivated');
           } else {
             setUser(sessionData.session.user);
           }
         } else {
-          console.log('No active session found');
+          log.debug('No active session found');
         }
 
-        // Set up auth state listener
         const { data: authListener } = supabase.auth.onAuthStateChange(
           async (event, session) => {
-            console.log('Auth state changed:', event);
+            log.debug('Auth state changed:', event);
 
-            // Handle token refresh failures specifically
             if (event === 'TOKEN_REFRESHED' && !session) {
-              console.log('Token refresh failed, redirecting to login');
+              log.warn('Token refresh failed, redirecting to login');
               setUser(null);
               setCurrentSessionId(null);
               resetAll();
-              // Replace navigation with a hard page reload
               window.location.reload();
               return;
             }
 
             if (session) {
-              // Check if user is active on auth state change
               const isActive = await checkUserActive(session.user.id);
 
               if (!isActive) {
-                console.log('User is deactivated on auth state change');
-                // Still set the user in auth store for DeactivatedUserPage to use
+                log.warn('User is deactivated on auth state change');
                 setUser(session.user);
                 navigate('/deactivated');
               } else {
@@ -237,21 +242,19 @@ function App() {
           authListener.subscription.unsubscribe();
         };
       } catch (error) {
-        console.error('Auth setup error:', error);
-        
-        // Check if error is related to refresh token issues
+        log.error('Auth setup error:', error);
+
         const errorMessage = error instanceof Error ? error.message : String(error);
-        
+
         if (
-          errorMessage.includes('refresh_token_not_found') || 
+          errorMessage.includes('refresh_token_not_found') ||
           errorMessage.includes('Invalid Refresh Token') ||
           errorMessage.includes('Refresh Token Not Found')
         ) {
-          console.log('Refresh token error, redirecting to login');
+          log.warn('Refresh token error, redirecting to login');
           setUser(null);
           setCurrentSessionId(null);
           resetAll();
-          // Replace navigation with a hard page reload
           window.location.reload();
         } else {
           setAuthError(error instanceof Error ? error : new Error('Unknown authentication error'));
@@ -266,11 +269,11 @@ function App() {
     // Return cleanup function - only runs on app unmount
     return () => {
       if (unsubscribe) {
-        console.log('Cleaning up auth listener on unmount');
+        log.debug('Cleaning up auth listener on unmount');
         unsubscribe();
       }
     };
-  }, []); // Empty deps - only run once on mount
+  }, []);
 
   if (loading) {
     return <LoadingScreen />;

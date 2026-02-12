@@ -5,6 +5,9 @@ import { toast } from 'react-toastify';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { withRetry, fetchSitesByProgramId, fetchSiteById } from '../lib/api';
 import { useCompanyFilterStore } from '../stores/companyFilterStore';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('Sites');
 
 // Interface for physical attributes and facility details
 interface SiteProperties {
@@ -46,20 +49,20 @@ export function useSites(programId?: string) {
     queryFn: async () => {
       if (!programId) return [];
 
-      console.log(`[useSites] fetchSites started for programId: ${programId}, company: ${selectedCompanyId}`);
+      log.debug(`fetchSites started for programId: ${programId}, company: ${selectedCompanyId}`);
 
       const startTime = performance.now();
       const { data, error } = await fetchSitesByProgramId(programId);
       const endTime = performance.now();
 
-      console.log(`[useSites] fetchSites query took ${(endTime - startTime).toFixed(2)}ms`);
+      log.debug(`fetchSites query took ${(endTime - startTime).toFixed(2)}ms`);
 
       if (error) {
-        console.error('[useSites] Error fetching sites:', error);
+        log.error('Error fetching sites:', error);
         throw error;
       }
 
-      console.log(`[useSites] fetchSites succeeded, found ${data?.length || 0} sites`);
+      log.debug(`fetchSites succeeded, found ${data?.length || 0} sites`);
       return data || [];
     },
     enabled: !!programId && !!selectedCompanyId,
@@ -68,13 +71,13 @@ export function useSites(programId?: string) {
 
   // Get site function with caching
   const fetchSite = useCallback(async (siteId: string) => {
-    console.log(`[useSites] fetchSite started for siteId: ${siteId}`);
+    log.debug(`fetchSite started for siteId: ${siteId}`);
     
     try {
       // Check cache first
       const cachedSite = queryClient.getQueryData<Site>(['site', siteId]);
       if (cachedSite) {
-        console.log(`[useSites] fetchSite returning cached data for site: ${cachedSite.name}`);
+        log.debug(`fetchSite returning cached data for site: ${cachedSite.name}`);
         return cachedSite;
       }
       
@@ -82,20 +85,20 @@ export function useSites(programId?: string) {
       const { data, error } = await fetchSiteById(siteId);
       const endTime = performance.now();
       
-      console.log(`[useSites] fetchSite query took ${(endTime - startTime).toFixed(2)}ms`);
+      log.debug(`fetchSite query took ${(endTime - startTime).toFixed(2)}ms`);
       
       if (error) {
-        console.error('[useSites] Error fetching site:', error);
+        log.error('Error fetching site:', error);
         throw error;
       }
       
       // Cache the result
       queryClient.setQueryData(['site', siteId], data);
       
-      console.log(`[useSites] fetchSite succeeded, retrieved site: ${data?.name}`);
+      log.debug(`fetchSite succeeded, retrieved site: ${data?.name}`);
       return data as Site;
     } catch (err) {
-      console.error('[useSites] Error in fetchSite:', err);
+      log.error('Error in fetchSite:', err);
       throw err;
     }
   }, [queryClient]);
@@ -103,7 +106,7 @@ export function useSites(programId?: string) {
   // Update site name mutation
   const updateSiteNameMutation = useMutation({
     mutationFn: async ({ siteId, newName }: { siteId: string; newName: string }) => {
-      console.log(`[useSites] updateSiteName started for siteId: ${siteId}, newName: ${newName}`);
+      log.debug(`updateSiteName started for siteId: ${siteId}, newName: ${newName}`);
       
       const { data, error } = await withRetry(() => 
         supabase
@@ -115,11 +118,11 @@ export function useSites(programId?: string) {
       );
     
       if (error) {
-        console.error('[useSites] Error updating site name:', error);
+        log.error('Error updating site name:', error);
         throw error;
       }
       
-      console.log(`[useSites] Site name updated successfully to: ${newName}`);
+      log.info(`Site name updated successfully to: ${newName}`);
       return data as Site;
     },
     onSuccess: (updatedSite) => {
@@ -135,7 +138,7 @@ export function useSites(programId?: string) {
       toast.success(`Site name updated to "${updatedSite.name}"`);
     },
     onError: (error) => {
-      console.error('[useSites] Error in updateSiteName:', error);
+      log.error('Error in updateSiteName:', error);
       toast.error(`Failed to update site name: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
@@ -153,7 +156,7 @@ export function useSites(programId?: string) {
       humidity: number;
       weather: 'Clear' | 'Cloudy' | 'Rain';
     }) => {
-      console.log(`[useSites] updateSiteWeatherDefaults started for siteId: ${siteId}`);
+      log.debug(`updateSiteWeatherDefaults started for siteId: ${siteId}`);
       
       const { data, error } = await withRetry(() => 
         supabase.rpc('update_site_weather_defaults', {
@@ -165,12 +168,12 @@ export function useSites(programId?: string) {
       );
       
       if (error) {
-        console.error('[useSites] Error updating site weather defaults:', error);
+        log.error('Error updating site weather defaults:', error);
         throw error;
       }
       
       if (!data.success) {
-        console.error('[useSites] RPC returned failure:', data.message);
+        log.error('RPC returned failure:', data.message);
         throw new Error(data.message || 'Failed to update site weather defaults');
       }
       
@@ -193,7 +196,7 @@ export function useSites(programId?: string) {
       toast.success('Weather defaults updated successfully');
     },
     onError: (error) => {
-      console.error('[useSites] Error in updateSiteWeatherDefaults:', error);
+      log.error('Error in updateSiteWeatherDefaults:', error);
       toast.error(`Failed to update site weather defaults: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
@@ -217,7 +220,7 @@ export function useSites(programId?: string) {
       hasDeadZones?: boolean;
       numRegularlyOpenedPorts?: number;
     }) => {
-      console.log(`[useSites] updateSiteDimensionsAndDensity started for siteId: ${siteId}`);
+      log.debug(`updateSiteDimensionsAndDensity started for siteId: ${siteId}`);
       
       const { data, error } = await withRetry(() => 
         supabase.rpc('update_site_dimensions_and_density', {
@@ -232,12 +235,12 @@ export function useSites(programId?: string) {
       );
       
       if (error) {
-        console.error('[useSites] Error updating site dimensions and density:', error);
+        log.error('Error updating site dimensions and density:', error);
         throw error;
       }
       
       if (!data.success) {
-        console.error('[useSites] RPC returned failure:', data.message);
+        log.error('RPC returned failure:', data.message);
         throw new Error(data.message || 'Failed to update site dimensions and density');
       }
       
@@ -261,7 +264,7 @@ export function useSites(programId?: string) {
       toast.success('Site dimensions updated successfully');
     },
     onError: (error) => {
-      console.error('[useSites] Error in updateSiteDimensionsAndDensity:', error);
+      log.error('Error in updateSiteDimensionsAndDensity:', error);
       toast.error(`Failed to update site dimensions: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
@@ -275,7 +278,7 @@ export function useSites(programId?: string) {
       siteId: string;
       properties: SiteProperties;
     }) => {
-      console.log(`[useSites] updateSiteProperties started for siteId: ${siteId}`);
+      log.debug(`updateSiteProperties started for siteId: ${siteId}`);
       
       // Check if dimensions are provided - if so, use the dedicated mutation
       if (properties.length !== undefined && properties.width !== undefined && properties.height !== undefined) {
@@ -312,12 +315,12 @@ export function useSites(programId?: string) {
       );
       
       if (error) {
-        console.error('[useSites] Error updating site properties:', error);
+        log.error('Error updating site properties:', error);
         throw error;
       }
       
       if (!data.success) {
-        console.error('[useSites] RPC returned failure:', data.message);
+        log.error('RPC returned failure:', data.message);
         throw new Error(data.message || 'Failed to update site properties');
       }
       
@@ -341,7 +344,7 @@ export function useSites(programId?: string) {
       toast.success('Site properties updated successfully');
     },
     onError: (error) => {
-      console.error('[useSites] Error in updateSiteProperties:', error);
+      log.error('Error in updateSiteProperties:', error);
       toast.error(`Failed to update site properties: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
@@ -368,10 +371,10 @@ export function useSites(programId?: string) {
       const id = pid || programId;
       if (!id) throw new Error('Program ID is required');
       
-      console.log(`[useSites] createSite started for programId: ${id}, name: ${name}, type: ${type}`);
+      log.info(`createSite started for programId: ${id}, name: ${name}, type: ${type}`);
       
       // Log the template data being sent
-      console.log('[useSites] Creating site with templates:', {
+      log.debug('Creating site with templates:', {
         submissionDefaults,
         petriDefaults: petriDefaults ? JSON.stringify(petriDefaults) : null,
         gasifierDefaults: gasifierDefaults ? JSON.stringify(gasifierDefaults) : null
@@ -418,26 +421,26 @@ export function useSites(programId?: string) {
       );
       
       if (error) {
-        console.error('[useSites] Error creating site:', error);
+        log.error('Error creating site:', error);
         throw new Error(`Failed to create site: ${error.message}`);
       }
       
       if (!data || !data.site_id) {
-        console.error('[useSites] No data returned from create_site_without_history');
+        log.error('No data returned from create_site_without_history');
         throw new Error('Failed to create site: No data returned');
       }
       
-      console.log(`[useSites] Site created with ID: ${data.site_id}`);
+      log.info(`Site created with ID: ${data.site_id}`);
       
       // Fetch the newly created site to get all fields
       const { data: siteData, error: fetchError } = await fetchSiteById(data.site_id);
       
       if (fetchError) {
-        console.error('Error fetching new site:', fetchError);
+        log.error('Error fetching new site:', fetchError);
         throw new Error('Site created but failed to fetch details');
       }
       
-      console.log(`[useSites] Retrieved new site details: ${siteData.name}`);
+      log.debug(`Retrieved new site details: ${siteData.name}`);
       
       return siteData as Site;
     },
@@ -454,7 +457,7 @@ export function useSites(programId?: string) {
       toast.success('Site created successfully!');
     },
     onError: (error) => {
-      console.error('[useSites] Error in createSite:', error);
+      log.error('Error in createSite:', error);
       toast.error(`Failed to create site: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
@@ -462,7 +465,7 @@ export function useSites(programId?: string) {
   // Delete site mutation
   const deleteSiteMutation = useMutation({
     mutationFn: async (siteId: string) => {
-      console.log(`[useSites] deleteSite started for siteId: ${siteId}`);
+      log.debug(`deleteSite started for siteId: ${siteId}`);
       
       const { error } = await withRetry(() => 
         supabase
@@ -472,11 +475,11 @@ export function useSites(programId?: string) {
       );
       
       if (error) {
-        console.error('[useSites] Error deleting site:', error);
+        log.error('Error deleting site:', error);
         throw error;
       }
       
-      console.log(`[useSites] Site deleted successfully`);
+      log.info('Site deleted successfully');
       return siteId;
     },
     onSuccess: (siteId) => {
@@ -492,7 +495,7 @@ export function useSites(programId?: string) {
       toast.success('Site deleted successfully!');
     },
     onError: (error) => {
-      console.error('[useSites] Error in deleteSite:', error);
+      log.error('Error in deleteSite:', error);
       toast.error(`Failed to delete site: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
@@ -512,7 +515,7 @@ export function useSites(programId?: string) {
       gasifierDefaults: GasifierDefaults[];
       siteProperties?: SiteProperties;
     }) => {
-      console.log(`[useSites] updateSiteTemplateDefaults started for siteId: ${siteId}`);
+      log.debug(`updateSiteTemplateDefaults started for siteId: ${siteId}`);
       
       // Use the RPC function to update template defaults
       const { data, error } = await withRetry(() => 
@@ -525,12 +528,12 @@ export function useSites(programId?: string) {
       );
       
       if (error) {
-        console.error('[useSites] Error updating site template defaults:', error);
+        log.error('Error updating site template defaults:', error);
         throw error;
       }
       
       if (!data.success) {
-        console.error('[useSites] RPC returned failure:', data.message);
+        log.error('RPC returned failure:', data.message);
         throw new Error(data.message || 'Failed to update site template defaults');
       }
       
@@ -557,14 +560,14 @@ export function useSites(programId?: string) {
       toast.success('Site template updated successfully');
     },
     onError: (error) => {
-      console.error('[useSites] Error in updateSiteTemplateDefaults:', error);
+      log.error('Error in updateSiteTemplateDefaults:', error);
       toast.error(`Failed to update site template: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
   const clearSiteTemplateDefaultsMutation = useMutation({
     mutationFn: async (siteId: string) => {
-      console.log(`[useSites] clearSiteTemplateDefaults started for siteId: ${siteId}`);
+      log.debug(`clearSiteTemplateDefaults started for siteId: ${siteId}`);
       
       // Use the RPC function to clear template defaults
       const { data, error } = await withRetry(() => 
@@ -574,12 +577,12 @@ export function useSites(programId?: string) {
       );
       
       if (error) {
-        console.error('[useSites] Error clearing site template defaults:', error);
+        log.error('Error clearing site template defaults:', error);
         throw error;
       }
       
       if (!data.success) {
-        console.error('[useSites] RPC returned failure:', data.message);
+        log.error('RPC returned failure:', data.message);
         throw new Error(data.message || 'Failed to clear site template defaults');
       }
       
@@ -601,7 +604,7 @@ export function useSites(programId?: string) {
       toast.success('Site template cleared successfully');
     },
     onError: (error) => {
-      console.error('[useSites] Error in clearSiteTemplateDefaults:', error);
+      log.error('Error in clearSiteTemplateDefaults:', error);
       toast.error(`Failed to clear site template: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
