@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Save, Eye, Loader2 } from 'lucide-react';
@@ -56,7 +56,10 @@ export default function ReportBuilderPage() {
   const { lineChartData, barChartData, heatmapData, isLoading: dataLoading } =
     useReportData(config, previewEnabled);
 
-  const handlePreviewResize = useCallback((node: HTMLDivElement | null) => {
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = previewRef.current;
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -85,7 +88,7 @@ export default function ReportBuilderPage() {
           name: config.name,
           description: config.description,
           configuration: config,
-        });
+        }, activeCompanyId);
       } else {
         savedReport = await createReport(
           activeCompanyId,
@@ -105,8 +108,10 @@ export default function ReportBuilderPage() {
       } else {
         navigate('/analytics');
       }
-    } catch (err) {
-      toast.error('Failed to save report');
+    } catch (err: any) {
+      const msg = err?.message || err?.details || 'Unknown error';
+      console.error('Report save error:', err);
+      toast.error(`Failed to save report: ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -195,7 +200,7 @@ export default function ReportBuilderPage() {
         </div>
 
         <div
-          ref={handlePreviewResize}
+          ref={previewRef}
           className="flex-1 min-w-0 bg-white rounded-lg shadow-sm border border-gray-200 p-6"
         >
           <div className="flex items-center justify-between mb-4">

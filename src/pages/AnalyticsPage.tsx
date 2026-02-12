@@ -66,7 +66,7 @@ const AnalyticsPage: React.FC = () => {
     if (!reportToDelete) return;
 
     try {
-      await deleteReport(reportToDelete.report_id);
+      await deleteReport(reportToDelete.report_id, activeCompanyId || undefined);
       toast.success('Report deleted successfully');
       refetch();
       setDeleteModalOpen(false);

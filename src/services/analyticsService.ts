@@ -443,15 +443,20 @@ export async function updateReport(
     name?: string;
     description?: string;
     configuration?: ReportConfiguration;
-  }
+  },
+  companyId?: string
 ): Promise<CustomReport> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('custom_reports')
       .update(updates)
-      .eq('report_id', reportId)
-      .select()
-      .single();
+      .eq('report_id', reportId);
+
+    if (companyId) {
+      query = query.eq('company_id', companyId);
+    }
+
+    const { data, error } = await query.select().single();
 
     if (error) throw error;
     return data;
@@ -464,9 +469,15 @@ export async function updateReport(
 /**
  * Delete a report
  */
-export async function deleteReport(reportId: string): Promise<void> {
+export async function deleteReport(reportId: string, companyId?: string): Promise<void> {
   try {
-    const { error } = await supabase.from('custom_reports').delete().eq('report_id', reportId);
+    let query = supabase.from('custom_reports').delete().eq('report_id', reportId);
+
+    if (companyId) {
+      query = query.eq('company_id', companyId);
+    }
+
+    const { error } = await query;
 
     if (error) throw error;
   } catch (error) {

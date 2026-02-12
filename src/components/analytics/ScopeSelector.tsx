@@ -197,16 +197,25 @@ export default function ScopeSelector({
     if (!activeCompanyId) return;
 
     const fetchPrograms = async () => {
-      const { data } = await supabase
-        .from('pilot_programs')
-        .select('program_id, name')
-        .eq('company_id', activeCompanyId)
-        .order('name');
+      try {
+        const { data, error } = await supabase
+          .from('pilot_programs')
+          .select('program_id, name')
+          .eq('company_id', activeCompanyId)
+          .order('name');
 
-      setPrograms(
-        (data || []).map((p) => ({ id: p.program_id, name: p.name }))
-      );
-      setLoading(false);
+        if (error) {
+          console.error('Error fetching programs for scope:', error);
+        }
+
+        setPrograms(
+          (data || []).map((p) => ({ id: p.program_id, name: p.name }))
+        );
+      } catch (err) {
+        console.error('Failed to load programs:', err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchPrograms();

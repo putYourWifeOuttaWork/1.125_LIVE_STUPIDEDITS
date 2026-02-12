@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -81,7 +81,10 @@ export default function ReportViewPage() {
     }
   );
 
-  const handleChartResize = useCallback((node: HTMLDivElement | null) => {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = chartContainerRef.current;
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -268,7 +271,7 @@ export default function ReportViewPage() {
         </Card>
       )}
 
-      <div ref={handleChartResize} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div ref={chartContainerRef} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         {dataLoading && (
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
             <Loader2 className="w-4 h-4 animate-spin" />
