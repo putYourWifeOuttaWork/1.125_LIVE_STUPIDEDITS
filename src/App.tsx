@@ -45,6 +45,8 @@ const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettings
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const LanderPage = lazy(() => import('./pages/LanderPage'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
+const ReportBuilderPage = lazy(() => import('./pages/ReportBuilderPage'));
+const ReportViewPage = lazy(() => import('./pages/ReportViewPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -391,6 +393,21 @@ function App() {
               <Route path="/analytics" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <AnalyticsPage />
+                </Suspense>
+              } />
+              <Route path="/analytics/builder" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <ReportBuilderPage />
+                </Suspense>
+              } />
+              <Route path="/analytics/:reportId" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <ReportViewPage />
+                </Suspense>
+              } />
+              <Route path="/analytics/:reportId/edit" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <ReportBuilderPage />
                 </Suspense>
               } />
             </Route>

@@ -16,6 +16,7 @@ import {
 import { fetchReports, deleteReport } from '../services/analyticsService';
 import { useActiveCompany } from '../hooks/useActiveCompany';
 import { useUserRole } from '../hooks/useUserRole';
+import useCompanies from '../hooks/useCompanies';
 import { CustomReport, ReportType } from '../types/analytics';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -27,12 +28,15 @@ const reportTypeIcons: Record<ReportType, React.ReactNode> = {
   bar: <BarChart3 className="w-5 h-5" />,
   dot: <TrendingUp className="w-5 h-5" />,
   heatmap: <Grid3x3 className="w-5 h-5" />,
+  heatmap_temporal: <Grid3x3 className="w-5 h-5" />,
 };
 
 const AnalyticsPage: React.FC = () => {
   const navigate = useNavigate();
   const { activeCompanyId } = useActiveCompany();
   const { isSuperAdmin } = useUserRole();
+  const { isAdmin: isCompanyAdmin } = useCompanies();
+  const canManageReports = isSuperAdmin || isCompanyAdmin;
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<CustomReport | null>(null);
@@ -95,7 +99,7 @@ const AnalyticsPage: React.FC = () => {
             Create and manage custom reports and visualizations
           </p>
         </div>
-        {isSuperAdmin && (
+        {canManageReports && (
           <Button onClick={() => navigate('/analytics/builder')} className="flex items-center gap-2">
             <Plus className="w-4 h-4" />
             Create Report
@@ -125,7 +129,7 @@ const AnalyticsPage: React.FC = () => {
               ? 'No reports match your search criteria'
               : 'Get started by creating your first report'}
           </p>
-          {isSuperAdmin && !searchQuery && (
+          {canManageReports && !searchQuery && (
             <Button onClick={() => navigate('/analytics/builder')}>Create Your First Report</Button>
           )}
         </Card>
@@ -146,7 +150,7 @@ const AnalyticsPage: React.FC = () => {
                   >
                     <Eye className="w-4 h-4" />
                   </button>
-                  {isSuperAdmin && (
+                  {canManageReports && (
                     <>
                       <button
                         onClick={() => handleClone(report.report_id)}

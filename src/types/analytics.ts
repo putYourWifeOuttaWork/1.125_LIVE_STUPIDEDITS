@@ -1,4 +1,6 @@
-export type ReportType = 'line' | 'bar' | 'dot' | 'heatmap';
+export type ReportType = 'line' | 'bar' | 'dot' | 'heatmap' | 'heatmap_temporal';
+
+export type GroupByDimension = 'device' | 'site' | 'program' | 'time';
 
 export type TimeRange = 'last_24h' | 'last_7d' | 'last_30d' | 'this_program' | 'custom';
 
@@ -37,6 +39,9 @@ export interface ReportConfiguration {
 
   // Metrics
   metrics: ReportMetric[];
+
+  // Grouping
+  groupBy?: GroupByDimension;
 
   // Comparison settings
   enableComparison: boolean;
@@ -259,3 +264,48 @@ export interface DaysSinceLastAlert {
   last_critical_alert_at: string | null;
   days_since_last_critical: number | null;
 }
+
+export interface HeatmapCell {
+  rowKey: string;
+  rowLabel: string;
+  colKey: string;
+  colLabel: string;
+  value: number | null;
+}
+
+export const METRIC_LABELS: Record<MetricType, string> = {
+  temperature: 'Temperature',
+  humidity: 'Humidity',
+  mgi_score: 'MGI Score',
+  mgi_velocity: 'MGI Velocity',
+  mgi_speed: 'MGI Speed',
+  battery_voltage: 'Battery Voltage',
+  alert_count: 'Alert Count',
+  wake_reliability: 'Wake Reliability',
+  image_success_rate: 'Image Success Rate',
+};
+
+export const AGGREGATION_LABELS: Record<AggregationFunction, string> = {
+  avg: 'Average',
+  min: 'Minimum',
+  max: 'Maximum',
+  sum: 'Sum',
+  count: 'Count',
+  p50: 'Median (P50)',
+  p90: '90th Percentile',
+  p95: '95th Percentile',
+  stddev: 'Std Deviation',
+};
+
+export const DEFAULT_REPORT_CONFIG: ReportConfiguration = {
+  reportType: 'line',
+  name: '',
+  timeRange: 'last_30d',
+  timeGranularity: 'day',
+  programIds: [],
+  siteIds: [],
+  deviceIds: [],
+  metrics: [{ type: 'mgi_score', aggregation: 'avg' }],
+  groupBy: 'device',
+  enableComparison: false,
+};
