@@ -861,11 +861,15 @@ export async function handleTelemetryOnly(
 
     // Check for threshold alerts
     try {
-      const { data: alerts, error: alertError } = await supabase.rpc(
+      // Convert temperature to Fahrenheit for alert checking (thresholds are in Fahrenheit)
+      const tempFahrenheit = celsiusToFahrenheit(payload.temperature);
+
+      // Check absolute thresholds
+      const { data: absoluteAlerts, error: alertError } = await supabase.rpc(
         'check_absolute_thresholds',
         {
           p_device_id: lineageData.device_id,
-          p_temperature: payload.temperature || null,
+          p_temperature: tempFahrenheit,
           p_humidity: payload.humidity || null,
           p_mgi: null,
           p_measurement_timestamp: capturedAt,
@@ -873,12 +877,34 @@ export async function handleTelemetryOnly(
       );
 
       if (alertError) {
-        console.error('[Ingest] Error checking alerts:', alertError);
-      } else if (alerts && alerts.length > 0) {
-        console.log('[Ingest] Alerts triggered:', alerts.length, 'alerts');
-        alerts.forEach((alert: any) => {
+        console.error('[Ingest] Error checking absolute threshold alerts:', alertError);
+      } else if (absoluteAlerts && absoluteAlerts.length > 0) {
+        console.log('[Ingest] Absolute threshold alerts triggered:', absoluteAlerts.length, 'alerts');
+        absoluteAlerts.forEach((alert: any) => {
           console.log(`  - ${alert.type} (${alert.severity}): ${alert.message}`);
         });
+      }
+
+      // Check combination zones (temp + humidity danger zones)
+      if (tempFahrenheit !== null && payload.humidity !== null) {
+        const { data: comboAlerts, error: comboError } = await supabase.rpc(
+          'check_combination_zones',
+          {
+            p_device_id: lineageData.device_id,
+            p_temperature: tempFahrenheit,
+            p_humidity: payload.humidity,
+            p_measurement_timestamp: capturedAt,
+          }
+        );
+
+        if (comboError) {
+          console.error('[Ingest] Error checking combination zone alerts:', comboError);
+        } else if (comboAlerts && comboAlerts.length > 0) {
+          console.log('[Ingest] Combination zone alerts triggered:', comboAlerts.length, 'alerts');
+          comboAlerts.forEach((alert: any) => {
+            console.log(`  - ${alert.type} (${alert.severity}): ${alert.message}`);
+          });
+        }
       }
     } catch (alertErr) {
       console.error('[Ingest] Exception checking alerts:', alertErr);
