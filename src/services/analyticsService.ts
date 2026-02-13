@@ -220,19 +220,35 @@ export async function fetchDrillDownRecords(
     const limit = options?.limit || 50;
     const offset = options?.offset || 0;
 
+    console.log('[DrillDown] Fetching records:', {
+      companyId,
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      programIds: options?.programIds,
+      siteIds: options?.siteIds,
+      deviceIds: options?.deviceIds,
+      limit,
+      offset,
+    });
+
     // Use the existing get_analytics_drill_down function
     const { data, error } = await supabase.rpc('get_analytics_drill_down', {
       p_company_id: companyId,
       p_time_start: startTime.toISOString(),
       p_time_end: endTime.toISOString(),
-      p_program_ids: options?.programIds || null,
-      p_site_ids: options?.siteIds || null,
-      p_device_ids: options?.deviceIds || null,
+      p_program_ids: (options?.programIds && options.programIds.length > 0) ? options.programIds : null,
+      p_site_ids: (options?.siteIds && options.siteIds.length > 0) ? options.siteIds : null,
+      p_device_ids: (options?.deviceIds && options.deviceIds.length > 0) ? options.deviceIds : null,
       p_limit: limit + 1, // Fetch one extra to check if there are more
       p_offset: offset,
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[DrillDown] RPC error:', error);
+      throw error;
+    }
+
+    console.log('[DrillDown] Raw data received:', data?.length || 0, 'records');
 
     const hasMore = data && data.length > limit;
     const records = hasMore ? data.slice(0, limit) : data || [];
@@ -262,9 +278,11 @@ export async function fetchDrillDownRecords(
       detection_count: img.detection_count,
     }));
 
+    console.log('[DrillDown] Mapped records:', mappedRecords.length, 'hasMore:', hasMore);
+
     return { records: mappedRecords, hasMore };
   } catch (error) {
-    console.error('Error fetching drill-down records:', error);
+    console.error('[DrillDown] Error fetching drill-down records:', error);
     throw error;
   }
 }

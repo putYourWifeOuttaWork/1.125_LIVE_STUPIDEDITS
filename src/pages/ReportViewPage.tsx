@@ -82,6 +82,18 @@ export default function ReportViewPage() {
     }
   );
 
+  // Debug logging for drill-down data
+  useEffect(() => {
+    if (brushRange) {
+      console.log('[ReportViewPage] Drill-down data:', {
+        brushRange,
+        drillData,
+        drillLoading,
+        recordsCount: drillData?.records?.length || 0,
+      });
+    }
+  }, [brushRange, drillData, drillLoading]);
+
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -89,11 +101,11 @@ export default function ReportViewPage() {
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        // Calculate width with better padding consideration
-        // Reserve less space for padding to maximize chart width
+        // Use contentRect.width which is the inner width of the container
+        // The container already has p-6 (24px) padding applied via Tailwind
         const availableWidth = entry.contentRect.width;
-        const padding = 48; // 24px on each side
-        const calculatedWidth = Math.max(400, availableWidth - padding);
+        // Minimal additional padding to prevent chart from touching edges
+        const calculatedWidth = Math.max(600, availableWidth);
         setChartWidth(calculatedWidth);
       }
     });

@@ -33,14 +33,19 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
   loading = false
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [selectedSeries, setSelectedSeries] = useState<Set<string>>(
-    new Set(data.series.map(s => s.id))
-  );
+  const [selectedSeries, setSelectedSeries] = useState<Set<string>>(new Set());
+
+  // Sync selectedSeries with data changes
+  useEffect(() => {
+    if (data?.series && data.series.length > 0) {
+      setSelectedSeries(new Set(data.series.map(s => s.id)));
+    }
+  }, [data]);
 
   useEffect(() => {
     if (!svgRef.current || !data || data.timestamps.length === 0 || loading) return;
 
-    const margin = { top: 20, right: 120, bottom: 60, left: 60 };
+    const margin = { top: 20, right: 140, bottom: 60, left: 60 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 

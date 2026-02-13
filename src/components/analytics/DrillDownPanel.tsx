@@ -182,7 +182,13 @@ export default function DrillDownPanel({
     { key: 'status', label: 'Status' },
   ];
 
-  if (records.length === 0 && !loading) return null;
+  // Add console logging for debugging
+  console.log('[DrillDownPanel] Rendering with:', {
+    recordCount: records.length,
+    loading,
+    hasMore,
+    aggregatedCount: aggregatedDevices.length,
+  });
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">

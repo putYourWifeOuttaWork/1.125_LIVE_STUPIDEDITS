@@ -218,7 +218,7 @@ export function useDrillDown(
     offset?: number;
   }
 ) {
-  return useQuery({
+  const query = useQuery({
     queryKey: [
       'drill-down',
       companyId,
@@ -240,4 +240,15 @@ export function useDrillDown(
     enabled: !!companyId && !!startTime && !!endTime,
     staleTime: 30_000,
   });
+
+  console.log('[useDrillDown] Query result:', {
+    enabled: !!companyId && !!startTime && !!endTime,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    recordCount: query.data?.records?.length || 0,
+    hasMore: query.data?.hasMore,
+    error: query.error,
+  });
+
+  return query;
 }
