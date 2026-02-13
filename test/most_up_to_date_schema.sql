@@ -76,7 +76,7 @@ CREATE TABLE public.custom_reports (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT custom_reports_pkey PRIMARY KEY (report_id),
-  CONSTRAINT custom_reports_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES auth.users(id),
+  CONSTRAINT custom_reports_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id),
   CONSTRAINT custom_reports_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT custom_reports_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.pilot_programs(program_id)
 );
@@ -144,7 +144,7 @@ CREATE TABLE public.device_alert_thresholds (
 CREATE TABLE public.device_alerts (
   alert_id uuid NOT NULL DEFAULT gen_random_uuid(),
   device_id uuid NOT NULL,
-  alert_type text NOT NULL CHECK (alert_type = ANY (ARRAY['temp_min_warning'::text, 'temp_min_critical'::text, 'temp_max_warning'::text, 'temp_max_critical'::text, 'rh_min_warning'::text, 'rh_min_critical'::text, 'rh_max_warning'::text, 'rh_max_critical'::text, 'mgi_max_warning'::text, 'mgi_max_critical'::text, 'temp_shift_min'::text, 'temp_shift_max'::text, 'rh_shift_min'::text, 'rh_shift_max'::text, 'mgi_velocity_warning'::text, 'mgi_velocity_critical'::text, 'mgi_speed_warning'::text, 'mgi_speed_critical'::text, 'combo_zone_warning'::text, 'combo_zone_critical'::text, 'low_battery'::text, 'connectivity_issue'::text, 'sensor_malfunction'::text, 'missed_wake'::text, 'image_timeout'::text, 'chunk_assembly_failed'::text])),
+  alert_type text NOT NULL,
   severity text DEFAULT 'warning'::text CHECK (severity = ANY (ARRAY['info'::text, 'warning'::text, 'error'::text, 'critical'::text])),
   message text NOT NULL,
   metadata jsonb,
@@ -283,10 +283,10 @@ CREATE TABLE public.device_images (
   scored_at timestamp with time zone,
   mgi_scoring_status text DEFAULT 'pending'::text CHECK (mgi_scoring_status = ANY (ARRAY['pending'::text, 'in_progress'::text, 'complete'::text, 'failed'::text, 'skipped'::text])),
   mgi_scoring_started_at timestamp with time zone,
-  temperature numeric DEFAULT ((metadata ->> 'temperature'::text))::numeric,
-  humidity numeric DEFAULT ((metadata ->> 'humidity'::text))::numeric,
-  pressure numeric DEFAULT ((metadata ->> 'pressure'::text))::numeric,
-  gas_resistance numeric DEFAULT ((metadata ->> 'gas_resistance'::text))::numeric,
+  temperature numeric,
+  humidity numeric,
+  pressure numeric,
+  gas_resistance numeric,
   CONSTRAINT device_images_pkey PRIMARY KEY (image_id),
   CONSTRAINT device_images_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT device_images_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id),
@@ -788,6 +788,32 @@ CREATE TABLE public.pilot_programs (
   CONSTRAINT pilot_programs_lastupdated_by_fkey FOREIGN KEY (lastupdated_by) REFERENCES auth.users(id),
   CONSTRAINT pilot_programs_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
   CONSTRAINT pilot_programs_cloned_from_program_id_fkey FOREIGN KEY (cloned_from_program_id) REFERENCES public.pilot_programs(program_id)
+);
+CREATE TABLE public.report_cache (
+  cache_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  cache_key text NOT NULL,
+  company_id uuid NOT NULL,
+  data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  query_time_ms integer DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  expires_at timestamp with time zone NOT NULL,
+  CONSTRAINT report_cache_pkey PRIMARY KEY (cache_id),
+  CONSTRAINT report_cache_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id)
+);
+CREATE TABLE public.report_snapshots (
+  snapshot_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  report_id uuid NOT NULL,
+  company_id uuid NOT NULL,
+  created_by_user_id uuid NOT NULL,
+  snapshot_name text NOT NULL,
+  description text,
+  data_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+  configuration_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT report_snapshots_pkey PRIMARY KEY (snapshot_id),
+  CONSTRAINT report_snapshots_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(company_id),
+  CONSTRAINT report_snapshots_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES auth.users(id),
+  CONSTRAINT report_snapshots_report_id_fkey FOREIGN KEY (report_id) REFERENCES public.custom_reports(report_id)
 );
 CREATE TABLE public.report_subscriptions (
   subscription_id uuid NOT NULL DEFAULT gen_random_uuid(),
