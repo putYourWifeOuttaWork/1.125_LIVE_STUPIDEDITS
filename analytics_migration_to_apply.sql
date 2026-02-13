@@ -76,21 +76,21 @@ CREATE OR REPLACE FUNCTION get_analytics_time_series(
   p_program_ids uuid[] DEFAULT NULL, p_site_ids uuid[] DEFAULT NULL, p_device_ids uuid[] DEFAULT NULL,
   p_metrics text[] DEFAULT ARRAY['mgi_score', 'temperature', 'humidity'], p_interval text DEFAULT '1 hour'
 )
-RETURNS TABLE (timestamp timestamptz, metric_name text, metric_value numeric, device_id uuid, device_code text, site_id uuid, site_name text, program_id uuid, program_name text)
+RETURNS TABLE (timestamp_bucket timestamptz, metric_name text, metric_value numeric, device_id uuid, device_code text, site_id uuid, site_name text, program_id uuid, program_name text)
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
   RETURN QUERY
-  SELECT date_trunc('hour', di.captured_at) AS timestamp, unnest(p_metrics) AS metric_name,
+  SELECT date_trunc('hour', di.captured_at) AS timestamp_bucket, unnest(p_metrics) AS metric_name,
     CASE unnest(p_metrics) WHEN 'mgi_score' THEN AVG(di.mgi_score) WHEN 'temperature' THEN AVG(di.temperature) WHEN 'humidity' THEN AVG(di.humidity) END AS metric_value,
     di.device_id, d.device_code, d.site_id, s.name AS site_name, s.program_id, pp.name AS program_name
   FROM device_images di
-  JOIN devices d ON d.id = di.device_id JOIN sites s ON s.id = d.site_id JOIN pilot_programs pp ON pp.id = s.program_id
+  JOIN devices d ON d.id = di.device_id JOIN sites s ON s.site_id = d.site_id JOIN pilot_programs pp ON pp.program_id = s.program_id
   WHERE di.company_id = p_company_id AND di.captured_at BETWEEN p_time_start AND p_time_end AND di.processing_status = 'completed'
     AND (p_program_ids IS NULL OR s.program_id = ANY(p_program_ids))
     AND (p_site_ids IS NULL OR d.site_id = ANY(p_site_ids))
     AND (p_device_ids IS NULL OR di.device_id = ANY(p_device_ids))
   GROUP BY date_trunc('hour', di.captured_at), di.device_id, d.device_code, d.site_id, s.name, s.program_id, pp.name
-  ORDER BY timestamp, metric_name, d.device_code;
+  ORDER BY timestamp_bucket, metric_name, d.device_code;
 END; $$;
 
 CREATE OR REPLACE FUNCTION get_analytics_aggregated(
@@ -131,20 +131,20 @@ CREATE OR REPLACE FUNCTION get_analytics_comparison(
   p_company_id uuid, p_time_start timestamptz, p_time_end timestamptz,
   p_entity_type text, p_entity_ids uuid[], p_metrics text[] DEFAULT ARRAY['mgi_score'], p_interval text DEFAULT '1 day'
 )
-RETURNS TABLE (timestamp timestamptz, entity_id uuid, entity_name text, metric_name text, metric_value numeric)
+RETURNS TABLE (timestamp_bucket timestamptz, entity_id uuid, entity_name text, metric_name text, metric_value numeric)
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
   RETURN QUERY
-  SELECT date_trunc('day', di.captured_at) AS timestamp,
+  SELECT date_trunc('day', di.captured_at) AS timestamp_bucket,
     CASE p_entity_type WHEN 'program' THEN pp.id WHEN 'site' THEN s.id WHEN 'device' THEN d.id END AS entity_id,
     CASE p_entity_type WHEN 'program' THEN pp.name WHEN 'site' THEN s.name WHEN 'device' THEN d.device_code END AS entity_name,
     unnest(p_metrics) AS metric_name,
     CASE unnest(p_metrics) WHEN 'mgi_score' THEN AVG(di.mgi_score) WHEN 'temperature' THEN AVG(di.temperature) WHEN 'humidity' THEN AVG(di.humidity) END AS metric_value
   FROM device_images di
-  JOIN devices d ON d.id = di.device_id JOIN sites s ON s.id = d.site_id JOIN pilot_programs pp ON pp.id = s.program_id
+  JOIN devices d ON d.id = di.device_id JOIN sites s ON s.site_id = d.site_id JOIN pilot_programs pp ON pp.program_id = s.program_id
   WHERE di.company_id = p_company_id AND di.captured_at BETWEEN p_time_start AND p_time_end AND di.processing_status = 'completed'
     AND ((p_entity_type = 'program' AND pp.id = ANY(p_entity_ids)) OR (p_entity_type = 'site' AND s.id = ANY(p_entity_ids)) OR (p_entity_type = 'device' AND d.id = ANY(p_entity_ids)))
-  GROUP BY timestamp, entity_id, entity_name ORDER BY timestamp, entity_name, metric_name;
+  GROUP BY timestamp_bucket, entity_id, entity_name ORDER BY timestamp_bucket, entity_name, metric_name;
 END; $$;
 
 CREATE OR REPLACE FUNCTION get_analytics_drill_down(
