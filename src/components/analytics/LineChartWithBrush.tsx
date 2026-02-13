@@ -45,7 +45,8 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
   useEffect(() => {
     if (!svgRef.current || !data || data.timestamps.length === 0 || loading) return;
 
-    const margin = { top: 20, right: 140, bottom: 60, left: 60 };
+    // Reduced right margin since legend is now below the chart
+    const margin = { top: 20, right: 30, bottom: 80, left: 60 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
@@ -84,10 +85,18 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
           .tickFormat(() => '')
       );
 
-    // Axes
+    // Calculate intelligent tick count based on width
+    const tickCount = Math.max(5, Math.min(15, Math.floor(innerWidth / 80)));
+
+    // Axes with rotated labels for better readability
     const xAxis = g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
-      .call(d3.axisBottom(xScale));
+      .call(d3.axisBottom(xScale).ticks(tickCount))
+      .selectAll('text')
+        .style('text-anchor', 'end')
+        .attr('dx', '-.8em')
+        .attr('dy', '.15em')
+        .attr('transform', 'rotate(-45)');
 
     const yAxis = g.append('g')
       .call(d3.axisLeft(yScale));
@@ -204,46 +213,6 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .call(brush);
     }
 
-    // Legend
-    const legend = svg.append('g')
-      .attr('class', 'legend')
-      .attr('transform', `translate(${width - margin.right + 10},${margin.top})`);
-
-    data.series.forEach((series, i) => {
-      const color = series.color || COLORS[i % COLORS.length];
-      const isSelected = selectedSeries.has(series.id);
-
-      const legendRow = legend.append('g')
-        .attr('transform', `translate(0,${i * 25})`)
-        .style('cursor', 'pointer')
-        .on('click', () => {
-          const newSelected = new Set(selectedSeries);
-          if (newSelected.has(series.id)) {
-            newSelected.delete(series.id);
-          } else {
-            newSelected.add(series.id);
-          }
-          setSelectedSeries(newSelected);
-        });
-
-      legendRow.append('rect')
-        .attr('width', 18)
-        .attr('height', 18)
-        .attr('fill', color)
-        .attr('opacity', isSelected ? 1 : 0.3)
-        .attr('rx', 2);
-
-      legendRow.append('text')
-        .attr('x', 24)
-        .attr('y', 9)
-        .attr('dy', '0.32em')
-        .style('font-size', '13px')
-        .style('font-weight', '500')
-        .style('fill', isSelected ? '#374151' : '#9ca3af')
-        .style('user-select', 'none')
-        .text(series.label);
-    });
-
   }, [data, width, height, yAxisLabel, onBrushEnd, selectedSeries, loading]);
 
   if (loading) {
@@ -277,14 +246,59 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
     );
   }
 
+  const toggleSeries = (seriesId: string) => {
+    const newSelected = new Set(selectedSeries);
+    if (newSelected.has(seriesId)) {
+      newSelected.delete(seriesId);
+    } else {
+      newSelected.add(seriesId);
+    }
+    setSelectedSeries(newSelected);
+  };
+
   return (
     <div className="relative">
       {title && (
         <h3 className="text-lg font-medium text-gray-900 mb-4">{title}</h3>
       )}
       <svg ref={svgRef} className="border border-gray-200 rounded-lg bg-white" />
+
+      {/* HTML Legend */}
+      {data && data.series && data.series.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-3 justify-center">
+          {data.series.map((series, i) => {
+            const color = series.color || COLORS[i % COLORS.length];
+            const isSelected = selectedSeries.has(series.id);
+
+            return (
+              <button
+                key={series.id}
+                onClick={() => toggleSeries(series.id)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+              >
+                <div
+                  className="w-4 h-4 rounded"
+                  style={{
+                    backgroundColor: color,
+                    opacity: isSelected ? 1 : 0.3,
+                  }}
+                />
+                <span
+                  className="text-sm font-medium"
+                  style={{
+                    color: isSelected ? '#374151' : '#9ca3af',
+                  }}
+                >
+                  {series.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {onBrushEnd && (
-        <p className="mt-2 text-xs text-gray-500 italic">
+        <p className="mt-2 text-xs text-gray-500 italic text-center">
           Click and drag on the chart to select a time range for detailed view
         </p>
       )}

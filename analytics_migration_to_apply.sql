@@ -152,19 +152,55 @@ CREATE OR REPLACE FUNCTION get_analytics_drill_down(
   p_program_ids uuid[] DEFAULT NULL, p_site_ids uuid[] DEFAULT NULL, p_device_ids uuid[] DEFAULT NULL,
   p_limit integer DEFAULT 1000, p_offset integer DEFAULT 0
 )
-RETURNS TABLE (image_id uuid, device_id uuid, device_code text, site_name text, program_name text, captured_at timestamptz, mgi_score numeric, temperature numeric, humidity numeric, image_url text, detection_count integer)
+RETURNS TABLE (
+  image_id uuid,
+  device_id uuid,
+  device_code text,
+  site_id uuid,
+  site_name text,
+  program_id uuid,
+  program_name text,
+  site_device_session_id uuid,
+  wake_payload_id uuid,
+  captured_at timestamptz,
+  mgi_score numeric,
+  temperature numeric,
+  humidity numeric,
+  image_url text,
+  detection_count integer
+)
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
   RETURN QUERY
-  SELECT di.id AS image_id, di.device_id, d.device_code, s.name AS site_name, pp.name AS program_name,
-    di.captured_at, di.mgi_score, di.temperature, di.humidity, di.image_url, di.detection_count
+  SELECT
+    di.id AS image_id,
+    di.device_id,
+    d.device_code,
+    s.site_id,
+    s.name AS site_name,
+    pp.program_id,
+    pp.name AS program_name,
+    di.site_device_session_id,
+    di.wake_payload_id,
+    di.captured_at,
+    di.mgi_score,
+    di.temperature,
+    di.humidity,
+    di.image_url,
+    di.detection_count
   FROM device_images di
-  JOIN devices d ON d.id = di.device_id JOIN sites s ON s.id = d.site_id JOIN pilot_programs pp ON pp.id = s.program_id
-  WHERE di.company_id = p_company_id AND di.captured_at BETWEEN p_time_start AND p_time_end AND di.processing_status = 'completed'
+  JOIN devices d ON d.id = di.device_id
+  JOIN sites s ON s.site_id = d.site_id
+  JOIN pilot_programs pp ON pp.program_id = s.program_id
+  WHERE di.company_id = p_company_id
+    AND di.captured_at BETWEEN p_time_start AND p_time_end
+    AND di.processing_status = 'completed'
     AND (p_program_ids IS NULL OR s.program_id = ANY(p_program_ids))
     AND (p_site_ids IS NULL OR d.site_id = ANY(p_site_ids))
     AND (p_device_ids IS NULL OR di.device_id = ANY(p_device_ids))
-  ORDER BY di.captured_at DESC LIMIT p_limit OFFSET p_offset;
+  ORDER BY di.captured_at DESC
+  LIMIT p_limit
+  OFFSET p_offset;
 END; $$;
 
 CREATE OR REPLACE FUNCTION create_report_snapshot(p_report_id uuid, p_snapshot_name text, p_notes text DEFAULT NULL)

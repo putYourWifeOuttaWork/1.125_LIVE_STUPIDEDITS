@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ExternalLink, Loader2, Camera, MapPin, Activity } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { DrillDownRecord } from '../../types/analytics';
 import Modal from '../common/Modal';
+import Card, { CardHeader, CardContent } from '../common/Card';
+import Button from '../common/Button';
 
 interface DrillDownImageModalProps {
   isOpen: boolean;
@@ -61,8 +63,8 @@ export default function DrillDownImageModal({
   }, [isOpen, currentIndex, records.length]);
 
   const handleViewSession = () => {
-    if (currentRecord?.session_id) {
-      navigate(`/sessions/${currentRecord.session_id}`);
+    if (currentRecord?.session_id && currentRecord?.program_id && currentRecord?.site_id) {
+      navigate(`/programs/${currentRecord.program_id}/sites/${currentRecord.site_id}/sessions/${currentRecord.session_id}`);
       onClose();
     }
   };
@@ -70,17 +72,20 @@ export default function DrillDownImageModal({
   if (!currentRecord) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} maxWidth="4xl">
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="5xl">
       <div className="relative">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">
-              {deviceCode || currentRecord.device_code}
-            </h3>
-            <p className="text-sm text-gray-500">
-              Image {currentIndex + 1} of {records.length}
-            </p>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
+          <div className="flex items-center gap-3">
+            <Camera className="w-5 h-5 text-blue-600" />
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {deviceCode || currentRecord.device_code}
+              </h3>
+              <p className="text-sm text-gray-500">
+                Image {currentIndex + 1} of {records.length}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -110,6 +115,7 @@ export default function DrillDownImageModal({
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center text-gray-400">
+                <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>No image available</p>
               </div>
             </div>
@@ -134,73 +140,119 @@ export default function DrillDownImageModal({
           )}
         </div>
 
-        {/* Metadata */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Captured</p>
-              <p className="text-sm font-medium text-gray-900">
-                {format(new Date(currentRecord.captured_at), 'MMM d, yyyy')}
-              </p>
-              <p className="text-xs text-gray-600">
-                {format(new Date(currentRecord.captured_at), 'HH:mm:ss')}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">MGI Score</p>
-              <p className="text-sm font-medium text-gray-900">
-                {currentRecord.mgi_score !== null
-                  ? currentRecord.mgi_score.toFixed(2)
-                  : 'N/A'}
-              </p>
-              {currentRecord.detection_count !== null && (
-                <p className="text-xs text-gray-600">
-                  {currentRecord.detection_count} detections
-                </p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Temperature</p>
-              <p className="text-sm font-medium text-gray-900">
-                {currentRecord.temperature !== null
-                  ? `${currentRecord.temperature.toFixed(1)}°C`
-                  : 'N/A'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Humidity</p>
-              <p className="text-sm font-medium text-gray-900">
-                {currentRecord.humidity !== null
-                  ? `${currentRecord.humidity.toFixed(1)}%`
-                  : 'N/A'}
-              </p>
-            </div>
-          </div>
+        {/* Metadata Cards */}
+        <div className="p-6 space-y-4 bg-gray-50">
+          {/* Capture Details Card */}
+          <Card>
+            <CardHeader>
+              <h4 className="text-sm font-medium text-gray-700">Capture Details</h4>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                    <Activity className="w-3 h-3" />
+                    <span>Captured</span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {format(new Date(currentRecord.captured_at), 'MMM d, yyyy')}
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    {format(new Date(currentRecord.captured_at), 'HH:mm:ss')}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                    <Activity className="w-3 h-3" />
+                    <span>MGI Score</span>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {currentRecord.mgi_score !== null ? (
+                      <span className={`${
+                        currentRecord.mgi_score > 0.7
+                          ? 'text-red-600'
+                          : currentRecord.mgi_score > 0.4
+                          ? 'text-yellow-600'
+                          : 'text-green-600'
+                      }`}>
+                        {currentRecord.mgi_score.toFixed(2)}
+                      </span>
+                    ) : (
+                      'N/A'
+                    )}
+                  </p>
+                  {currentRecord.detection_count !== null && (
+                    <p className="text-xs text-gray-600">
+                      {currentRecord.detection_count} detections
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                    <Activity className="w-3 h-3" />
+                    <span>Temperature</span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {currentRecord.temperature !== null
+                      ? `${currentRecord.temperature.toFixed(1)}°C`
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                    <Activity className="w-3 h-3" />
+                    <span>Humidity</span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {currentRecord.humidity !== null
+                      ? `${currentRecord.humidity.toFixed(1)}%`
+                      : 'N/A'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Site</p>
-              <p className="text-sm font-medium text-gray-900">
-                {currentRecord.site_name}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Program</p>
-              <p className="text-sm font-medium text-gray-900">
-                {currentRecord.program_name}
-              </p>
-            </div>
-          </div>
+          {/* Location Card */}
+          <Card>
+            <CardHeader>
+              <h4 className="text-sm font-medium text-gray-700">Location</h4>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                    <MapPin className="w-3 h-3" />
+                    <span>Site</span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {currentRecord.site_name}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                    <Activity className="w-3 h-3" />
+                    <span>Program</span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {currentRecord.program_name}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
+          {/* Session Link */}
           {currentRecord.session_id && (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <button
+            <div className="flex justify-end">
+              <Button
                 onClick={handleViewSession}
-                className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                variant="outline"
+                className="inline-flex items-center gap-2"
               >
                 <ExternalLink className="w-4 h-4" />
-                View Full Session Details
-              </button>
+                View Session Details
+              </Button>
             </div>
           )}
         </div>
@@ -208,7 +260,7 @@ export default function DrillDownImageModal({
         {/* Thumbnail Strip */}
         {records.length > 1 && (
           <div className="px-6 py-3 bg-white border-t border-gray-200">
-            <div className="flex gap-2 overflow-x-auto">
+            <div className="flex gap-2 overflow-x-auto pb-2">
               {records.map((record, index) => (
                 <button
                   key={record.image_id}

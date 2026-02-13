@@ -102,11 +102,10 @@ export default function ReportViewPage() {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         // Use contentRect.width which is the inner width of the container
-        // The container already has p-6 (24px) padding applied via Tailwind
+        // The container has p-4 padding applied via Tailwind (16px each side)
         const availableWidth = entry.contentRect.width;
-        // Minimal additional padding to prevent chart from touching edges
-        const calculatedWidth = Math.max(600, availableWidth);
-        setChartWidth(calculatedWidth);
+        // Use the full available width for better space utilization
+        setChartWidth(availableWidth);
       }
     });
     observer.observe(node);
@@ -289,7 +288,7 @@ export default function ReportViewPage() {
         </Card>
       )}
 
-      <div ref={chartContainerRef} className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div ref={chartContainerRef} className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         {dataLoading && (
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
             <Loader2 className="w-4 h-4 animate-spin" />

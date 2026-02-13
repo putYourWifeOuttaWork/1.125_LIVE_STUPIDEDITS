@@ -259,12 +259,12 @@ export async function fetchDrillDownRecords(
       captured_at: img.captured_at,
       device_id: img.device_id,
       device_code: img.device_code,
-      site_id: img.site_name, // Note: API returns site_name not site_id
+      site_id: img.site_id,
       site_name: img.site_name,
-      program_id: img.program_name, // Note: API returns program_name not program_id
+      program_id: img.program_id,
       program_name: img.program_name,
-      session_id: null,
-      wake_payload_id: null,
+      session_id: img.site_device_session_id,
+      wake_payload_id: img.wake_payload_id,
       temperature: img.temperature,
       humidity: img.humidity,
       pressure: null,
