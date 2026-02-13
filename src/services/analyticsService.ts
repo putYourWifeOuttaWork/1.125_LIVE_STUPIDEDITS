@@ -274,8 +274,7 @@ export async function fetchDrillDownRecords(
       mgi_speed: null,
       battery_voltage: null,
       image_url: img.image_url,
-      status: 'completed',
-      detection_count: img.detection_count,
+      status: 'complete',
     }));
 
     console.log('[DrillDown] Mapped records:', mappedRecords.length, 'hasMore:', hasMore);
@@ -688,7 +687,6 @@ export interface DrillDownImage {
   temperature: number | null;
   humidity: number | null;
   image_url: string | null;
-  detection_count: number | null;
 }
 
 /**

@@ -181,11 +181,6 @@ export default function DrillDownImageModal({
                       'N/A'
                     )}
                   </p>
-                  {currentRecord.detection_count !== null && (
-                    <p className="text-xs text-gray-600">
-                      {currentRecord.detection_count} detections
-                    </p>
-                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
