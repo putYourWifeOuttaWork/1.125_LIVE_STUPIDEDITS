@@ -75,9 +75,14 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     [config.timeRange, config.customStartDate, config.customEndDate]
   );
 
+  const metrics = config.metrics || [];
+  const programIds = config.programIds || [];
+  const siteIds = config.siteIds || [];
+  const deviceIds = config.deviceIds || [];
+
   const metricNames = useMemo(
-    () => config.metrics.map((m) => m.type),
-    [config.metrics]
+    () => metrics.map((m) => m.type),
+    [metrics]
   );
 
   const interval = granularityToInterval(config.timeGranularity);
@@ -91,9 +96,9 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     queryKey: [
       'report-timeseries',
       activeCompanyId,
-      config.programIds,
-      config.siteIds,
-      config.deviceIds,
+      programIds,
+      siteIds,
+      deviceIds,
       metricNames,
       dateRange,
       interval,
@@ -103,9 +108,9 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
         companyId: activeCompanyId!,
         timeStart: dateRange.start,
         timeEnd: dateRange.end,
-        programIds: config.programIds.length > 0 ? config.programIds : undefined,
-        siteIds: config.siteIds.length > 0 ? config.siteIds : undefined,
-        deviceIds: config.deviceIds.length > 0 ? config.deviceIds : undefined,
+        programIds: programIds.length > 0 ? programIds : undefined,
+        siteIds: siteIds.length > 0 ? siteIds : undefined,
+        deviceIds: deviceIds.length > 0 ? deviceIds : undefined,
         metrics: metricNames,
         interval,
       }),
@@ -117,24 +122,24 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     queryKey: [
       'report-aggregated',
       activeCompanyId,
-      config.programIds,
-      config.siteIds,
-      config.deviceIds,
+      programIds,
+      siteIds,
+      deviceIds,
       metricNames,
       dateRange,
       config.groupBy,
-      config.metrics[0]?.aggregation,
+      metrics[0]?.aggregation,
     ],
     queryFn: () =>
       fetchAggregatedData({
         companyId: activeCompanyId!,
         timeStart: dateRange.start,
         timeEnd: dateRange.end,
-        programIds: config.programIds.length > 0 ? config.programIds : undefined,
-        siteIds: config.siteIds.length > 0 ? config.siteIds : undefined,
-        deviceIds: config.deviceIds.length > 0 ? config.deviceIds : undefined,
+        programIds: programIds.length > 0 ? programIds : undefined,
+        siteIds: siteIds.length > 0 ? siteIds : undefined,
+        deviceIds: deviceIds.length > 0 ? deviceIds : undefined,
         metrics: metricNames,
-        aggregation: config.metrics[0]?.aggregation || 'avg',
+        aggregation: metrics[0]?.aggregation || 'avg',
         groupBy: config.groupBy || 'device',
       }),
     enabled: enabled && !!activeCompanyId && isAggregated,

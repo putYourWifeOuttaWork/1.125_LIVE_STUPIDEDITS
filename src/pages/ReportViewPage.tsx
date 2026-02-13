@@ -28,6 +28,7 @@ import {
   HeatmapCell,
   TimeRange,
   TimeGranularity,
+  DEFAULT_REPORT_CONFIG,
 } from '../types/analytics';
 import {
   fetchReportById,
@@ -60,8 +61,8 @@ export default function ReportViewPage() {
   });
 
   const effectiveConfig: ReportConfiguration = report
-    ? { ...report.configuration, ...overrideConfig }
-    : ({} as ReportConfiguration);
+    ? { ...DEFAULT_REPORT_CONFIG, ...report.configuration, ...overrideConfig }
+    : DEFAULT_REPORT_CONFIG;
 
   const { lineChartData, barChartData, heatmapData, isLoading: dataLoading, rawTimeSeries, dateRange } =
     useReportData(effectiveConfig, !!report);

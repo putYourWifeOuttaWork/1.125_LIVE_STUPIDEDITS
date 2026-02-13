@@ -44,7 +44,7 @@ export default function ReportBuilderPage() {
 
   useEffect(() => {
     if (existingReport) {
-      const loadedConfig = { ...existingReport.configuration };
+      const loadedConfig = { ...DEFAULT_REPORT_CONFIG, ...existingReport.configuration };
       if (cloneId) {
         loadedConfig.name = `Copy of ${loadedConfig.name}`;
       }
