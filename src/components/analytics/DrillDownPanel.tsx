@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -7,10 +7,12 @@ import {
   Table,
   ChevronLeft,
   ChevronRight,
+  Eye,
 } from 'lucide-react';
 import { DrillDownRecord } from '../../types/analytics';
 import { exportDataToCSV } from '../../services/analyticsService';
 import { format } from 'date-fns';
+import DrillDownImageModal from './DrillDownImageModal';
 
 interface DrillDownPanelProps {
   records: DrillDownRecord[];
@@ -20,7 +22,22 @@ interface DrillDownPanelProps {
   title?: string;
 }
 
-type ViewMode = 'table' | 'images';
+type ViewMode = 'aggregated' | 'table' | 'images';
+
+interface AggregatedDevice {
+  device_id: string;
+  device_code: string;
+  site_name: string;
+  program_name: string;
+  image_count: number;
+  avg_mgi: number | null;
+  min_mgi: number | null;
+  max_mgi: number | null;
+  avg_temp: number | null;
+  avg_humidity: number | null;
+  date_range: string;
+  records: DrillDownRecord[];
+}
 
 export default function DrillDownPanel({
   records,
@@ -30,11 +47,67 @@ export default function DrillDownPanel({
   title,
 }: DrillDownPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>('aggregated');
   const [sortField, setSortField] = useState<keyof DrillDownRecord>('captured_at');
   const [sortAsc, setSortAsc] = useState(false);
   const [page, setPage] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<AggregatedDevice | null>(null);
   const perPage = 20;
+
+  // Aggregate records by device
+  const aggregatedDevices = useMemo((): AggregatedDevice[] => {
+    const deviceMap = new Map<string, DrillDownRecord[]>();
+
+    records.forEach((record) => {
+      if (!deviceMap.has(record.device_id)) {
+        deviceMap.set(record.device_id, []);
+      }
+      deviceMap.get(record.device_id)!.push(record);
+    });
+
+    return Array.from(deviceMap.entries()).map(([deviceId, deviceRecords]) => {
+      const validMGI = deviceRecords.filter((r) => r.mgi_score !== null);
+      const validTemp = deviceRecords.filter((r) => r.temperature !== null);
+      const validHumidity = deviceRecords.filter((r) => r.humidity !== null);
+
+      const dates = deviceRecords.map((r) => new Date(r.captured_at));
+      const minDate = new Date(Math.min(...dates.map((d) => d.getTime())));
+      const maxDate = new Date(Math.max(...dates.map((d) => d.getTime())));
+
+      return {
+        device_id: deviceId,
+        device_code: deviceRecords[0].device_code,
+        site_name: deviceRecords[0].site_name,
+        program_name: deviceRecords[0].program_name,
+        image_count: deviceRecords.length,
+        avg_mgi:
+          validMGI.length > 0
+            ? validMGI.reduce((sum, r) => sum + r.mgi_score!, 0) / validMGI.length
+            : null,
+        min_mgi:
+          validMGI.length > 0
+            ? Math.min(...validMGI.map((r) => r.mgi_score!))
+            : null,
+        max_mgi:
+          validMGI.length > 0
+            ? Math.max(...validMGI.map((r) => r.mgi_score!))
+            : null,
+        avg_temp:
+          validTemp.length > 0
+            ? validTemp.reduce((sum, r) => sum + r.temperature!, 0) / validTemp.length
+            : null,
+        avg_humidity:
+          validHumidity.length > 0
+            ? validHumidity.reduce((sum, r) => sum + r.humidity!, 0) / validHumidity.length
+            : null,
+        date_range: `${format(minDate, 'MMM d, HH:mm')} - ${format(maxDate, 'HH:mm')}`,
+        records: deviceRecords.sort((a, b) =>
+          new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+        ),
+      };
+    });
+  }, [records]);
 
   const sorted = [...records].sort((a, b) => {
     const aVal = a[sortField];
@@ -52,6 +125,11 @@ export default function DrillDownPanel({
 
   const paginated = sorted.slice(page * perPage, (page + 1) * perPage);
   const totalPages = Math.ceil(sorted.length / perPage);
+
+  const handleDeviceClick = (device: AggregatedDevice) => {
+    setSelectedDevice(device);
+    setModalOpen(true);
+  };
 
   const handleSort = (field: keyof DrillDownRecord) => {
     if (sortField === field) {
@@ -130,12 +208,25 @@ export default function DrillDownPanel({
             <div className="flex border border-gray-200 rounded-lg overflow-hidden">
               <button
                 type="button"
+                onClick={() => setViewMode('aggregated')}
+                className={`p-1.5 ${
+                  viewMode === 'aggregated'
+                    ? 'bg-gray-200 text-gray-700'
+                    : 'bg-white text-gray-400 hover:text-gray-600'
+                }`}
+                title="Aggregated View"
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
                 onClick={() => setViewMode('table')}
                 className={`p-1.5 ${
                   viewMode === 'table'
                     ? 'bg-gray-200 text-gray-700'
                     : 'bg-white text-gray-400 hover:text-gray-600'
                 }`}
+                title="Table View"
               >
                 <Table className="w-4 h-4" />
               </button>
@@ -147,6 +238,7 @@ export default function DrillDownPanel({
                     ? 'bg-gray-200 text-gray-700'
                     : 'bg-white text-gray-400 hover:text-gray-600'
                 }`}
+                title="Image Grid View"
               >
                 <Image className="w-4 h-4" />
               </button>
@@ -169,6 +261,89 @@ export default function DrillDownPanel({
             <div className="p-8 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
               <p className="text-sm text-gray-500">Loading records...</p>
+            </div>
+          ) : viewMode === 'aggregated' ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Device
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Site
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Images
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Avg MGI
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      MGI Range
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Avg Temp
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Time Range
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {aggregatedDevices.map((device) => (
+                    <tr
+                      key={device.device_id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+                        {device.device_code}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">
+                        {device.site_name}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          {device.image_count}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">
+                        {device.avg_mgi !== null ? device.avg_mgi.toFixed(2) : 'N/A'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700 text-xs">
+                        {device.min_mgi !== null && device.max_mgi !== null
+                          ? `${device.min_mgi.toFixed(2)} - ${device.max_mgi.toFixed(2)}`
+                          : 'N/A'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">
+                        {device.avg_temp !== null
+                          ? `${device.avg_temp.toFixed(1)}°C`
+                          : 'N/A'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700 text-xs">
+                        {device.date_range}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <button
+                          onClick={() => handleDeviceClick(device)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                        >
+                          <Eye className="w-3 h-3" />
+                          View Images
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {aggregatedDevices.length === 0 && (
+                <div className="text-center py-8 text-sm text-gray-500">
+                  No devices found in the selected range
+                </div>
+              )}
             </div>
           ) : viewMode === 'table' ? (
             <>
@@ -286,6 +461,19 @@ export default function DrillDownPanel({
             </div>
           )}
         </div>
+      )}
+
+      {/* Image Modal */}
+      {selectedDevice && (
+        <DrillDownImageModal
+          isOpen={modalOpen}
+          onClose={() => {
+            setModalOpen(false);
+            setSelectedDevice(null);
+          }}
+          records={selectedDevice.records}
+          deviceCode={selectedDevice.device_code}
+        />
       )}
     </div>
   );

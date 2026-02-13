@@ -220,13 +220,14 @@ export async function fetchDrillDownRecords(
     const limit = options?.limit || 50;
     const offset = options?.offset || 0;
 
-    const { data, error } = await supabase.rpc('get_drill_down_records', {
+    // Use the existing get_analytics_drill_down function
+    const { data, error } = await supabase.rpc('get_analytics_drill_down', {
       p_company_id: companyId,
+      p_time_start: startTime.toISOString(),
+      p_time_end: endTime.toISOString(),
       p_program_ids: options?.programIds || null,
       p_site_ids: options?.siteIds || null,
       p_device_ids: options?.deviceIds || null,
-      p_start_time: startTime.toISOString(),
-      p_end_time: endTime.toISOString(),
       p_limit: limit + 1, // Fetch one extra to check if there are more
       p_offset: offset,
     });
@@ -236,7 +237,32 @@ export async function fetchDrillDownRecords(
     const hasMore = data && data.length > limit;
     const records = hasMore ? data.slice(0, limit) : data || [];
 
-    return { records, hasMore };
+    // Map the DrillDownImage structure to DrillDownRecord
+    const mappedRecords: DrillDownRecord[] = records.map((img: any) => ({
+      image_id: img.image_id,
+      captured_at: img.captured_at,
+      device_id: img.device_id,
+      device_code: img.device_code,
+      site_id: img.site_name, // Note: API returns site_name not site_id
+      site_name: img.site_name,
+      program_id: img.program_name, // Note: API returns program_name not program_id
+      program_name: img.program_name,
+      session_id: null,
+      wake_payload_id: null,
+      temperature: img.temperature,
+      humidity: img.humidity,
+      pressure: null,
+      gas_resistance: null,
+      mgi_score: img.mgi_score,
+      mgi_velocity: null,
+      mgi_speed: null,
+      battery_voltage: null,
+      image_url: img.image_url,
+      status: 'completed',
+      detection_count: img.detection_count,
+    }));
+
+    return { records: mappedRecords, hasMore };
   } catch (error) {
     console.error('Error fetching drill-down records:', error);
     throw error;

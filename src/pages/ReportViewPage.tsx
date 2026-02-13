@@ -89,7 +89,12 @@ export default function ReportViewPage() {
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setChartWidth(Math.max(400, entry.contentRect.width - 48));
+        // Calculate width with better padding consideration
+        // Reserve less space for padding to maximize chart width
+        const availableWidth = entry.contentRect.width;
+        const padding = 48; // 24px on each side
+        const calculatedWidth = Math.max(400, availableWidth - padding);
+        setChartWidth(calculatedWidth);
       }
     });
     observer.observe(node);
@@ -272,7 +277,7 @@ export default function ReportViewPage() {
         </Card>
       )}
 
-      <div ref={chartContainerRef} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div ref={chartContainerRef} className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         {dataLoading && (
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -280,41 +285,43 @@ export default function ReportViewPage() {
           </div>
         )}
 
-        {effectiveConfig.reportType === 'line' ||
-        effectiveConfig.reportType === 'dot' ? (
-          <LineChartWithBrush
-            data={lineChartData || { timestamps: [], series: [] }}
-            width={chartWidth}
-            height={480}
-            yAxisLabel={primaryMetricLabel}
-            onBrushEnd={handleBrush}
-            loading={dataLoading && !lineChartData}
-          />
-        ) : effectiveConfig.reportType === 'bar' ? (
-          <BarChartWithBrush
-            data={barChartData || { labels: [], datasets: [] }}
-            width={chartWidth}
-            height={480}
-            yAxisLabel={primaryMetricLabel}
-            loading={dataLoading && !barChartData}
-          />
-        ) : effectiveConfig.reportType === 'heatmap_temporal' ? (
-          <HeatmapChart
-            data={heatmapData}
-            width={chartWidth}
-            height={Math.max(350, 480)}
-            onCellClick={handleHeatmapClick}
-            loading={dataLoading && heatmapData.length === 0}
-            yLabel={
-              effectiveConfig.groupBy === 'device'
-                ? 'Devices'
-                : effectiveConfig.groupBy === 'site'
-                  ? 'Sites'
-                  : 'Programs'
-            }
-            xLabel="Time Period"
-          />
-        ) : null}
+        <div className="w-full overflow-x-auto">
+          {effectiveConfig.reportType === 'line' ||
+          effectiveConfig.reportType === 'dot' ? (
+            <LineChartWithBrush
+              data={lineChartData || { timestamps: [], series: [] }}
+              width={chartWidth}
+              height={480}
+              yAxisLabel={primaryMetricLabel}
+              onBrushEnd={handleBrush}
+              loading={dataLoading && !lineChartData}
+            />
+          ) : effectiveConfig.reportType === 'bar' ? (
+            <BarChartWithBrush
+              data={barChartData || { labels: [], datasets: [] }}
+              width={chartWidth}
+              height={480}
+              yAxisLabel={primaryMetricLabel}
+              loading={dataLoading && !barChartData}
+            />
+          ) : effectiveConfig.reportType === 'heatmap_temporal' ? (
+            <HeatmapChart
+              data={heatmapData}
+              width={chartWidth}
+              height={Math.max(350, 480)}
+              onCellClick={handleHeatmapClick}
+              loading={dataLoading && heatmapData.length === 0}
+              yLabel={
+                effectiveConfig.groupBy === 'device'
+                  ? 'Devices'
+                  : effectiveConfig.groupBy === 'site'
+                    ? 'Sites'
+                    : 'Programs'
+              }
+              xLabel="Time Period"
+            />
+          ) : null}
+        </div>
 
         {(effectiveConfig.reportType === 'line' ||
           effectiveConfig.reportType === 'dot') && (

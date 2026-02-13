@@ -206,6 +206,8 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
 
     data.series.forEach((series, i) => {
       const color = series.color || COLORS[i % COLORS.length];
+      const isSelected = selectedSeries.has(series.id);
+
       const legendRow = legend.append('g')
         .attr('transform', `translate(0,${i * 25})`)
         .style('cursor', 'pointer')
@@ -223,14 +225,17 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .attr('width', 18)
         .attr('height', 18)
         .attr('fill', color)
-        .attr('opacity', selectedSeries.has(series.id) ? 1 : 0.3);
+        .attr('opacity', isSelected ? 1 : 0.3)
+        .attr('rx', 2);
 
       legendRow.append('text')
         .attr('x', 24)
         .attr('y', 9)
         .attr('dy', '0.32em')
-        .attr('class', 'text-sm')
-        .attr('fill', selectedSeries.has(series.id) ? '#374151' : '#9ca3af')
+        .style('font-size', '13px')
+        .style('font-weight', '500')
+        .style('fill', isSelected ? '#374151' : '#9ca3af')
+        .style('user-select', 'none')
         .text(series.label);
     });
 

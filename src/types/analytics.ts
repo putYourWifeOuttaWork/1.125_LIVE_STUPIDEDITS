@@ -179,6 +179,7 @@ export interface DrillDownRecord {
   battery_voltage: number | null;
   image_url: string | null;
   status: string;
+  detection_count: number | null;
 }
 
 export interface ComparisonData {
