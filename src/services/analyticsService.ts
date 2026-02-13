@@ -340,8 +340,7 @@ export async function fetchReports(companyId: string): Promise<CustomReport[]> {
         created_by:created_by_user_id(
           id,
           email,
-          first_name,
-          last_name
+          full_name
         )
       `)
       .eq('company_id', companyId)
@@ -352,8 +351,7 @@ export async function fetchReports(companyId: string): Promise<CustomReport[]> {
     return (data || []).map((report) => ({
       ...report,
       created_by_name: report.created_by
-        ? `${report.created_by.first_name || ''} ${report.created_by.last_name || ''}`.trim() ||
-          report.created_by.email
+        ? report.created_by.full_name || report.created_by.email
         : 'Unknown',
       created_by_email: report.created_by?.email,
     }));
@@ -375,8 +373,7 @@ export async function fetchReportById(reportId: string): Promise<CustomReport | 
         created_by:created_by_user_id(
           id,
           email,
-          first_name,
-          last_name
+          full_name
         )
       `)
       .eq('report_id', reportId)
@@ -388,8 +385,7 @@ export async function fetchReportById(reportId: string): Promise<CustomReport | 
     return {
       ...data,
       created_by_name: data.created_by
-        ? `${data.created_by.first_name || ''} ${data.created_by.last_name || ''}`.trim() ||
-          data.created_by.email
+        ? data.created_by.full_name || data.created_by.email
         : 'Unknown',
       created_by_email: data.created_by?.email,
     };
@@ -560,8 +556,7 @@ export async function fetchSnapshotsForReport(reportId: string): Promise<ReportS
         created_by:created_by_user_id(
           id,
           email,
-          first_name,
-          last_name
+          full_name
         )
       `)
       .eq('report_id', reportId)
@@ -572,8 +567,7 @@ export async function fetchSnapshotsForReport(reportId: string): Promise<ReportS
     return (data || []).map((snapshot) => ({
       ...snapshot,
       created_by_name: snapshot.created_by
-        ? `${snapshot.created_by.first_name || ''} ${snapshot.created_by.last_name || ''}`.trim() ||
-          snapshot.created_by.email
+        ? snapshot.created_by.full_name || snapshot.created_by.email
         : 'Unknown',
     }));
   } catch (error) {
