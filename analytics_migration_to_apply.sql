@@ -28,6 +28,17 @@ CREATE TABLE IF NOT EXISTS report_snapshots (
   notes text
 );
 
+-- Add snapshot_date column if it doesn't exist (for existing tables)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'report_snapshots' AND column_name = 'snapshot_date'
+  ) THEN
+    ALTER TABLE report_snapshots ADD COLUMN snapshot_date timestamptz NOT NULL DEFAULT now();
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_report_snapshots_report_id ON report_snapshots(report_id);
 CREATE INDEX IF NOT EXISTS idx_report_snapshots_company_id ON report_snapshots(company_id);
 CREATE INDEX IF NOT EXISTS idx_report_snapshots_date ON report_snapshots(snapshot_date DESC);
