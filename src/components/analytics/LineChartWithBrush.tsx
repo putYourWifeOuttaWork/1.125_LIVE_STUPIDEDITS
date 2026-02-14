@@ -66,8 +66,10 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
       bottom: 80,
       left: 60,
     };
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
+    const innerWidth = Math.max(0, width - margin.left - margin.right);
+    const innerHeight = Math.max(0, height - margin.top - margin.bottom);
+
+    if (innerWidth < 50 || innerHeight < 50) return;
 
     d3.select(svgRef.current).selectAll('*').remove();
 
@@ -179,6 +181,21 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
       const h12 = hours % 12 || 12;
       return `${month} ${day}, ${h12}:${mins} ${ampm}`;
     };
+
+    if (onBrushEnd) {
+      const brush = d3.brushX()
+        .extent([[0, 0], [innerWidth, innerHeight]])
+        .on('end', (event) => {
+          if (!event.selection) return;
+          const [x0, x1] = event.selection as [number, number];
+          onBrushEnd([xScale.invert(x0), xScale.invert(x1)]);
+          g.select('.brush').call(brush.move as any, null);
+        });
+
+      g.append('g')
+        .attr('class', 'brush')
+        .call(brush);
+    }
 
     filteredSeries.forEach((series, i) => {
       const color = series.color || FALLBACK_COLORS[i % FALLBACK_COLORS.length];
@@ -323,21 +340,6 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .duration(200)
         .attr('opacity', 0.7);
     });
-
-    if (onBrushEnd) {
-      const brush = d3.brushX()
-        .extent([[0, 0], [innerWidth, innerHeight]])
-        .on('end', (event) => {
-          if (!event.selection) return;
-          const [x0, x1] = event.selection as [number, number];
-          onBrushEnd([xScale.invert(x0), xScale.invert(x1)]);
-          g.select('.brush').call(brush.move as any, null);
-        });
-
-      g.append('g')
-        .attr('class', 'brush')
-        .call(brush);
-    }
   }, [data, width, height, yAxisLabel, secondaryYAxisLabel, metricInfo, onBrushEnd, selectedSeries, loading, hasSecondaryAxis]);
 
   if (loading) {

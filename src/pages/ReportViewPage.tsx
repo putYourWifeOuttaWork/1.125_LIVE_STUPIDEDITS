@@ -147,13 +147,12 @@ export default function ReportViewPage() {
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const availableWidth = entry.contentRect.width;
-        setChartWidth(availableWidth);
+        setChartWidth(Math.max(400, entry.contentRect.width));
       }
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [mode]);
 
   const handleBrush = useCallback((range: [Date, Date]) => {
     setBrushRange(range);
