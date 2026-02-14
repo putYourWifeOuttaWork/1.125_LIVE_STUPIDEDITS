@@ -145,13 +145,28 @@ export default function ReportViewPage() {
   useEffect(() => {
     const node = chartContainerRef.current;
     if (!node) return;
+
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      const padding = 32;
+      if (rect.width > 0) {
+        setChartWidth(Math.max(400, rect.width - padding));
+      }
+    };
+
+    const rafId = requestAnimationFrame(measure);
+
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setChartWidth(Math.max(400, entry.contentRect.width));
       }
     });
     observer.observe(node);
-    return () => observer.disconnect();
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
   }, [mode]);
 
   const handleBrush = useCallback((range: [Date, Date]) => {
