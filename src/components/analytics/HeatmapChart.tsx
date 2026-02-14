@@ -36,6 +36,9 @@ export default function HeatmapChart({
   useEffect(() => {
     if (!svgRef.current || !data || data.length === 0 || loading) return;
 
+    const measuredWidth = svgRef.current.parentElement?.clientWidth;
+    const effectiveWidth = measuredWidth && measuredWidth > 0 ? measuredWidth : width;
+
     const rows = Array.from(new Set(data.map((d) => d.rowKey)));
     const cols = Array.from(new Set(data.map((d) => d.colKey)));
 
@@ -48,14 +51,14 @@ export default function HeatmapChart({
       bottom: Math.min(100, 40 + cols.length * 2),
       left: Math.min(160, 40 + rows.reduce((max, r) => Math.max(max, (rowLabels.get(r) || r).length), 0) * 7),
     };
-    const innerWidth = width - margin.left - margin.right;
+    const innerWidth = effectiveWidth - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
     d3.select(svgRef.current).selectAll('*').remove();
 
     const svg = d3
       .select(svgRef.current)
-      .attr('width', width)
+      .attr('width', effectiveWidth)
       .attr('height', height);
 
     const g = svg
@@ -235,8 +238,8 @@ export default function HeatmapChart({
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200"
-        style={{ width, height }}
+        className="flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200 w-full"
+        style={{ height }}
       >
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
@@ -249,8 +252,8 @@ export default function HeatmapChart({
   if (!data || data.length === 0) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200"
-        style={{ width, height }}
+        className="flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200 w-full"
+        style={{ height }}
       >
         <div className="text-center">
           <div className="w-12 h-12 mx-auto mb-3 rounded-lg bg-gray-200 flex items-center justify-center">

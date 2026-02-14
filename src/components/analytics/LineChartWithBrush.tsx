@@ -60,13 +60,16 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
   useEffect(() => {
     if (!svgRef.current || !data || data.timestamps.length === 0 || loading) return;
 
+    const measuredWidth = svgRef.current.parentElement?.clientWidth;
+    const effectiveWidth = measuredWidth && measuredWidth > 0 ? measuredWidth : width;
+
     const margin = {
       top: 20,
       right: hasSecondaryAxis ? 70 : 30,
       bottom: 80,
       left: 60,
     };
-    const innerWidth = Math.max(0, width - margin.left - margin.right);
+    const innerWidth = Math.max(0, effectiveWidth - margin.left - margin.right);
     const innerHeight = Math.max(0, height - margin.top - margin.bottom);
 
     if (innerWidth < 50 || innerHeight < 50) return;
@@ -74,7 +77,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
     d3.select(svgRef.current).selectAll('*').remove();
 
     const svg = d3.select(svgRef.current)
-      .attr('width', width)
+      .attr('width', effectiveWidth)
       .attr('height', height);
 
     const g = svg.append('g')
@@ -345,8 +348,8 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200"
-        style={{ width, height }}
+        className="flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200 w-full"
+        style={{ height }}
       >
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
@@ -359,8 +362,8 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
   if (!data || data.timestamps.length === 0) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200"
-        style={{ width, height }}
+        className="flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200 w-full"
+        style={{ height }}
       >
         <div className="text-center">
           <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
