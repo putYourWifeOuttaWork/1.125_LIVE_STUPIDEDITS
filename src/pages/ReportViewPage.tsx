@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -13,6 +13,9 @@ import {
   Settings,
   History,
   Radio,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -89,11 +92,34 @@ export default function ReportViewPage() {
 
   const snapshotCount = snapshots?.length || 0;
 
+  const sortedSnapshots = useMemo(() => {
+    if (!snapshots) return [];
+    return [...snapshots].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+  }, [snapshots]);
+
+  const currentSnapshotIndex = useMemo(() => {
+    if (!viewingSnapshot || sortedSnapshots.length === 0) return -1;
+    return sortedSnapshots.findIndex(
+      (s) => s.snapshot_id === viewingSnapshot.snapshot_id
+    );
+  }, [viewingSnapshot, sortedSnapshots]);
+
+  const handleSnapshotNavigate = useCallback(
+    (index: number) => {
+      if (index >= 0 && index < sortedSnapshots.length) {
+        setViewingSnapshot(sortedSnapshots[index]);
+      }
+    },
+    [sortedSnapshots]
+  );
+
   const effectiveConfig: ReportConfiguration = report
     ? { ...DEFAULT_REPORT_CONFIG, ...report.configuration, ...overrideConfig }
     : DEFAULT_REPORT_CONFIG;
 
-  const { lineChartData, barChartData, heatmapData, isLoading: dataLoading, rawTimeSeries, dateRange } =
+  const { lineChartData, barChartData, heatmapData, isLoading: dataLoading, isFetching, rawTimeSeries, dateRange, refresh } =
     useReportData(effectiveConfig, !!report);
 
   const {
@@ -265,6 +291,15 @@ export default function ReportViewPage() {
         <div className="flex items-center gap-2">
           {mode === 'live' && (
             <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { refresh(); toast.info('Refreshing live data...'); }}
+                icon={<RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />}
+                disabled={isFetching}
+              >
+                {isFetching ? 'Refreshing...' : 'Refresh Data'}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -475,6 +510,9 @@ export default function ReportViewPage() {
             <SnapshotViewer
               snapshot={viewingSnapshot}
               onBack={handleBackToList}
+              snapshots={sortedSnapshots}
+              currentIndex={currentSnapshotIndex}
+              onNavigate={handleSnapshotNavigate}
             />
           )}
 

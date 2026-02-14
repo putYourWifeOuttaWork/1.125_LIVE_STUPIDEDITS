@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ReportConfiguration,
   TimeRange,
@@ -68,6 +68,8 @@ function granularityToInterval(gran: string): string {
 
 export function useReportData(config: ReportConfiguration, enabled = true) {
   const { activeCompanyId } = useActiveCompany();
+  const queryClient = useQueryClient();
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const dateRange = useMemo(
     () =>
@@ -76,8 +78,15 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
         config.customStartDate,
         config.customEndDate
       ),
-    [config.timeRange, config.customStartDate, config.customEndDate]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config.timeRange, config.customStartDate, config.customEndDate, refreshKey]
   );
+
+  const refresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+    queryClient.invalidateQueries({ queryKey: ['report-timeseries'] });
+    queryClient.invalidateQueries({ queryKey: ['report-aggregated'] });
+  }, [queryClient]);
 
   const metrics = config.metrics || [];
   const programIds = config.programIds || [];
@@ -208,10 +217,13 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     heatmapData,
     isLoading:
       timeSeriesQuery.isLoading || aggregatedQuery.isLoading,
+    isFetching:
+      timeSeriesQuery.isFetching || aggregatedQuery.isFetching,
     error: timeSeriesQuery.error || aggregatedQuery.error,
     rawTimeSeries: timeSeriesQuery.data || [],
     rawAggregated: aggregatedQuery.data || [],
     dateRange,
+    refresh,
   };
 }
 
