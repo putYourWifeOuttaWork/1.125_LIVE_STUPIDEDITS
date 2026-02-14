@@ -12,7 +12,6 @@ interface DrillDownImageModalProps {
   onClose: () => void;
   records: DrillDownRecord[];
   initialIndex?: number;
-  deviceCode?: string;
 }
 
 export default function DrillDownImageModal({
@@ -20,7 +19,6 @@ export default function DrillDownImageModal({
   onClose,
   records,
   initialIndex = 0,
-  deviceCode,
 }: DrillDownImageModalProps) {
   const navigate = useNavigate();
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -80,7 +78,7 @@ export default function DrillDownImageModal({
             <Camera className="w-5 h-5 text-blue-600" />
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
-                {deviceCode || currentRecord.device_code}
+                {currentRecord.device_code} - {format(new Date(currentRecord.captured_at), 'MMM d, HH:mm')}
               </h3>
               <p className="text-sm text-gray-500">
                 Image {currentIndex + 1} of {records.length}

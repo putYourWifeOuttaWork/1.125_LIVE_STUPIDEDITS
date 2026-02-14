@@ -58,7 +58,7 @@ export default function DrillDownPanel({
   const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [modalRecords, setModalRecords] = useState<DrillDownRecord[]>([]);
-  const [modalTitle, setModalTitle] = useState('');
+  const [modalInitialIndex, setModalInitialIndex] = useState(0);
 
   // Aggregate records by device
   const aggregatedDevices = useMemo((): AggregatedDevice[] => {
@@ -127,9 +127,10 @@ export default function DrillDownPanel({
     setExpandedDevices(newExpanded);
   };
 
-  const handleViewImage = (record: DrillDownRecord) => {
-    setModalRecords([record]);
-    setModalTitle(`${record.device_code} - ${format(new Date(record.captured_at), 'MMM d, HH:mm')}`);
+  const handleViewImage = (record: DrillDownRecord, siblingRecords: DrillDownRecord[]) => {
+    const idx = siblingRecords.findIndex(r => r.image_id === record.image_id);
+    setModalRecords(siblingRecords);
+    setModalInitialIndex(Math.max(0, idx));
     setModalOpen(true);
   };
 
@@ -141,7 +142,7 @@ export default function DrillDownPanel({
 
   const handleViewAllImages = (device: AggregatedDevice) => {
     setModalRecords(device.records);
-    setModalTitle(`${device.device_code} - All Images`);
+    setModalInitialIndex(0);
     setModalOpen(true);
   };
 
@@ -365,7 +366,7 @@ export default function DrillDownPanel({
                               <div className="flex items-center justify-center gap-2">
                                 {record.image_url && (
                                   <button
-                                    onClick={() => handleViewImage(record)}
+                                    onClick={() => handleViewImage(record, device.records)}
                                     className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
                                     title="View Image"
                                   >
@@ -401,7 +402,7 @@ export default function DrillDownPanel({
                     <div
                       key={record.image_id || i}
                       className="group relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer"
-                      onClick={() => handleViewImage(record)}
+                      onClick={() => handleViewImage(record, records.filter(r => r.image_url))}
                     >
                       <div className="aspect-square">
                         <img
@@ -464,10 +465,9 @@ export default function DrillDownPanel({
         onClose={() => {
           setModalOpen(false);
           setModalRecords([]);
-          setModalTitle('');
         }}
         records={modalRecords}
-        deviceCode={modalTitle}
+        initialIndex={modalInitialIndex}
       />
     </div>
   );
