@@ -136,7 +136,7 @@ export default function DrillDownPanel({
 
   const handleViewSession = (record: DrillDownRecord) => {
     if (record.session_id && record.program_id && record.site_id) {
-      navigate(`/programs/${record.program_id}/sites/${record.site_id}/sessions/${record.session_id}`);
+      navigate(`/programs/${record.program_id}/sites/${record.site_id}/device-sessions/${record.session_id}`);
     }
   };
 
