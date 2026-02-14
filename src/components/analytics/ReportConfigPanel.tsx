@@ -7,6 +7,7 @@ import {
 import ScopeSelector from './ScopeSelector';
 import MetricsSelector from './MetricsSelector';
 import TimeRangeSelector from './TimeRangeSelector';
+import ComparisonEntityPicker from './ComparisonEntityPicker';
 
 const VIZ_TYPES: {
   value: ReportType;
@@ -196,7 +197,10 @@ export default function ReportConfigPanel({
               type="checkbox"
               checked={config.enableComparison}
               onChange={(e) =>
-                update({ enableComparison: e.target.checked })
+                update({
+                  enableComparison: e.target.checked,
+                  ...(!e.target.checked && { comparisonEntities: [] }),
+                })
               }
               className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
@@ -205,21 +209,32 @@ export default function ReportConfigPanel({
             </span>
           </label>
           {config.enableComparison && (
-            <div className="mt-2">
-              <select
-                value={config.comparisonType || 'site'}
-                onChange={(e) =>
-                  update({
-                    comparisonType: e.target.value as 'program' | 'device' | 'site',
-                  })
-                }
-                className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="site">Compare Sites</option>
-                <option value="device">Compare Devices</option>
-                <option value="program">Compare Programs</option>
-              </select>
-            </div>
+            <>
+              <div className="mt-2">
+                <select
+                  value={config.comparisonType || 'site'}
+                  onChange={(e) =>
+                    update({
+                      comparisonType: e.target.value as 'program' | 'device' | 'site',
+                      comparisonEntities: [],
+                    })
+                  }
+                  className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="site">Compare Sites</option>
+                  <option value="device">Compare Devices</option>
+                  <option value="program">Compare Programs</option>
+                </select>
+              </div>
+              <ComparisonEntityPicker
+                entityType={config.comparisonType || 'site'}
+                selected={config.comparisonEntities || []}
+                onChange={(ids) => update({ comparisonEntities: ids })}
+                scopeDeviceIds={config.deviceIds}
+                scopeSiteIds={config.siteIds}
+                scopeProgramIds={config.programIds}
+              />
+            </>
           )}
         </div>
       )}

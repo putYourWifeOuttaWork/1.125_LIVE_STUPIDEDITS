@@ -73,8 +73,7 @@ export async function withRetry<T>(
       // If we have an error that might be resolved by retrying (network errors, timeouts, etc.)
       if (retryCount < maxRetries) {
         // These error codes generally indicate transient errors that may resolve with a retry
-        const isRetryableError = 
-          result.error.code === 'PGRST116' || // Postgres REST timeout
+        const isRetryableError =
           result.error.code === '23505' ||    // Unique violation (might resolve with retry after conflict resolves)
           result.error.code === '503' ||      // Service unavailable
           isNetworkError;

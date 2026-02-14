@@ -53,7 +53,7 @@ export default function ReportBuilderPage() {
     }
   }, [existingReport, cloneId]);
 
-  const { lineChartData, barChartData, heatmapData, isLoading: dataLoading } =
+  const { lineChartData, barChartData, heatmapData, isLoading: dataLoading, isComparisonActive } =
     useReportData(config, previewEnabled);
 
   const previewRef = useRef<HTMLDivElement>(null);
@@ -230,15 +230,23 @@ export default function ReportBuilderPage() {
               </p>
             </div>
           ) : config.reportType === 'line' || config.reportType === 'dot' ? (
-            <LineChartWithBrush
-              data={
-                lineChartData || { timestamps: [], series: [] }
-              }
-              width={chartWidth}
-              height={420}
-              yAxisLabel={primaryMetricLabel}
-              loading={dataLoading}
-            />
+            <>
+              {isComparisonActive && (
+                <div className="mb-3 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 font-medium">
+                  Comparison mode -- showing {config.comparisonEntities?.length || 0}{' '}
+                  {config.comparisonType === 'device' ? 'devices' : config.comparisonType === 'site' ? 'sites' : 'programs'} side-by-side
+                </div>
+              )}
+              <LineChartWithBrush
+                data={
+                  lineChartData || { timestamps: [], series: [] }
+                }
+                width={chartWidth}
+                height={420}
+                yAxisLabel={primaryMetricLabel}
+                loading={dataLoading}
+              />
+            </>
           ) : config.reportType === 'bar' ? (
             <BarChartWithBrush
               data={

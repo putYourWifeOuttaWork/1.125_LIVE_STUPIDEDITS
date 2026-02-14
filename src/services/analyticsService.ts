@@ -495,9 +495,10 @@ export async function updateReport(
       query = query.eq('company_id', companyId);
     }
 
-    const { data, error } = await query.select().single();
+    const { data, error } = await query.select().maybeSingle();
 
     if (error) throw error;
+    if (!data) throw new Error('Report not found or you do not have permission to update it');
     return data;
   } catch (error) {
     console.error('Error updating report:', error);
@@ -919,6 +920,47 @@ export function transformTimeSeriesForD3(
       const point = group.points.find(p => p.timestamp.getTime() === ts.getTime());
       return point ? point.value : 0;
     })
+  }));
+
+  return { timestamps: allTimestamps, series };
+}
+
+export function transformComparisonForD3(
+  data: ComparisonDataPoint[],
+  metricName: string
+): { timestamps: Date[]; series: { id: string; label: string; values: number[] }[] } {
+  const filtered = data.filter((d) => d.metric_name === metricName);
+
+  const grouped = filtered.reduce(
+    (acc, point) => {
+      const key = point.entity_id;
+      if (!acc[key]) {
+        acc[key] = {
+          id: point.entity_id,
+          label: point.entity_name,
+          points: [],
+        };
+      }
+      acc[key].points.push({
+        timestamp: new Date(point.timestamp),
+        value: point.metric_value,
+      });
+      return acc;
+    },
+    {} as Record<string, { id: string; label: string; points: { timestamp: Date; value: number }[] }>
+  );
+
+  const allTimestamps = Array.from(new Set(filtered.map((d) => d.timestamp)))
+    .sort()
+    .map((t) => new Date(t));
+
+  const series = Object.values(grouped).map((group) => ({
+    id: group.id,
+    label: group.label,
+    values: allTimestamps.map((ts) => {
+      const point = group.points.find((p) => p.timestamp.getTime() === ts.getTime());
+      return point ? point.value : 0;
+    }),
   }));
 
   return { timestamps: allTimestamps, series };

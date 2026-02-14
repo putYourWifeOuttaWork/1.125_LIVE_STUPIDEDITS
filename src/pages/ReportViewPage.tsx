@@ -119,7 +119,7 @@ export default function ReportViewPage() {
     ? { ...DEFAULT_REPORT_CONFIG, ...report.configuration, ...overrideConfig }
     : DEFAULT_REPORT_CONFIG;
 
-  const { lineChartData, barChartData, heatmapData, isLoading: dataLoading, isFetching, rawTimeSeries, dateRange, refresh } =
+  const { lineChartData, barChartData, heatmapData, isLoading: dataLoading, isFetching, rawTimeSeries, isComparisonActive, dateRange, refresh } =
     useReportData(effectiveConfig, !!report);
 
   const {
@@ -409,6 +409,13 @@ export default function ReportViewPage() {
               <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Refreshing data...
+              </div>
+            )}
+
+            {isComparisonActive && (
+              <div className="mb-3 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 font-medium">
+                Comparison mode -- showing {effectiveConfig.comparisonEntities?.length || 0}{' '}
+                {effectiveConfig.comparisonType === 'device' ? 'devices' : effectiveConfig.comparisonType === 'site' ? 'sites' : 'programs'} side-by-side
               </div>
             )}
 

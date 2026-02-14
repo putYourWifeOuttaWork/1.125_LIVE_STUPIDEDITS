@@ -9,9 +9,11 @@ import { useActiveCompany } from './useActiveCompany';
 import {
   fetchTimeSeriesData,
   fetchAggregatedData,
+  fetchComparisonData,
   fetchDrillDownRecords,
   transformTimeSeriesForD3,
   transformAggregatedForD3,
+  transformComparisonForD3,
   TimeSeriesDataPoint as TSPoint,
   AggregatedDataPoint,
 } from '../services/analyticsService';
@@ -86,6 +88,7 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     setRefreshKey((k) => k + 1);
     queryClient.invalidateQueries({ queryKey: ['report-timeseries'] });
     queryClient.invalidateQueries({ queryKey: ['report-aggregated'] });
+    queryClient.invalidateQueries({ queryKey: ['report-comparison'] });
   }, [queryClient]);
 
   const metrics = config.metrics || [];
@@ -99,6 +102,11 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
   );
 
   const interval = granularityToInterval(config.timeGranularity);
+
+  const comparisonEntities = config.comparisonEntities || [];
+  const comparisonType = config.comparisonType || 'site';
+  const isComparisonActive =
+    config.enableComparison && comparisonEntities.length >= 2;
 
   const isTimeSeries =
     config.reportType === 'line' || config.reportType === 'dot';
@@ -159,12 +167,44 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     staleTime: 60_000,
   });
 
+  const comparisonQuery = useQuery({
+    queryKey: [
+      'report-comparison',
+      activeCompanyId,
+      comparisonType,
+      comparisonEntities,
+      metricNames,
+      dateRange,
+      interval,
+    ],
+    queryFn: () =>
+      fetchComparisonData({
+        companyId: activeCompanyId!,
+        timeStart: dateRange.start,
+        timeEnd: dateRange.end,
+        entityType: comparisonType,
+        entityIds: comparisonEntities,
+        metrics: metricNames,
+        interval,
+      }),
+    enabled:
+      enabled && !!activeCompanyId && isTimeSeries && isComparisonActive,
+    staleTime: 60_000,
+  });
+
   const lineChartData = useMemo(() => {
+    if (isComparisonActive) {
+      if (!comparisonQuery.data || comparisonQuery.data.length === 0)
+        return null;
+      const primaryMetric = metricNames[0] || 'mgi_score';
+      return transformComparisonForD3(comparisonQuery.data, primaryMetric);
+    }
+
     if (!timeSeriesQuery.data || timeSeriesQuery.data.length === 0)
       return null;
     const primaryMetric = metricNames[0] || 'mgi_score';
     return transformTimeSeriesForD3(timeSeriesQuery.data, primaryMetric);
-  }, [timeSeriesQuery.data, metricNames]);
+  }, [timeSeriesQuery.data, comparisonQuery.data, metricNames, isComparisonActive]);
 
   const barChartData = useMemo(() => {
     if (!aggregatedQuery.data || aggregatedQuery.data.length === 0)
@@ -216,12 +256,13 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     barChartData,
     heatmapData,
     isLoading:
-      timeSeriesQuery.isLoading || aggregatedQuery.isLoading,
+      timeSeriesQuery.isLoading || aggregatedQuery.isLoading || comparisonQuery.isLoading,
     isFetching:
-      timeSeriesQuery.isFetching || aggregatedQuery.isFetching,
-    error: timeSeriesQuery.error || aggregatedQuery.error,
+      timeSeriesQuery.isFetching || aggregatedQuery.isFetching || comparisonQuery.isFetching,
+    error: timeSeriesQuery.error || aggregatedQuery.error || comparisonQuery.error,
     rawTimeSeries: timeSeriesQuery.data || [],
     rawAggregated: aggregatedQuery.data || [],
+    isComparisonActive,
     dateRange,
     refresh,
   };
