@@ -715,7 +715,10 @@ export async function fetchTimeSeriesData(params: {
     });
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map((row: any) => ({
+      ...row,
+      timestamp: row.timestamp_bucket ?? row.timestamp,
+    }));
   } catch (error) {
     console.error('Error fetching time series data:', error);
     throw error;
@@ -781,7 +784,10 @@ export async function fetchComparisonData(params: {
     });
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map((row: any) => ({
+      ...row,
+      timestamp: row.timestamp_bucket ?? row.timestamp,
+    }));
   } catch (error) {
     console.error('Error fetching comparison data:', error);
     throw error;

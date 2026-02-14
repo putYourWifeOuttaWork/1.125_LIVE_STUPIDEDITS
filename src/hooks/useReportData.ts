@@ -51,6 +51,10 @@ function resolveDateRange(
 
 function granularityToInterval(gran: string): string {
   switch (gran) {
+    case '15min':
+      return '15 minutes';
+    case '30min':
+      return '30 minutes';
     case 'hour':
       return '1 hour';
     case 'day':
@@ -174,12 +178,16 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
       let colLabel: string;
       try {
         const ts = new Date(d.timestamp);
-        colLabel =
-          config.timeGranularity === 'hour'
-            ? `${ts.getMonth() + 1}/${ts.getDate()} ${ts.getHours()}:00`
-            : config.timeGranularity === 'week'
-              ? `Wk ${Math.ceil(ts.getDate() / 7)} ${ts.toLocaleString('default', { month: 'short' })}`
-              : `${ts.getMonth() + 1}/${ts.getDate()}`;
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        if (config.timeGranularity === '15min' || config.timeGranularity === '30min') {
+          colLabel = `${ts.getMonth() + 1}/${ts.getDate()} ${ts.getHours()}:${pad(ts.getMinutes())}`;
+        } else if (config.timeGranularity === 'hour') {
+          colLabel = `${ts.getMonth() + 1}/${ts.getDate()} ${ts.getHours()}:00`;
+        } else if (config.timeGranularity === 'week') {
+          colLabel = `Wk ${Math.ceil(ts.getDate() / 7)} ${ts.toLocaleString('default', { month: 'short' })}`;
+        } else {
+          colLabel = `${ts.getMonth() + 1}/${ts.getDate()}`;
+        }
       } catch {
         colLabel = d.timestamp;
       }

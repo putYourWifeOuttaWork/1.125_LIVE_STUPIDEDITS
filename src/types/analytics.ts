@@ -4,7 +4,7 @@ export type GroupByDimension = 'device' | 'site' | 'program' | 'time';
 
 export type TimeRange = 'last_24h' | 'last_7d' | 'last_30d' | 'this_program' | 'custom';
 
-export type TimeGranularity = 'hour' | 'day' | 'week';
+export type TimeGranularity = '15min' | '30min' | 'hour' | 'day' | 'week';
 
 export type AggregationFunction = 'avg' | 'min' | 'max' | 'sum' | 'count' | 'p50' | 'p90' | 'p95' | 'stddev';
 

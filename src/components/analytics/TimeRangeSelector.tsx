@@ -9,7 +9,9 @@ const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: 'custom', label: 'Custom' },
 ];
 
-const GRANULARITY_OPTIONS: { value: TimeGranularity; label: string }[] = [
+const GRANULARITY_OPTIONS: { value: TimeGranularity; label: string; shortRangeOnly?: boolean }[] = [
+  { value: '15min', label: '15 Min', shortRangeOnly: true },
+  { value: '30min', label: '30 Min', shortRangeOnly: true },
   { value: 'hour', label: 'Hourly' },
   { value: 'day', label: 'Daily' },
   { value: 'week', label: 'Weekly' },
@@ -83,13 +85,15 @@ export default function TimeRangeSelector({
         <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
           Granularity
         </label>
-        <div className="flex gap-1">
-          {GRANULARITY_OPTIONS.map((option) => (
+        <div className="flex flex-wrap gap-1">
+          {GRANULARITY_OPTIONS
+            .filter((opt) => !opt.shortRangeOnly || timeRange === 'last_24h')
+            .map((option) => (
             <button
               key={option.value}
               type="button"
               onClick={() => onTimeGranularityChange(option.value)}
-              className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                 timeGranularity === option.value
                   ? 'bg-gray-800 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
