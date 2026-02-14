@@ -217,21 +217,27 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT date_trunc('hour', di.captured_at) AS timestamp_bucket, unnest(p_metrics) AS metric_name,
-    CASE unnest(p_metrics) WHEN 'mgi_score' THEN AVG(di.mgi_score) WHEN 'temperature' THEN AVG(di.temperature) WHEN 'humidity' THEN AVG(di.humidity) END AS metric_value,
+  SELECT date_trunc('hour', di.captured_at) AS timestamp_bucket,
+    m.metric_name,
+    CASE m.metric_name
+      WHEN 'mgi_score' THEN AVG(di.mgi_score)
+      WHEN 'temperature' THEN AVG(di.temperature)
+      WHEN 'humidity' THEN AVG(di.humidity)
+    END AS metric_value,
     di.device_id, d.device_code, d.site_id, s.name AS site_name, s.program_id, pp.name AS program_name
   FROM device_images di
   JOIN devices d ON d.device_id = di.device_id
   JOIN sites s ON s.site_id = d.site_id
   JOIN pilot_programs pp ON pp.program_id = s.program_id
+  CROSS JOIN LATERAL unnest(p_metrics) AS m(metric_name)
   WHERE di.company_id = p_company_id
     AND di.captured_at BETWEEN p_time_start AND p_time_end
     AND di.status = 'complete'
     AND (p_program_ids IS NULL OR s.program_id = ANY(p_program_ids))
     AND (p_site_ids IS NULL OR d.site_id = ANY(p_site_ids))
     AND (p_device_ids IS NULL OR di.device_id = ANY(p_device_ids))
-  GROUP BY date_trunc('hour', di.captured_at), di.device_id, d.device_code, d.site_id, s.name, s.program_id, pp.name
-  ORDER BY timestamp_bucket, metric_name, d.device_code;
+  GROUP BY date_trunc('hour', di.captured_at), m.metric_name, di.device_id, d.device_code, d.site_id, s.name, s.program_id, pp.name
+  ORDER BY timestamp_bucket, m.metric_name, d.device_code;
 END; $$;
 
 DROP FUNCTION IF EXISTS get_analytics_aggregated(uuid, timestamptz, timestamptz, uuid[], uuid[], uuid[], text[], text, text);
@@ -268,16 +274,17 @@ BEGIN
   SELECT
     CASE p_group_by WHEN 'device' THEN fi.device_code WHEN 'site' THEN fi.site_name WHEN 'program' THEN fi.program_name ELSE 'all' END AS group_key,
     CASE p_group_by WHEN 'device' THEN fi.device_id WHEN 'site' THEN fi.site_id WHEN 'program' THEN fi.program_id END AS group_id,
-    unnest(p_metrics) AS metric_name,
+    m.metric_name,
     CASE p_aggregation
-      WHEN 'avg' THEN CASE unnest(p_metrics) WHEN 'mgi_score' THEN AVG(fi.mgi_score) WHEN 'temperature' THEN AVG(fi.temperature) WHEN 'humidity' THEN AVG(fi.humidity) END
-      WHEN 'sum' THEN CASE unnest(p_metrics) WHEN 'mgi_score' THEN SUM(fi.mgi_score) WHEN 'temperature' THEN SUM(fi.temperature) WHEN 'humidity' THEN SUM(fi.humidity) END
-      WHEN 'min' THEN CASE unnest(p_metrics) WHEN 'mgi_score' THEN MIN(fi.mgi_score) WHEN 'temperature' THEN MIN(fi.temperature) WHEN 'humidity' THEN MIN(fi.humidity) END
-      WHEN 'max' THEN CASE unnest(p_metrics) WHEN 'mgi_score' THEN MAX(fi.mgi_score) WHEN 'temperature' THEN MAX(fi.temperature) WHEN 'humidity' THEN MAX(fi.humidity) END
+      WHEN 'avg' THEN CASE m.metric_name WHEN 'mgi_score' THEN AVG(fi.mgi_score) WHEN 'temperature' THEN AVG(fi.temperature) WHEN 'humidity' THEN AVG(fi.humidity) END
+      WHEN 'sum' THEN CASE m.metric_name WHEN 'mgi_score' THEN SUM(fi.mgi_score) WHEN 'temperature' THEN SUM(fi.temperature) WHEN 'humidity' THEN SUM(fi.humidity) END
+      WHEN 'min' THEN CASE m.metric_name WHEN 'mgi_score' THEN MIN(fi.mgi_score) WHEN 'temperature' THEN MIN(fi.temperature) WHEN 'humidity' THEN MIN(fi.humidity) END
+      WHEN 'max' THEN CASE m.metric_name WHEN 'mgi_score' THEN MAX(fi.mgi_score) WHEN 'temperature' THEN MAX(fi.temperature) WHEN 'humidity' THEN MAX(fi.humidity) END
     END AS metric_value,
     COUNT(*)::bigint AS record_count
   FROM filtered_images fi
-  GROUP BY group_key, group_id ORDER BY group_key, metric_name;
+  CROSS JOIN LATERAL unnest(p_metrics) AS m(metric_name)
+  GROUP BY group_key, group_id, m.metric_name ORDER BY group_key, m.metric_name;
 END; $$;
 
 DROP FUNCTION IF EXISTS get_analytics_comparison(uuid, timestamptz, timestamptz, text, uuid[], text[], text);
@@ -299,12 +306,17 @@ BEGIN
   SELECT date_trunc('day', di.captured_at) AS timestamp_bucket,
     CASE p_entity_type WHEN 'program' THEN pp.program_id WHEN 'site' THEN s.site_id WHEN 'device' THEN d.device_id END AS entity_id,
     CASE p_entity_type WHEN 'program' THEN pp.name WHEN 'site' THEN s.name WHEN 'device' THEN d.device_code END AS entity_name,
-    unnest(p_metrics) AS metric_name,
-    CASE unnest(p_metrics) WHEN 'mgi_score' THEN AVG(di.mgi_score) WHEN 'temperature' THEN AVG(di.temperature) WHEN 'humidity' THEN AVG(di.humidity) END AS metric_value
+    m.metric_name,
+    CASE m.metric_name
+      WHEN 'mgi_score' THEN AVG(di.mgi_score)
+      WHEN 'temperature' THEN AVG(di.temperature)
+      WHEN 'humidity' THEN AVG(di.humidity)
+    END AS metric_value
   FROM device_images di
   JOIN devices d ON d.device_id = di.device_id
   JOIN sites s ON s.site_id = d.site_id
   JOIN pilot_programs pp ON pp.program_id = s.program_id
+  CROSS JOIN LATERAL unnest(p_metrics) AS m(metric_name)
   WHERE di.company_id = p_company_id
     AND di.captured_at BETWEEN p_time_start AND p_time_end
     AND di.status = 'complete'
@@ -313,7 +325,7 @@ BEGIN
       OR (p_entity_type = 'site' AND s.site_id = ANY(p_entity_ids))
       OR (p_entity_type = 'device' AND d.device_id = ANY(p_entity_ids))
     )
-  GROUP BY timestamp_bucket, entity_id, entity_name ORDER BY timestamp_bucket, entity_name, metric_name;
+  GROUP BY timestamp_bucket, entity_id, entity_name, m.metric_name ORDER BY timestamp_bucket, entity_name, m.metric_name;
 END; $$;
 
 DROP FUNCTION IF EXISTS get_analytics_drill_down(uuid, timestamptz, timestamptz, uuid[], uuid[], uuid[], integer, integer);
