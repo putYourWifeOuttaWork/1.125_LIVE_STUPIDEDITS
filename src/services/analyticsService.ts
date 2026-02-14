@@ -605,7 +605,40 @@ export async function fetchSnapshotsForReport(reportId: string): Promise<ReportS
       .eq('report_id', reportId)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST200') {
+        const { data: snapshots, error: fallbackError } = await supabase
+          .from('report_snapshots')
+          .select('*')
+          .eq('report_id', reportId)
+          .order('created_at', { ascending: false });
+
+        if (fallbackError) throw fallbackError;
+
+        const userIds = [...new Set((snapshots || []).map((s: any) => s.created_by_user_id).filter(Boolean))];
+        let userMap: Record<string, { full_name: string; email: string }> = {};
+
+        if (userIds.length > 0) {
+          const { data: users } = await supabase
+            .from('users')
+            .select('id, email, full_name')
+            .in('id', userIds);
+
+          if (users) {
+            userMap = Object.fromEntries(users.map((u: any) => [u.id, u]));
+          }
+        }
+
+        return (snapshots || []).map((snapshot: any) => ({
+          ...snapshot,
+          created_by: snapshot.created_by_user_id ? userMap[snapshot.created_by_user_id] || null : null,
+          created_by_name: snapshot.created_by_user_id && userMap[snapshot.created_by_user_id]
+            ? userMap[snapshot.created_by_user_id].full_name || userMap[snapshot.created_by_user_id].email
+            : 'Unknown',
+        }));
+      }
+      throw error;
+    }
 
     return (data || []).map((snapshot) => ({
       ...snapshot,
