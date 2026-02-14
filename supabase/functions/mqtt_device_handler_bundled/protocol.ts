@@ -252,8 +252,8 @@ export function parseChunkMessage(payload: Record<string, any>): {
  * Database stores UTC timestamp, firmware expects formatted string like "5:30PM"
  */
 export function formatNextWakeTime(timestamp: Date): string {
-  const hours = timestamp.getHours();
-  const minutes = timestamp.getMinutes();
+  const hours = timestamp.getUTCHours();
+  const minutes = timestamp.getUTCMinutes();
 
   const period = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;

@@ -73,10 +73,17 @@ interface DeviceAlert {
   wake_number: number | null;
 }
 
+interface AlertStats {
+  critical: number;
+  warning: number;
+  total: number;
+}
+
 const ActiveAlertsPanel = () => {
   const navigate = useNavigate();
   const { userCompany, isAdmin } = useCompanies();
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
+  const [alertStats, setAlertStats] = useState<AlertStats>({ critical: 0, warning: 0, total: 0 });
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>(loadSavedTimeRange);
@@ -92,28 +99,49 @@ const ActiveAlertsPanel = () => {
 
     const loadAlerts = async () => {
       try {
-        const limit = timeRange === 'all' ? 25 : 10;
-        let query = supabase
+        const cutoff = getTimeRangeCutoff(timeRange);
+
+        const displayLimit = timeRange === 'all' ? 25 : 10;
+        let displayQuery = supabase
           .from('device_alerts')
           .select('*')
           .eq('company_id', userCompany.company_id)
           .order('triggered_at', { ascending: false })
-          .limit(limit);
+          .limit(displayLimit);
 
         if (!showResolved) {
-          query = query.is('resolved_at', null);
+          displayQuery = displayQuery.is('resolved_at', null);
         }
-
-        const cutoff = getTimeRangeCutoff(timeRange);
         if (cutoff) {
-          query = query.gte('triggered_at', cutoff);
+          displayQuery = displayQuery.gte('triggered_at', cutoff);
         }
 
-        const { data, error } = await query;
+        let statsQuery = supabase
+          .from('device_alerts')
+          .select('severity')
+          .eq('company_id', userCompany.company_id)
+          .is('resolved_at', null);
 
-        if (error) throw error;
+        if (cutoff) {
+          statsQuery = statsQuery.gte('triggered_at', cutoff);
+        }
 
-        setAlerts(data || []);
+        const [displayResult, statsResult] = await Promise.all([
+          displayQuery,
+          statsQuery,
+        ]);
+
+        if (displayResult.error) throw displayResult.error;
+        setAlerts(displayResult.data || []);
+
+        if (!statsResult.error && statsResult.data) {
+          const data = statsResult.data;
+          setAlertStats({
+            critical: data.filter(a => a.severity === 'critical').length,
+            warning: data.filter(a => a.severity === 'warning').length,
+            total: data.length,
+          });
+        }
       } catch (error) {
         log.error('Error loading alerts:', error);
       } finally {
@@ -252,10 +280,9 @@ const ActiveAlertsPanel = () => {
     }
   };
 
-  // Count alerts by severity
-  const criticalCount = alerts.filter(a => a.severity === 'critical' && !a.resolved_at).length;
-  const warningCount = alerts.filter(a => a.severity === 'warning' && !a.resolved_at).length;
-  const activeCount = alerts.filter(a => !a.resolved_at).length;
+  const criticalCount = alertStats.critical;
+  const warningCount = alertStats.warning;
+  const activeCount = alertStats.total;
 
   if (loading) {
     return (

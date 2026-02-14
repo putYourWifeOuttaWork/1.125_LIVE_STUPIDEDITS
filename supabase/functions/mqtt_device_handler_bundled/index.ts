@@ -153,8 +153,8 @@ const PROTOCOL_TOPICS = {
 } as const;
 
 function formatNextWakeTime(timestamp: Date): string {
-  const hours = timestamp.getHours();
-  const minutes = timestamp.getMinutes();
+  const hours = timestamp.getUTCHours();
+  const minutes = timestamp.getUTCMinutes();
   const period = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;
   const displayMinutes = minutes.toString().padStart(2, '0');

@@ -224,7 +224,7 @@ BEGIN
       WHEN 'temperature' THEN AVG(di.temperature)
       WHEN 'humidity' THEN AVG(di.humidity)
     END AS metric_value,
-    di.device_id, d.device_code, d.site_id, s.name AS site_name, s.program_id, pp.name AS program_name
+    di.device_id, d.device_code::text, d.site_id, s.name::text AS site_name, s.program_id, pp.name::text AS program_name
   FROM device_images di
   JOIN devices d ON d.device_id = di.device_id
   JOIN sites s ON s.site_id = d.site_id
@@ -258,7 +258,7 @@ BEGIN
 
   RETURN QUERY
   WITH filtered_images AS (
-    SELECT di.device_id, d.device_code, d.site_id, s.name AS site_name, s.program_id, pp.name AS program_name,
+    SELECT di.device_id, d.device_code::text AS device_code, d.site_id, s.name::text AS site_name, s.program_id, pp.name::text AS program_name,
       di.mgi_score, di.temperature, di.humidity
     FROM device_images di
     JOIN devices d ON d.device_id = di.device_id
@@ -305,7 +305,7 @@ BEGIN
   RETURN QUERY
   SELECT date_trunc('day', di.captured_at) AS timestamp_bucket,
     CASE p_entity_type WHEN 'program' THEN pp.program_id WHEN 'site' THEN s.site_id WHEN 'device' THEN d.device_id END AS entity_id,
-    CASE p_entity_type WHEN 'program' THEN pp.name WHEN 'site' THEN s.name WHEN 'device' THEN d.device_code END AS entity_name,
+    CASE p_entity_type WHEN 'program' THEN pp.name::text WHEN 'site' THEN s.name::text WHEN 'device' THEN d.device_code::text END AS entity_name,
     m.metric_name,
     CASE m.metric_name
       WHEN 'mgi_score' THEN AVG(di.mgi_score)
@@ -363,11 +363,11 @@ BEGIN
   SELECT
     di.image_id,
     di.device_id,
-    d.device_code,
+    d.device_code::text,
     s.site_id,
-    s.name AS site_name,
+    s.name::text AS site_name,
     pp.program_id,
-    pp.name AS program_name,
+    pp.name::text AS program_name,
     di.site_device_session_id,
     di.wake_payload_id,
     di.captured_at,

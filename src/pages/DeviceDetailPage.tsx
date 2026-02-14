@@ -122,13 +122,25 @@ const DeviceDetailPage = () => {
         return <span className="text-amber-600">Activate device to calculate</span>;
       }
 
-      // Simple cron parser for common patterns
       const parts = device.wake_schedule_cron.split(' ');
       if (parts.length === 5) {
+        const minutes = parts[0];
         const hours = parts[1];
-        if (hours === '*/3') return <span className="text-gray-600">Every 3 hours (pending first wake)</span>;
-        if (hours === '*/6') return <span className="text-gray-600">Every 6 hours (pending first wake)</span>;
-        if (hours === '*/12') return <span className="text-gray-600">Every 12 hours (pending first wake)</span>;
+
+        if (minutes.startsWith('*/') && hours === '*') {
+          const interval = parseInt(minutes.replace('*/', ''));
+          if (!isNaN(interval) && interval > 0) {
+            return <span className="text-gray-600">Every {interval} minutes (pending first wake)</span>;
+          }
+        }
+
+        if (hours.startsWith('*/')) {
+          const interval = parseInt(hours.replace('*/', ''));
+          if (!isNaN(interval) && interval > 0) {
+            return <span className="text-gray-600">Every {interval} hours (pending first wake)</span>;
+          }
+        }
+
         if (hours.includes(',')) {
           return <span className="text-gray-600">{hours.split(',').length} times daily (pending first wake)</span>;
         }
