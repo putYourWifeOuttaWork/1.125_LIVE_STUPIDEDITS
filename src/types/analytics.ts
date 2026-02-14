@@ -349,6 +349,38 @@ export const AGGREGATION_LABELS: Record<AggregationFunction, string> = {
   stddev: 'Std Deviation',
 };
 
+export type SnapshotCadence = 'daily' | 'every_other_day' | 'weekly' | 'biweekly' | 'monthly';
+
+export const CADENCE_LABELS: Record<SnapshotCadence, string> = {
+  daily: 'Daily',
+  every_other_day: 'Every Other Day',
+  weekly: 'Weekly',
+  biweekly: 'Bi-Weekly',
+  monthly: 'Monthly',
+};
+
+export const CADENCE_DESCRIPTIONS: Record<SnapshotCadence, string> = {
+  daily: 'Capture a snapshot every day',
+  every_other_day: 'Capture a snapshot every 2 days',
+  weekly: 'Capture a snapshot once per week',
+  biweekly: 'Capture a snapshot every 2 weeks',
+  monthly: 'Capture a snapshot once per month',
+};
+
+export interface ReportSnapshotSchedule {
+  schedule_id: string;
+  report_id: string;
+  company_id: string;
+  enabled: boolean;
+  cadence: SnapshotCadence;
+  snapshot_time: string;
+  timezone: string;
+  last_run_at: string | null;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export const DEFAULT_REPORT_CONFIG: ReportConfiguration = {
   reportType: 'line',
   name: '',

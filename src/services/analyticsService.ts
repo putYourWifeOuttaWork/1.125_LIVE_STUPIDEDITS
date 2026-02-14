@@ -2,6 +2,8 @@ import { supabase } from '../lib/supabaseClient';
 import {
   CustomReport,
   ReportSnapshot,
+  ReportSnapshotSchedule,
+  SnapshotCadence,
   DeviceMetricData,
   AlertStatisticsData,
   SessionPerformanceData,
@@ -690,6 +692,72 @@ export async function deleteSnapshot(snapshotId: string): Promise<void> {
     console.error('Error deleting snapshot:', error);
     throw error;
   }
+}
+
+// ============================================================
+// SNAPSHOT SCHEDULE FUNCTIONS
+// ============================================================
+
+export async function fetchScheduleForReport(reportId: string): Promise<ReportSnapshotSchedule | null> {
+  const { data, error } = await supabase
+    .from('report_snapshot_schedules')
+    .select('*')
+    .eq('report_id', reportId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertSnapshotSchedule(params: {
+  reportId: string;
+  companyId: string;
+  cadence: SnapshotCadence;
+  snapshotTime: string;
+  timezone: string;
+  enabled?: boolean;
+}): Promise<ReportSnapshotSchedule> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('report_snapshot_schedules')
+    .upsert(
+      {
+        report_id: params.reportId,
+        company_id: params.companyId,
+        cadence: params.cadence,
+        snapshot_time: params.snapshotTime,
+        timezone: params.timezone,
+        enabled: params.enabled ?? true,
+        created_by_user_id: user.id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'report_id' }
+    )
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteSnapshotSchedule(scheduleId: string): Promise<void> {
+  const { error } = await supabase
+    .from('report_snapshot_schedules')
+    .delete()
+    .eq('schedule_id', scheduleId);
+
+  if (error) throw error;
+}
+
+export async function toggleSnapshotSchedule(scheduleId: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('report_snapshot_schedules')
+    .update({ enabled, updated_at: new Date().toISOString() })
+    .eq('schedule_id', scheduleId);
+
+  if (error) throw error;
 }
 
 /**

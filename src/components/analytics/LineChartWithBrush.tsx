@@ -155,7 +155,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
 
       svg.append('text')
         .attr('transform', 'rotate(90)')
-        .attr('y', -(width - 12))
+        .attr('y', -(effectiveWidth - 12))
         .attr('x', height / 2)
         .attr('text-anchor', 'middle')
         .attr('font-size', 12)

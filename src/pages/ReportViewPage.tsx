@@ -16,6 +16,8 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  CalendarClock,
+  Play,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -28,14 +30,20 @@ import SnapshotListPanel from '../components/analytics/SnapshotListPanel';
 import SnapshotViewer from '../components/analytics/SnapshotViewer';
 import SnapshotComparisonView from '../components/analytics/SnapshotComparisonView';
 import CreateSnapshotModal from '../components/analytics/CreateSnapshotModal';
+import SnapshotScheduleModal from '../components/analytics/SnapshotScheduleModal';
+import SnapshotTimelinePlayer from '../components/analytics/SnapshotTimelinePlayer';
+import { AnimatedLineChart } from '../components/analytics/AnimatedLineChart';
 import { useReportData, useDrillDown } from '../hooks/useReportData';
 import { useActiveCompany } from '../hooks/useActiveCompany';
 import { useUserRole } from '../hooks/useUserRole';
 import {
   ReportConfiguration,
   ReportSnapshot,
+  ReportSnapshotSchedule,
+  SnapshotCadence,
   METRIC_LABELS,
   METRIC_UNITS,
+  CADENCE_LABELS,
   HeatmapCell,
   TimeRange,
   TimeGranularity,
@@ -48,12 +56,17 @@ import {
   fetchSnapshotsForReport,
   createSnapshot,
   exportDataToCSV,
+  fetchScheduleForReport,
+  upsertSnapshotSchedule,
+  deleteSnapshotSchedule,
+  toggleSnapshotSchedule,
+  transformTimeSeriesForD3,
 } from '../services/analyticsService';
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
 
 type PageMode = 'live' | 'snapshots';
-type SnapshotView = 'list' | 'single' | 'compare';
+type SnapshotView = 'list' | 'single' | 'compare' | 'playback';
 
 export default function ReportViewPage() {
   const navigate = useNavigate();
@@ -67,6 +80,9 @@ export default function ReportViewPage() {
   const [viewingSnapshot, setViewingSnapshot] = useState<ReportSnapshot | null>(null);
   const [compareIds, setCompareIds] = useState<[string, string] | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const [playbackTransitionMs, setPlaybackTransitionMs] = useState(800);
 
   const [overrideConfig, setOverrideConfig] = useState<Partial<ReportConfiguration> | null>(null);
   const [brushRange, setBrushRange] = useState<[Date, Date] | null>(null);
@@ -90,6 +106,14 @@ export default function ReportViewPage() {
   } = useQuery({
     queryKey: ['report-snapshots', reportId],
     queryFn: () => fetchSnapshotsForReport(reportId!),
+    enabled: !!reportId,
+  });
+
+  const {
+    data: schedule,
+  } = useQuery({
+    queryKey: ['report-schedule', reportId],
+    queryFn: () => fetchScheduleForReport(reportId!),
     enabled: !!reportId,
   });
 
@@ -232,6 +256,83 @@ export default function ReportViewPage() {
     queryClient.invalidateQueries({ queryKey: ['report-snapshots', reportId] });
   };
 
+  const handleSaveSchedule = async (params: {
+    cadence: SnapshotCadence;
+    snapshotTime: string;
+    timezone: string;
+    enabled: boolean;
+  }) => {
+    if (!report || !activeCompanyId) return;
+    await upsertSnapshotSchedule({
+      reportId: report.report_id,
+      companyId: activeCompanyId,
+      cadence: params.cadence,
+      snapshotTime: params.snapshotTime,
+      timezone: params.timezone,
+      enabled: params.enabled,
+    });
+    queryClient.invalidateQueries({ queryKey: ['report-schedule', reportId] });
+    toast.success('Auto-snapshot schedule saved');
+  };
+
+  const handleDeleteSchedule = async () => {
+    if (!schedule) return;
+    await deleteSnapshotSchedule(schedule.schedule_id);
+    queryClient.invalidateQueries({ queryKey: ['report-schedule', reportId] });
+    toast.success('Auto-snapshot schedule removed');
+  };
+
+  const handleToggleSchedule = async (enabled: boolean) => {
+    if (!schedule) return;
+    await toggleSnapshotSchedule(schedule.schedule_id, enabled);
+    queryClient.invalidateQueries({ queryKey: ['report-schedule', reportId] });
+    toast.success(enabled ? 'Auto-snapshot resumed' : 'Auto-snapshot paused');
+  };
+
+  const handleStartPlayback = useCallback(() => {
+    setPlaybackIndex(0);
+    setSnapshotView('playback');
+  }, []);
+
+  const handlePlaybackIndexChange = useCallback((idx: number) => {
+    setPlaybackIndex(idx);
+  }, []);
+
+  const playbackChartData = useMemo(() => {
+    if (snapshotView !== 'playback' || sortedSnapshots.length === 0) return null;
+    const snap = sortedSnapshots[playbackIndex];
+    if (!snap?.data_snapshot?.timeSeries) return null;
+    const config = snap.configuration_snapshot;
+    const activeMetrics = config?.metrics?.map((m: any) => m.type) || ['mgi_score'];
+    return transformTimeSeriesForD3(snap.data_snapshot.timeSeries, activeMetrics);
+  }, [snapshotView, sortedSnapshots, playbackIndex]);
+
+  const playbackScaleGroups = useMemo(() => {
+    if (snapshotView !== 'playback' || sortedSnapshots.length === 0) return null;
+    const snap = sortedSnapshots[playbackIndex];
+    const config = snap?.configuration_snapshot;
+    const types = (config?.metrics || []).map((m: any) => m.type);
+    return groupMetricsByScale(types);
+  }, [snapshotView, sortedSnapshots, playbackIndex]);
+
+  const playbackMetricAxisInfo: MetricAxisInfo[] = useMemo(() => {
+    if (!playbackScaleGroups) return [];
+    return [
+      ...playbackScaleGroups.primary.map(m => ({
+        name: m,
+        label: METRIC_LABELS[m],
+        unit: METRIC_UNITS[m],
+        axis: 'primary' as const,
+      })),
+      ...playbackScaleGroups.secondary.map(m => ({
+        name: m,
+        label: METRIC_LABELS[m],
+        unit: METRIC_UNITS[m],
+        axis: 'secondary' as const,
+      })),
+    ];
+  }, [playbackScaleGroups]);
+
   const metricTypes = (effectiveConfig.metrics || []).map(m => m.type);
   const scaleGroups = groupMetricsByScale(metricTypes);
 
@@ -358,14 +459,26 @@ export default function ReportViewPage() {
               </Button>
             </>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowCreateModal(true)}
-            icon={<Camera className="w-4 h-4" />}
-          >
-            Snapshot
-          </Button>
+          <div className="flex items-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCreateModal(true)}
+              icon={<Camera className="w-4 h-4" />}
+              className="!rounded-r-none !border-r-0"
+            >
+              Snapshot
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowScheduleModal(true)}
+              className="!rounded-l-none !px-2"
+              title="Schedule auto-snapshots"
+            >
+              <CalendarClock className={`w-4 h-4 ${schedule?.enabled ? 'text-emerald-600' : ''}`} />
+            </Button>
+          </div>
           {isSuperAdmin && (
             <Button
               variant="outline"
@@ -410,8 +523,29 @@ export default function ReportViewPage() {
               {snapshotCount}
             </span>
           )}
+          {schedule?.enabled && (
+            <span className="ml-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Auto-snapshot active" />
+          )}
         </button>
       </div>
+
+      {schedule?.enabled && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700">
+          <CalendarClock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <span>
+            Auto-snapshot: <span className="font-medium">{CADENCE_LABELS[schedule.cadence]}</span> at{' '}
+            <span className="font-medium">
+              {schedule.snapshot_time.slice(0, 5)}
+            </span>
+          </span>
+          <button
+            onClick={() => setShowScheduleModal(true)}
+            className="ml-auto text-emerald-600 hover:text-emerald-800 font-medium underline underline-offset-2"
+          >
+            Manage
+          </button>
+        </div>
+      )}
 
       {mode === 'live' && (
         <>
@@ -545,14 +679,31 @@ export default function ReportViewPage() {
       {mode === 'snapshots' && (
         <>
           {snapshotView === 'list' && (
-            <SnapshotListPanel
-              snapshots={snapshots || []}
-              loading={loadingSnapshots}
-              onView={handleViewSnapshot}
-              onCompare={handleCompare}
-              onDeleted={invalidateSnapshots}
-              onRenamed={invalidateSnapshots}
-            />
+            <>
+              {sortedSnapshots.length >= 2 && (
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-sm text-gray-500">
+                    {sortedSnapshots.length} snapshots available
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleStartPlayback}
+                    icon={<Play className="w-4 h-4" />}
+                  >
+                    Play Timeline
+                  </Button>
+                </div>
+              )}
+              <SnapshotListPanel
+                snapshots={snapshots || []}
+                loading={loadingSnapshots}
+                onView={handleViewSnapshot}
+                onCompare={handleCompare}
+                onDeleted={invalidateSnapshots}
+                onRenamed={invalidateSnapshots}
+              />
+            </>
           )}
 
           {snapshotView === 'single' && viewingSnapshot && (
@@ -574,6 +725,59 @@ export default function ReportViewPage() {
                 onBack={handleBackToList}
               />
             )}
+
+          {snapshotView === 'playback' && sortedSnapshots.length >= 2 && (
+            <div className="space-y-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-blue-800">
+                  <Play className="w-4 h-4 text-blue-600" />
+                  Timeline Playback
+                </div>
+                <p className="text-xs text-blue-600 mt-1">
+                  Watch your data evolve over time with smooth animated transitions between snapshots.
+                </p>
+              </div>
+
+              <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="w-full overflow-x-auto">
+                  {playbackChartData && (
+                    <AnimatedLineChart
+                      data={playbackChartData}
+                      height={480}
+                      yAxisLabel={
+                        playbackScaleGroups?.primary
+                          .map(m => METRIC_LABELS[m]).join(' / ') || 'Value'
+                      }
+                      secondaryYAxisLabel={
+                        playbackScaleGroups?.secondary.length
+                          ? playbackScaleGroups.secondary
+                              .map(m => METRIC_LABELS[m]).join(' / ')
+                          : undefined
+                      }
+                      metricInfo={playbackMetricAxisInfo}
+                      transitionDuration={playbackTransitionMs}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <SnapshotTimelinePlayer
+                snapshots={sortedSnapshots}
+                currentIndex={playbackIndex}
+                onIndexChange={handlePlaybackIndexChange}
+                onClose={handleBackToList}
+                transitionDuration={playbackTransitionMs}
+              />
+
+              {sortedSnapshots[playbackIndex]?.data_snapshot?.dateRange && (
+                <div className="text-xs text-gray-400 px-1">
+                  Data range:{' '}
+                  {sortedSnapshots[playbackIndex].data_snapshot.dateRange.start} to{' '}
+                  {sortedSnapshots[playbackIndex].data_snapshot.dateRange.end}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -581,6 +785,15 @@ export default function ReportViewPage() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onConfirm={handleCreateSnapshot}
+      />
+
+      <SnapshotScheduleModal
+        isOpen={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        schedule={schedule || null}
+        onSave={handleSaveSchedule}
+        onDelete={handleDeleteSchedule}
+        onToggle={handleToggleSchedule}
       />
     </div>
   );
