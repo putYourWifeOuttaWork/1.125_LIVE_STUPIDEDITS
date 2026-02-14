@@ -200,6 +200,8 @@ END $$;
 -- ANALYTICS FUNCTIONS
 -- =====================================================
 
+DROP FUNCTION IF EXISTS get_analytics_time_series(uuid, timestamptz, timestamptz, uuid[], uuid[], uuid[], text[], text);
+
 CREATE OR REPLACE FUNCTION get_analytics_time_series(
   p_company_id uuid, p_time_start timestamptz, p_time_end timestamptz,
   p_program_ids uuid[] DEFAULT NULL, p_site_ids uuid[] DEFAULT NULL, p_device_ids uuid[] DEFAULT NULL,
@@ -231,6 +233,8 @@ BEGIN
   GROUP BY date_trunc('hour', di.captured_at), di.device_id, d.device_code, d.site_id, s.name, s.program_id, pp.name
   ORDER BY timestamp_bucket, metric_name, d.device_code;
 END; $$;
+
+DROP FUNCTION IF EXISTS get_analytics_aggregated(uuid, timestamptz, timestamptz, uuid[], uuid[], uuid[], text[], text, text);
 
 CREATE OR REPLACE FUNCTION get_analytics_aggregated(
   p_company_id uuid, p_time_start timestamptz, p_time_end timestamptz,
@@ -276,6 +280,8 @@ BEGIN
   GROUP BY group_key, group_id ORDER BY group_key, metric_name;
 END; $$;
 
+DROP FUNCTION IF EXISTS get_analytics_comparison(uuid, timestamptz, timestamptz, text, uuid[], text[], text);
+
 CREATE OR REPLACE FUNCTION get_analytics_comparison(
   p_company_id uuid, p_time_start timestamptz, p_time_end timestamptz,
   p_entity_type text, p_entity_ids uuid[], p_metrics text[] DEFAULT ARRAY['mgi_score'], p_interval text DEFAULT '1 day'
@@ -309,6 +315,8 @@ BEGIN
     )
   GROUP BY timestamp_bucket, entity_id, entity_name ORDER BY timestamp_bucket, entity_name, metric_name;
 END; $$;
+
+DROP FUNCTION IF EXISTS get_analytics_drill_down(uuid, timestamptz, timestamptz, uuid[], uuid[], uuid[], integer, integer);
 
 CREATE OR REPLACE FUNCTION get_analytics_drill_down(
   p_company_id uuid, p_time_start timestamptz, p_time_end timestamptz,
@@ -370,6 +378,8 @@ BEGIN
   OFFSET p_offset;
 END; $$;
 
+DROP FUNCTION IF EXISTS create_report_snapshot(uuid, text, text);
+
 CREATE OR REPLACE FUNCTION create_report_snapshot(p_report_id uuid, p_snapshot_name text, p_description text DEFAULT NULL)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_snapshot_id uuid; v_report_config jsonb; v_company_id uuid;
@@ -396,6 +406,8 @@ BEGIN
   RETURNING snapshot_id INTO v_snapshot_id;
   RETURN v_snapshot_id;
 END; $$;
+
+DROP FUNCTION IF EXISTS get_report_snapshot_data(uuid);
 
 CREATE OR REPLACE FUNCTION get_report_snapshot_data(p_snapshot_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
