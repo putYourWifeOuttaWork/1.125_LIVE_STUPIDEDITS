@@ -74,7 +74,7 @@ const DeviceSessionCard = ({ device, canEdit = false, onEdit }: DeviceSessionCar
   const [showImages, setShowImages] = useState(false);
 
   const successRate = device.expected_wakes_in_session > 0
-    ? Math.round((device.completed_wakes / device.expected_wakes_in_session) * 100)
+    ? Math.min(Math.round((device.completed_wakes / device.expected_wakes_in_session) * 100), 100)
     : 0;
 
   const getStatusColor = (status: string) => {

@@ -70,7 +70,7 @@ const SiteDeviceSessionCard = ({ session, testId }: SiteDeviceSessionCardProps) 
 
   const completionPercentage =
     session.expected_wake_count > 0
-      ? Math.round((session.completed_wake_count / session.expected_wake_count) * 100)
+      ? Math.min(Math.round((session.completed_wake_count / session.expected_wake_count) * 100), 100)
       : 0;
 
   return (

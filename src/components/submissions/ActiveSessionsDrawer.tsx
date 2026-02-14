@@ -380,11 +380,11 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                           <div className="w-full bg-gray-200 rounded-full h-1.5">
                             <div
                               className="bg-primary-600 h-1.5 rounded-full"
-                              style={{ width: `${session.progress_percent || 0}%` }}
+                              style={{ width: `${Math.min(session.progress_percent || 0, 100)}%` }}
                             ></div>
                           </div>
                           <span className="text-xs whitespace-nowrap">
-                            {Math.round(session.progress_percent || 0)}%
+                            {Math.min(Math.round(session.progress_percent || 0), 100)}%
                           </span>
                         </div>
 
