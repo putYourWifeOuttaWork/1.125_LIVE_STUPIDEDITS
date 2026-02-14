@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Edit,
@@ -11,6 +11,8 @@ import {
   Clock,
   User,
   Settings,
+  History,
+  Radio,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -19,11 +21,16 @@ import { BarChartWithBrush } from '../components/analytics/BarChartWithBrush';
 import HeatmapChart from '../components/analytics/HeatmapChart';
 import DrillDownPanel from '../components/analytics/DrillDownPanel';
 import TimeRangeSelector from '../components/analytics/TimeRangeSelector';
+import SnapshotListPanel from '../components/analytics/SnapshotListPanel';
+import SnapshotViewer from '../components/analytics/SnapshotViewer';
+import SnapshotComparisonView from '../components/analytics/SnapshotComparisonView';
+import CreateSnapshotModal from '../components/analytics/CreateSnapshotModal';
 import { useReportData, useDrillDown } from '../hooks/useReportData';
 import { useActiveCompany } from '../hooks/useActiveCompany';
 import { useUserRole } from '../hooks/useUserRole';
 import {
   ReportConfiguration,
+  ReportSnapshot,
   METRIC_LABELS,
   HeatmapCell,
   TimeRange,
@@ -32,17 +39,28 @@ import {
 } from '../types/analytics';
 import {
   fetchReportById,
+  fetchSnapshotsForReport,
   createSnapshot,
   exportDataToCSV,
 } from '../services/analyticsService';
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
 
+type PageMode = 'live' | 'snapshots';
+type SnapshotView = 'list' | 'single' | 'compare';
+
 export default function ReportViewPage() {
   const navigate = useNavigate();
   const { reportId } = useParams();
+  const queryClient = useQueryClient();
   const { activeCompanyId } = useActiveCompany();
   const { isSuperAdmin } = useUserRole();
+
+  const [mode, setMode] = useState<PageMode>('live');
+  const [snapshotView, setSnapshotView] = useState<SnapshotView>('list');
+  const [viewingSnapshot, setViewingSnapshot] = useState<ReportSnapshot | null>(null);
+  const [compareIds, setCompareIds] = useState<[string, string] | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const [overrideConfig, setOverrideConfig] = useState<Partial<ReportConfiguration> | null>(null);
   const [brushRange, setBrushRange] = useState<[Date, Date] | null>(null);
@@ -59,6 +77,17 @@ export default function ReportViewPage() {
     queryFn: () => fetchReportById(reportId!),
     enabled: !!reportId,
   });
+
+  const {
+    data: snapshots,
+    isLoading: loadingSnapshots,
+  } = useQuery({
+    queryKey: ['report-snapshots', reportId],
+    queryFn: () => fetchSnapshotsForReport(reportId!),
+    enabled: !!reportId,
+  });
+
+  const snapshotCount = snapshots?.length || 0;
 
   const effectiveConfig: ReportConfiguration = report
     ? { ...DEFAULT_REPORT_CONFIG, ...report.configuration, ...overrideConfig }
@@ -82,18 +111,6 @@ export default function ReportViewPage() {
     }
   );
 
-  // Debug logging for drill-down data
-  useEffect(() => {
-    if (brushRange) {
-      console.log('[ReportViewPage] Drill-down data:', {
-        brushRange,
-        drillData,
-        drillLoading,
-        recordsCount: drillData?.records?.length || 0,
-      });
-    }
-  }, [brushRange, drillData, drillLoading]);
-
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,10 +118,7 @@ export default function ReportViewPage() {
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        // Use contentRect.width which is the inner width of the container
-        // The container has p-4 padding applied via Tailwind (16px each side)
         const availableWidth = entry.contentRect.width;
-        // Use the full available width for better space utilization
         setChartWidth(availableWidth);
       }
     });
@@ -128,24 +142,23 @@ export default function ReportViewPage() {
     }
   }, []);
 
-  const handleSnapshot = async () => {
+  const handleCreateSnapshot = async (name: string, description: string) => {
     if (!report || !activeCompanyId) return;
-    try {
-      const snapshotData = {
-        timeSeries: rawTimeSeries,
-        dateRange,
-      };
-      await createSnapshot(
-        report.report_id,
-        activeCompanyId,
-        `Snapshot - ${format(new Date(), 'MMM d, yyyy HH:mm')}`,
-        snapshotData,
-        effectiveConfig
-      );
-      toast.success('Snapshot saved');
-    } catch {
-      toast.error('Failed to save snapshot');
-    }
+    const snapshotData = {
+      timeSeries: rawTimeSeries,
+      dateRange,
+    };
+    await createSnapshot(
+      report.report_id,
+      activeCompanyId,
+      name,
+      snapshotData,
+      effectiveConfig,
+      description || undefined
+    );
+    queryClient.invalidateQueries({ queryKey: ['report-snapshots', reportId] });
+    setShowCreateModal(false);
+    toast.success('Snapshot saved');
   };
 
   const handleExport = () => {
@@ -154,6 +167,26 @@ export default function ReportViewPage() {
     } else {
       toast.error('No data to export');
     }
+  };
+
+  const handleViewSnapshot = (snapshot: ReportSnapshot) => {
+    setViewingSnapshot(snapshot);
+    setSnapshotView('single');
+  };
+
+  const handleCompare = (ids: [string, string]) => {
+    setCompareIds(ids);
+    setSnapshotView('compare');
+  };
+
+  const handleBackToList = () => {
+    setSnapshotView('list');
+    setViewingSnapshot(null);
+    setCompareIds(null);
+  };
+
+  const invalidateSnapshots = () => {
+    queryClient.invalidateQueries({ queryKey: ['report-snapshots', reportId] });
   };
 
   const primaryMetricLabel =
@@ -184,6 +217,14 @@ export default function ReportViewPage() {
       </div>
     );
   }
+
+  const compareSnapshots =
+    compareIds && snapshots
+      ? [
+          snapshots.find((s) => s.snapshot_id === compareIds[0]),
+          snapshots.find((s) => s.snapshot_id === compareIds[1]),
+        ]
+      : [null, null];
 
   return (
     <div className="space-y-4">
@@ -222,26 +263,30 @@ export default function ReportViewPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {mode === 'live' && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSettings(!showSettings)}
+                icon={<Settings className="w-4 h-4" />}
+              >
+                {showSettings ? 'Hide' : 'Adjust'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                icon={<Download className="w-4 h-4" />}
+              >
+                Export
+              </Button>
+            </>
+          )}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setShowSettings(!showSettings)}
-            icon={<Settings className="w-4 h-4" />}
-          >
-            {showSettings ? 'Hide' : 'Adjust'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            icon={<Download className="w-4 h-4" />}
-          >
-            Export
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSnapshot}
+            onClick={() => setShowCreateModal(true)}
             icon={<Camera className="w-4 h-4" />}
           >
             Snapshot
@@ -259,121 +304,197 @@ export default function ReportViewPage() {
         </div>
       </div>
 
-      {showSettings && (
-        <Card className="p-4">
-          <TimeRangeSelector
-            timeRange={overrideConfig?.timeRange || effectiveConfig.timeRange}
-            customStartDate={
-              overrideConfig?.customStartDate || effectiveConfig.customStartDate
-            }
-            customEndDate={
-              overrideConfig?.customEndDate || effectiveConfig.customEndDate
-            }
-            timeGranularity={
-              overrideConfig?.timeGranularity || effectiveConfig.timeGranularity
-            }
-            onTimeRangeChange={(r: TimeRange) =>
-              setOverrideConfig((prev) => ({ ...prev, timeRange: r }))
-            }
-            onCustomStartDateChange={(d: string) =>
-              setOverrideConfig((prev) => ({ ...prev, customStartDate: d }))
-            }
-            onCustomEndDateChange={(d: string) =>
-              setOverrideConfig((prev) => ({ ...prev, customEndDate: d }))
-            }
-            onTimeGranularityChange={(g: TimeGranularity) =>
-              setOverrideConfig((prev) => ({ ...prev, timeGranularity: g }))
-            }
-          />
-        </Card>
-      )}
-
-      <div ref={chartContainerRef} className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        {dataLoading && (
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Refreshing data...
-          </div>
-        )}
-
-        <div className="w-full overflow-x-auto">
-          {effectiveConfig.reportType === 'line' ||
-          effectiveConfig.reportType === 'dot' ? (
-            <LineChartWithBrush
-              data={lineChartData || { timestamps: [], series: [] }}
-              width={chartWidth}
-              height={480}
-              yAxisLabel={primaryMetricLabel}
-              onBrushEnd={handleBrush}
-              loading={dataLoading && !lineChartData}
-            />
-          ) : effectiveConfig.reportType === 'bar' ? (
-            <BarChartWithBrush
-              data={barChartData || { labels: [], datasets: [] }}
-              width={chartWidth}
-              height={480}
-              yAxisLabel={primaryMetricLabel}
-              loading={dataLoading && !barChartData}
-            />
-          ) : effectiveConfig.reportType === 'heatmap_temporal' ? (
-            <HeatmapChart
-              data={heatmapData}
-              width={chartWidth}
-              height={Math.max(350, 480)}
-              onCellClick={handleHeatmapClick}
-              loading={dataLoading && heatmapData.length === 0}
-              yLabel={
-                effectiveConfig.groupBy === 'device'
-                  ? 'Devices'
-                  : effectiveConfig.groupBy === 'site'
-                    ? 'Sites'
-                    : 'Programs'
-              }
-              xLabel="Time Period"
-            />
-          ) : null}
-        </div>
-
-        {(effectiveConfig.reportType === 'line' ||
-          effectiveConfig.reportType === 'dot') && (
-          <p className="mt-2 text-xs text-gray-400 italic">
-            Click and drag on the chart to drill down into specific time ranges
-          </p>
-        )}
-        {effectiveConfig.reportType === 'heatmap_temporal' && (
-          <p className="mt-2 text-xs text-gray-400 italic">
-            Click on any cell to see detailed records for that entity and time
-            period
-          </p>
-        )}
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        <button
+          onClick={() => { setMode('live'); handleBackToList(); }}
+          className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-sm font-medium transition-colors ${
+            mode === 'live'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <Radio className="w-4 h-4" />
+          Live Data
+        </button>
+        <button
+          onClick={() => setMode('snapshots')}
+          className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-sm font-medium transition-colors ${
+            mode === 'snapshots'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          Snapshots
+          {snapshotCount > 0 && (
+            <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${
+              mode === 'snapshots'
+                ? 'bg-primary-100 text-primary-700'
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {snapshotCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      {brushRange && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-700">
-              Drill-down:{' '}
-              {format(brushRange[0], 'MMM d, HH:mm')} -{' '}
-              {format(brushRange[1], 'MMM d, HH:mm')}
-            </h3>
-            <button
-              onClick={() => {
-                setBrushRange(null);
-                setDrillOffset(0);
-              }}
-              className="text-xs text-gray-500 hover:text-gray-700"
-            >
-              Clear selection
-            </button>
+      {mode === 'live' && (
+        <>
+          {showSettings && (
+            <Card className="p-4">
+              <TimeRangeSelector
+                timeRange={overrideConfig?.timeRange || effectiveConfig.timeRange}
+                customStartDate={
+                  overrideConfig?.customStartDate || effectiveConfig.customStartDate
+                }
+                customEndDate={
+                  overrideConfig?.customEndDate || effectiveConfig.customEndDate
+                }
+                timeGranularity={
+                  overrideConfig?.timeGranularity || effectiveConfig.timeGranularity
+                }
+                onTimeRangeChange={(r: TimeRange) =>
+                  setOverrideConfig((prev) => ({ ...prev, timeRange: r }))
+                }
+                onCustomStartDateChange={(d: string) =>
+                  setOverrideConfig((prev) => ({ ...prev, customStartDate: d }))
+                }
+                onCustomEndDateChange={(d: string) =>
+                  setOverrideConfig((prev) => ({ ...prev, customEndDate: d }))
+                }
+                onTimeGranularityChange={(g: TimeGranularity) =>
+                  setOverrideConfig((prev) => ({ ...prev, timeGranularity: g }))
+                }
+              />
+            </Card>
+          )}
+
+          <div ref={chartContainerRef} className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            {dataLoading && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Refreshing data...
+              </div>
+            )}
+
+            <div className="w-full overflow-x-auto">
+              {effectiveConfig.reportType === 'line' ||
+              effectiveConfig.reportType === 'dot' ? (
+                <LineChartWithBrush
+                  data={lineChartData || { timestamps: [], series: [] }}
+                  width={chartWidth}
+                  height={480}
+                  yAxisLabel={primaryMetricLabel}
+                  onBrushEnd={handleBrush}
+                  loading={dataLoading && !lineChartData}
+                />
+              ) : effectiveConfig.reportType === 'bar' ? (
+                <BarChartWithBrush
+                  data={barChartData || { labels: [], datasets: [] }}
+                  width={chartWidth}
+                  height={480}
+                  yAxisLabel={primaryMetricLabel}
+                  loading={dataLoading && !barChartData}
+                />
+              ) : effectiveConfig.reportType === 'heatmap_temporal' ? (
+                <HeatmapChart
+                  data={heatmapData}
+                  width={chartWidth}
+                  height={Math.max(350, 480)}
+                  onCellClick={handleHeatmapClick}
+                  loading={dataLoading && heatmapData.length === 0}
+                  yLabel={
+                    effectiveConfig.groupBy === 'device'
+                      ? 'Devices'
+                      : effectiveConfig.groupBy === 'site'
+                        ? 'Sites'
+                        : 'Programs'
+                  }
+                  xLabel="Time Period"
+                />
+              ) : null}
+            </div>
+
+            {(effectiveConfig.reportType === 'line' ||
+              effectiveConfig.reportType === 'dot') && (
+              <p className="mt-2 text-xs text-gray-400 italic">
+                Click and drag on the chart to drill down into specific time ranges
+              </p>
+            )}
+            {effectiveConfig.reportType === 'heatmap_temporal' && (
+              <p className="mt-2 text-xs text-gray-400 italic">
+                Click on any cell to see detailed records for that entity and time
+                period
+              </p>
+            )}
           </div>
-          <DrillDownPanel
-            records={drillData?.records || []}
-            hasMore={drillData?.hasMore || false}
-            loading={drillLoading}
-            onLoadMore={() => setDrillOffset((prev) => prev + 50)}
-          />
-        </div>
+
+          {brushRange && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-700">
+                  Drill-down:{' '}
+                  {format(brushRange[0], 'MMM d, HH:mm')} -{' '}
+                  {format(brushRange[1], 'MMM d, HH:mm')}
+                </h3>
+                <button
+                  onClick={() => {
+                    setBrushRange(null);
+                    setDrillOffset(0);
+                  }}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <DrillDownPanel
+                records={drillData?.records || []}
+                hasMore={drillData?.hasMore || false}
+                loading={drillLoading}
+                onLoadMore={() => setDrillOffset((prev) => prev + 50)}
+              />
+            </div>
+          )}
+        </>
       )}
+
+      {mode === 'snapshots' && (
+        <>
+          {snapshotView === 'list' && (
+            <SnapshotListPanel
+              snapshots={snapshots || []}
+              loading={loadingSnapshots}
+              onView={handleViewSnapshot}
+              onCompare={handleCompare}
+              onDeleted={invalidateSnapshots}
+              onRenamed={invalidateSnapshots}
+            />
+          )}
+
+          {snapshotView === 'single' && viewingSnapshot && (
+            <SnapshotViewer
+              snapshot={viewingSnapshot}
+              onBack={handleBackToList}
+            />
+          )}
+
+          {snapshotView === 'compare' &&
+            compareSnapshots[0] &&
+            compareSnapshots[1] && (
+              <SnapshotComparisonView
+                snapshotA={compareSnapshots[0]}
+                snapshotB={compareSnapshots[1]}
+                onBack={handleBackToList}
+              />
+            )}
+        </>
+      )}
+
+      <CreateSnapshotModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onConfirm={handleCreateSnapshot}
+      />
     </div>
   );
 }

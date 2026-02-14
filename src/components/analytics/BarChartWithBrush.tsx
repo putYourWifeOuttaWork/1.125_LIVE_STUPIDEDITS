@@ -227,7 +227,7 @@ export const BarChartWithBrush: React.FC<BarChartWithBrushProps> = ({
       {title && (
         <h3 className="text-lg font-medium text-gray-900 mb-4">{title}</h3>
       )}
-      <svg ref={svgRef} className="border border-gray-200 rounded-lg bg-white" />
+      <svg ref={svgRef} className="w-full border border-gray-200 rounded-lg bg-white" />
     </div>
   );
 };

@@ -620,6 +620,29 @@ export async function fetchSnapshotsForReport(reportId: string): Promise<ReportS
 }
 
 /**
+ * Update a snapshot's name and/or description
+ */
+export async function updateSnapshot(
+  snapshotId: string,
+  updates: { snapshot_name?: string; description?: string }
+): Promise<ReportSnapshot> {
+  try {
+    const { data, error } = await supabase
+      .from('report_snapshots')
+      .update(updates)
+      .eq('snapshot_id', snapshotId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error updating snapshot:', error);
+    throw error;
+  }
+}
+
+/**
  * Delete a snapshot
  */
 export async function deleteSnapshot(snapshotId: string): Promise<void> {

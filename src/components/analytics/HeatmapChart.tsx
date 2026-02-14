@@ -276,7 +276,7 @@ export default function HeatmapChart({
       )}
       <svg
         ref={svgRef}
-        className="border border-gray-200 rounded-lg bg-white"
+        className="w-full border border-gray-200 rounded-lg bg-white"
       />
     </div>
   );
