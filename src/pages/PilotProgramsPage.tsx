@@ -62,8 +62,8 @@ const PilotProgramsPage = () => {
   }
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex items-center mb-6">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex items-center">
         <button
           onClick={() => navigate('/home')}
           className="mr-4 p-2 rounded-full hover:bg-gray-100"
@@ -90,7 +90,7 @@ const PilotProgramsPage = () => {
 
       {/* Company Context Banner */}
       {userCompany && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start space-x-3">
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start space-x-3">
           <Building className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-blue-900">
@@ -109,7 +109,7 @@ const PilotProgramsPage = () => {
         </div>
       )}
       
-      <div className="relative mb-6">
+      <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <Search className="h-5 w-5 text-gray-400" />
         </div>
@@ -124,7 +124,7 @@ const PilotProgramsPage = () => {
       </div>
 
       {programs.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200" data-testid="empty-programs-message">
+        <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200" data-testid="empty-programs-message">
           <Leaf className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-lg font-medium text-gray-900">No pilot programs for {userCompany?.name || 'this company'}</h3>
           <p className="mt-1 text-sm text-gray-500">

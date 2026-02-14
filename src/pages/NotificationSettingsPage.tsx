@@ -6,7 +6,7 @@ import { useAuthStore } from '../stores/authStore';
 import useCompanies from '../hooks/useCompanies';
 import { toast } from 'react-toastify';
 import Button from '../components/common/Button';
-import Card from '../components/common/Card';
+import Card, { CardHeader, CardContent } from '../components/common/Card';
 import { useNotifications } from '../hooks/useNotifications';
 
 interface NotificationPreferences {
@@ -151,10 +151,10 @@ export default function NotificationSettingsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="animate-fade-in max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Notification Settings</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Notification Settings</h1>
           <p className="text-gray-600 mt-1">Manage how you receive alert notifications</p>
         </div>
         <Button onClick={handleSave} disabled={saving}>
@@ -165,12 +165,13 @@ export default function NotificationSettingsPage() {
 
       {/* Notification Channels */}
       <Card>
-        <div className="p-6 space-y-6">
-          <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+        <CardHeader>
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Bell className="w-5 h-5" />
             Notification Channels
           </h2>
-
+        </CardHeader>
+        <CardContent className="space-y-6">
           {/* Email */}
           <div className="flex items-start gap-4">
             <div className="flex-shrink-0 mt-1">
@@ -273,17 +274,19 @@ export default function NotificationSettingsPage() {
               </div>
             </div>
           </div>
-        </div>
+        </CardContent>
       </Card>
 
       {/* Alert Types */}
       <Card>
-        <div className="p-6 space-y-4">
-          <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+        <CardHeader>
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <AlertCircle className="w-5 h-5" />
             Alert Severity Levels
           </h2>
-          <p className="text-sm text-gray-600">Choose which alert severities you want to receive</p>
+          <p className="text-sm text-gray-600 mt-1">Choose which alert severities you want to receive</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
 
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -310,15 +313,15 @@ export default function NotificationSettingsPage() {
               </label>
             ))}
           </div>
-        </div>
+        </CardContent>
       </Card>
 
       {/* Quiet Hours */}
       <Card>
-        <div className="p-6 space-y-4">
+        <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <Clock className="w-5 h-5" />
                 Quiet Hours
               </h2>
@@ -338,9 +341,10 @@ export default function NotificationSettingsPage() {
               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
-
-          {preferences.quiet_hours_enabled && (
-            <div className="grid grid-cols-2 gap-4 mt-4">
+        </CardHeader>
+        {preferences.quiet_hours_enabled && (
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
                 <input
@@ -364,18 +368,19 @@ export default function NotificationSettingsPage() {
                 />
               </div>
             </div>
-          )}
-        </div>
+          </CardContent>
+        )}
       </Card>
 
       {/* Advanced Settings */}
       <Card>
-        <div className="p-6 space-y-4">
-          <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+        <CardHeader>
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Volume2 className="w-5 h-5" />
             Advanced Settings
           </h2>
-
+        </CardHeader>
+        <CardContent>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Minimum Notification Interval
@@ -397,7 +402,7 @@ export default function NotificationSettingsPage() {
               Prevent notification spam by setting a minimum time between alerts
             </p>
           </div>
-        </div>
+        </CardContent>
       </Card>
 
       {/* Save Button (Bottom) */}

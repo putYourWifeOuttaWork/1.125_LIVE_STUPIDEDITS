@@ -136,7 +136,7 @@ const HomePage = () => {
   }
 
   return (
-     <div className="animate-fade-in space-y-4">
+     <div className="animate-fade-in space-y-6">
       {/* Tier 1: Company Context Banner (Super Admin Only) + Header */}
       {isSuperAdmin && activeCompanyId && (
         <Card className="border-l-4 border-l-blue-600">
@@ -237,7 +237,7 @@ const HomePage = () => {
               </CardHeader>
               <CardContent>
                 {devicesLoading ? (
-                  <div className="flex justify-center py-12">
+                  <div className="flex justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
                 ) : sessionDevices.length > 0 && sessionSiteData.length && sessionSiteData.width ? (
@@ -252,7 +252,7 @@ const HomePage = () => {
                     showControls={true}
                   />
                 ) : (
-                  <div className="text-center py-12 bg-gray-50 rounded-lg">
+                  <div className="text-center py-8 bg-gray-50 rounded-lg">
                     <MapPin className="mx-auto h-16 w-16 text-gray-300" />
                     <p className="text-gray-600 mt-4 font-medium">Site Map Not Ready</p>
                     <p className="text-sm text-gray-500 mt-2">

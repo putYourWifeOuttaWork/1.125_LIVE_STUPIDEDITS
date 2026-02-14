@@ -156,7 +156,7 @@ const AppLayout = () => {
     <div className="min-h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <header className="bg-primary-700 text-white shadow-md" data-testid="app-header">
-        <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-3">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-2 sm:py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 sm:space-x-4">
               {/* Mobile menu button */}
@@ -444,13 +444,13 @@ const AppLayout = () => {
       )}
 
       {/* Main content */}
-      <main className="flex-grow container mx-auto px-3 sm:px-4 py-4 md:py-6 md:px-6" data-testid="app-main-content">
+      <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6" data-testid="app-main-content">
         <Outlet />
       </main>
 
       {/* Footer */}
       <footer className="bg-gray-100 border-t border-gray-200 py-3 sm:py-4 mt-auto" data-testid="app-footer">
-        <div className="container mx-auto px-4 text-center text-xs sm:text-sm text-gray-600">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-xs sm:text-sm text-gray-600">
           <p>© {new Date().getFullYear()} GRM TEK - GasX InVivo Pilot Program Platform - Version 1.120. All rights reserved.</p>
         </div>
       </footer>

@@ -76,7 +76,7 @@ const DevicesPage = () => {
 
   if (!isAdmin) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center py-8">
         <Cpu className="mx-auto h-12 w-12 text-gray-400" />
         <h3 className="mt-2 text-lg font-medium text-gray-900">Access Denied</h3>
         <p className="mt-1 text-sm text-gray-500">
@@ -123,8 +123,8 @@ const DevicesPage = () => {
   });
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Device Registry</h1>
           <p className="text-gray-600 mt-1">
@@ -157,7 +157,7 @@ const DevicesPage = () => {
       </div>
 
       {isSuperAdmin && unmappedDevices.length > 0 && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-start">
             <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
             <div className="flex-1">
@@ -167,7 +167,7 @@ const DevicesPage = () => {
               <p className="text-sm text-blue-700 mt-1">
                 These devices are not assigned to any company. Click to assign them to a site and company.
               </p>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {unmappedDevices.map((device) => (
                   <div key={device.device_id} className="bg-white rounded-md border border-blue-300 p-3">
                     <div className="flex justify-between items-start">
@@ -205,7 +205,7 @@ const DevicesPage = () => {
       )}
 
       {pendingDevices.length > 0 && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start">
             <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5 mr-3 flex-shrink-0" />
             <div className="flex-1">
@@ -215,7 +215,7 @@ const DevicesPage = () => {
               <p className="text-sm text-yellow-700 mt-1">
                 New devices have been provisioned and need to be assigned to sites.
               </p>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {pendingDevices.map((device) => (
                   <div key={device.device_id} className="bg-white rounded-md border border-yellow-300 p-3">
                     <div className="flex justify-between items-start">
@@ -251,7 +251,7 @@ const DevicesPage = () => {
         </div>
       )}
 
-      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-gray-400" />
@@ -310,7 +310,7 @@ const DevicesPage = () => {
       </div>
 
       {filteredDevices.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
           <Cpu className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-lg font-medium text-gray-900">No devices found</h3>
           <p className="mt-1 text-sm text-gray-500">

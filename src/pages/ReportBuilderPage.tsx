@@ -67,7 +67,7 @@ export default function ReportBuilderPage() {
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setChartWidth(Math.max(400, entry.contentRect.width - 48));
+        setChartWidth(Math.max(280, entry.contentRect.width - 48));
       }
     });
     observer.observe(node);
@@ -158,7 +158,7 @@ export default function ReportBuilderPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="animate-fade-in space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
@@ -209,8 +209,8 @@ export default function ReportBuilderPage() {
         </div>
       </div>
 
-      <div className="flex gap-6 items-start">
-        <div className="w-80 flex-shrink-0 bg-white rounded-lg shadow-sm border border-gray-200 p-4 sticky top-4 max-h-[calc(100vh-120px)] overflow-y-auto">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        <div className="w-full lg:w-80 lg:flex-shrink-0 bg-white rounded-lg shadow-sm border border-gray-200 p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-120px)] overflow-y-auto">
           <ReportConfigPanel config={config} onChange={setConfig} />
 
           {!previewEnabled && (

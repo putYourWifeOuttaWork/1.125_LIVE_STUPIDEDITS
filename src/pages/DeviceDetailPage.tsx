@@ -55,7 +55,7 @@ const DeviceDetailPage = () => {
 
   if (!device) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center py-8">
         <h3 className="text-lg font-medium text-gray-900">Device not found</h3>
         <p className="mt-1 text-sm text-gray-500">
           The device you're looking for doesn't exist or you don't have access to it.
@@ -152,8 +152,8 @@ const DeviceDetailPage = () => {
   };
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex items-center mb-6">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex items-center">
         <button
           onClick={() => navigate('/devices')}
           className="mr-4 p-2 rounded-full hover:bg-gray-100"
@@ -167,7 +167,7 @@ const DeviceDetailPage = () => {
           </h1>
           <p className="text-gray-600 mt-1 font-mono text-sm">{device.device_code}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <DeviceStatusBadge
             lastSeenAt={device.last_seen_at}
             isActive={device.is_active}
@@ -250,9 +250,9 @@ const DeviceDetailPage = () => {
         </div>
       </div>
 
-      <div className="mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
+      <div>
+        <div className="border-b border-gray-200 overflow-x-auto">
+          <nav className="-mb-px flex space-x-6 min-w-max">
             <button
               onClick={() => setActiveTab('overview')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${

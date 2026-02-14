@@ -256,7 +256,7 @@ const AuditLogPage = () => {
 
   if (!programId || !selectedProgram) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center py-8">
         <p className="text-gray-600">No program selected. Please select a program first.</p>
         <Button
           variant="primary"
@@ -291,8 +291,8 @@ const AuditLogPage = () => {
   };
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex items-center mb-6">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex items-center">
         <button
           onClick={() => navigate(getBackNavigationPath())}
           className="mr-4 p-2 rounded-full hover:bg-gray-100"
@@ -310,7 +310,7 @@ const AuditLogPage = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm mb-6">
+      <div className="bg-white rounded-lg shadow-sm">
         <div className="p-4 border-b border-gray-100 flex justify-between items-center">
           <div className="flex items-center">
             <Clock className="text-primary-500 mr-2" size={18} />

@@ -174,7 +174,7 @@ export default function ReportViewPage() {
       const rect = node.getBoundingClientRect();
       const padding = 32;
       if (rect.width > 0) {
-        setChartWidth(Math.max(400, rect.width - padding));
+        setChartWidth(Math.max(280, rect.width - padding));
       }
     };
 
@@ -182,7 +182,7 @@ export default function ReportViewPage() {
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setChartWidth(Math.max(400, entry.contentRect.width));
+        setChartWidth(Math.max(280, entry.contentRect.width));
       }
     });
     observer.observe(node);
@@ -394,21 +394,21 @@ export default function ReportViewPage() {
       : [null, null];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => navigate('/analytics')}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 truncate">
               {report.name}
             </h1>
             {report.description && (
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">
                 {report.description}
               </p>
             )}
@@ -429,7 +429,7 @@ export default function ReportViewPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
           {mode === 'live' && (
             <>
               <Button
@@ -492,7 +492,7 @@ export default function ReportViewPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-gray-200">
+      <div className="flex items-center gap-1 border-b border-gray-200 overflow-x-auto">
         <button
           onClick={() => { setMode('live'); handleBackToList(); }}
           className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-sm font-medium transition-colors ${

@@ -141,8 +141,8 @@ const SitesPage = () => {
   // Only show loading screen on initial load when we have no data
   if ((programLoading || sitesLoading) && sites.length === 0) {
     return (
-      <div className="animate-fade-in">
-        <div className="flex items-center mb-6">
+      <div className="animate-fade-in space-y-6">
+        <div className="flex items-center">
           <button
             onClick={() => navigate('/programs')}
             className="mr-4 p-2 rounded-full hover:bg-gray-100"
@@ -166,7 +166,7 @@ const SitesPage = () => {
 
   if (!selectedProgram) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center py-8">
         <p className="text-gray-600">Program not found. Please select a program first.</p>
         <Button
           variant="primary"
@@ -180,8 +180,8 @@ const SitesPage = () => {
   }
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex items-center mb-6">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex items-center">
         <button
           onClick={() => navigate('/programs')}
           className="mr-4 p-2 rounded-full hover:bg-gray-100"
@@ -230,7 +230,7 @@ const SitesPage = () => {
       </div>
 
       {sites.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200" data-testid="empty-sites-message">
+        <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200" data-testid="empty-sites-message">
           <ArrowLeft className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-lg font-medium text-gray-900">No sites yet</h3>
           <p className="mt-1 text-sm text-gray-500">Get started by adding your first site to this program.</p>

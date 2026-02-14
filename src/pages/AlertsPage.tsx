@@ -414,7 +414,7 @@ const AlertsPage = () => {
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="space-y-4">
+    <div className="animate-fade-in space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -661,12 +661,12 @@ const AlertsPage = () => {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-12">
+            <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
               <p className="text-gray-600 mt-4">Loading alerts...</p>
             </div>
           ) : alerts.length === 0 ? (
-            <div className="text-center py-12">
+            <div className="text-center py-8">
               <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
               <p className="text-lg font-medium text-gray-900">No alerts found</p>
               <p className="text-sm text-gray-600 mt-1">
@@ -761,7 +761,7 @@ const AlertsPage = () => {
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                         {!alert.resolved_at && (
                           <Button
                             variant="outline"

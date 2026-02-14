@@ -41,17 +41,17 @@ const CompanyManagementPage = () => {
   const canEditCompany = isAdmin || isSuperAdmin;
 
   return (
-    <div className="animate-fade-in">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Company Management</h1>
+    <div className="animate-fade-in space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900">Company Management</h1>
 
       {error && (
-        <div className="bg-error-50 border border-error-200 text-error-700 px-4 py-3 rounded mb-6">
+        <div className="bg-error-50 border border-error-200 text-error-700 px-4 py-3 rounded">
           {error}
         </div>
       )}
 
       {!userCompany ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
           <Building className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-lg font-medium text-gray-900">No Company Found</h3>
           <p className="mt-1 text-sm text-gray-500">

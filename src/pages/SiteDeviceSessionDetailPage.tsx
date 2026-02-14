@@ -1162,7 +1162,7 @@ const SiteDeviceSessionDetailPage = () => {
 
   if (!session) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center py-8">
         <AlertCircle className="mx-auto h-12 w-12 text-gray-400" />
         <h3 className="mt-2 text-sm font-medium text-gray-900">Session not found</h3>
         <p className="mt-1 text-sm text-gray-500">The requested device session could not be found.</p>
@@ -2165,7 +2165,7 @@ const SiteDeviceSessionDetailPage = () => {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
             </div>
           ) : devices.length === 0 ? (
-            <div className="text-center py-12">
+            <div className="text-center py-8">
               <Activity className="mx-auto h-16 w-16 text-gray-300" />
               <p className="text-gray-600 mt-4 text-lg">No devices found in this session</p>
             </div>
@@ -2981,7 +2981,7 @@ const SiteDeviceSessionDetailPage = () => {
 
                 {/* No Images State */}
                 {devices.every(d => !d.images || d.images.length === 0) && (
-                  <div className="text-center py-12">
+                  <div className="text-center py-8">
                     <ImageIcon className="mx-auto h-16 w-16 text-gray-300" />
                     <h3 className="mt-4 text-lg font-medium text-gray-900">No images captured yet</h3>
                     <p className="mt-2 text-sm text-gray-500">

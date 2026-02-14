@@ -202,7 +202,7 @@ const SiteTemplateManagementPage = () => {
   
   if (!selectedSite) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center py-8">
         <p className="text-gray-600">Site not found. Please select a site first.</p>
         <Button
           variant="primary"
@@ -216,8 +216,8 @@ const SiteTemplateManagementPage = () => {
   }
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex items-center mb-6">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex items-center">
         <button
           onClick={handleBack}
           className="mr-4 p-2 rounded-full hover:bg-gray-100"
@@ -235,7 +235,7 @@ const SiteTemplateManagementPage = () => {
 
       {/* Device Mapping Section - Priority placement at top */}
       {!isEditing && selectedSite && (
-        <Card className="mb-6">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
               <Camera className="text-primary-600" size={20} />
@@ -762,7 +762,7 @@ const SiteTemplateManagementPage = () => {
           </CardContent>
         </Card>
       ) : (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
           <FileText className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-lg font-medium text-gray-900">No Template Defined</h3>
           <p className="mt-1 text-sm text-gray-500">
