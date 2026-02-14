@@ -35,11 +35,14 @@ import {
   ReportConfiguration,
   ReportSnapshot,
   METRIC_LABELS,
+  METRIC_UNITS,
   HeatmapCell,
   TimeRange,
   TimeGranularity,
   DEFAULT_REPORT_CONFIG,
+  groupMetricsByScale,
 } from '../types/analytics';
+import type { MetricAxisInfo } from '../components/analytics/LineChartWithBrush';
 import {
   fetchReportById,
   fetchSnapshotsForReport,
@@ -215,10 +218,33 @@ export default function ReportViewPage() {
     queryClient.invalidateQueries({ queryKey: ['report-snapshots', reportId] });
   };
 
+  const metricTypes = (effectiveConfig.metrics || []).map(m => m.type);
+  const scaleGroups = groupMetricsByScale(metricTypes);
+
   const primaryMetricLabel =
-    effectiveConfig.metrics?.length > 0
-      ? METRIC_LABELS[effectiveConfig.metrics[0].type]
+    scaleGroups.primary.length > 0
+      ? scaleGroups.primary.map(m => METRIC_LABELS[m]).join(' / ')
       : 'Value';
+
+  const secondaryMetricLabel =
+    scaleGroups.secondary.length > 0
+      ? scaleGroups.secondary.map(m => METRIC_LABELS[m]).join(' / ')
+      : undefined;
+
+  const metricAxisInfo: MetricAxisInfo[] = [
+    ...scaleGroups.primary.map(m => ({
+      name: m,
+      label: METRIC_LABELS[m],
+      unit: METRIC_UNITS[m],
+      axis: 'primary' as const,
+    })),
+    ...scaleGroups.secondary.map(m => ({
+      name: m,
+      label: METRIC_LABELS[m],
+      unit: METRIC_UNITS[m],
+      axis: 'secondary' as const,
+    })),
+  ];
 
   if (loadingReport) {
     return (
@@ -427,6 +453,8 @@ export default function ReportViewPage() {
                   width={chartWidth}
                   height={480}
                   yAxisLabel={primaryMetricLabel}
+                  secondaryYAxisLabel={secondaryMetricLabel}
+                  metricInfo={metricAxisInfo}
                   onBrushEnd={handleBrush}
                   loading={dataLoading && !lineChartData}
                 />

@@ -13,7 +13,11 @@ import {
   ReportConfiguration,
   DEFAULT_REPORT_CONFIG,
   METRIC_LABELS,
+  METRIC_UNITS,
+  MetricType,
+  groupMetricsByScale,
 } from '../types/analytics';
+import type { MetricAxisInfo } from '../components/analytics/LineChartWithBrush';
 import {
   createReport,
   updateReport,
@@ -117,10 +121,33 @@ export default function ReportBuilderPage() {
     }
   };
 
+  const metricTypes = config.metrics.map(m => m.type);
+  const scaleGroups = groupMetricsByScale(metricTypes);
+
   const primaryMetricLabel =
-    config.metrics.length > 0
-      ? METRIC_LABELS[config.metrics[0].type]
+    scaleGroups.primary.length > 0
+      ? scaleGroups.primary.map(m => METRIC_LABELS[m]).join(' / ')
       : 'Value';
+
+  const secondaryMetricLabel =
+    scaleGroups.secondary.length > 0
+      ? scaleGroups.secondary.map(m => METRIC_LABELS[m]).join(' / ')
+      : undefined;
+
+  const metricAxisInfo: MetricAxisInfo[] = [
+    ...scaleGroups.primary.map(m => ({
+      name: m,
+      label: METRIC_LABELS[m],
+      unit: METRIC_UNITS[m],
+      axis: 'primary' as const,
+    })),
+    ...scaleGroups.secondary.map(m => ({
+      name: m,
+      label: METRIC_LABELS[m],
+      unit: METRIC_UNITS[m],
+      axis: 'secondary' as const,
+    })),
+  ];
 
   if (loadingReport) {
     return (
@@ -244,6 +271,8 @@ export default function ReportBuilderPage() {
                 width={chartWidth}
                 height={420}
                 yAxisLabel={primaryMetricLabel}
+                secondaryYAxisLabel={secondaryMetricLabel}
+                metricInfo={metricAxisInfo}
                 loading={dataLoading}
               />
             </>

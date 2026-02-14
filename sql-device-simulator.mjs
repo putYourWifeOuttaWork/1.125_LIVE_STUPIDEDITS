@@ -16,10 +16,10 @@ console.log('This simulator creates device events directly in the database\n');
 // Real petri dish images
 const PETRI_IMAGES = [
   'original.jpg',
-  'original (1).jpg', 
-  'original (3).jpg',
-  'original (4).jpg',
-  'original (6).jpg'
+  'original-1.jpg',
+  'original-3.jpg',
+  'original-4.jpg',
+  'original-6.jpg'
 ];
 
 async function uploadImageToStorage(localPath, remotePath) {

@@ -285,6 +285,58 @@ export const METRIC_LABELS: Record<MetricType, string> = {
   image_success_rate: 'Image Success Rate',
 };
 
+export const METRIC_UNITS: Record<MetricType, string> = {
+  temperature: '\u00B0C',
+  humidity: '%',
+  mgi_score: 'pts',
+  mgi_velocity: 'pts/day',
+  mgi_speed: 'pts/hr',
+  battery_voltage: 'V',
+  alert_count: '',
+  wake_reliability: '%',
+  image_success_rate: '%',
+};
+
+export type MetricScaleGroup = 'percent' | 'ambient' | 'voltage' | 'rate' | 'count' | 'score_rate';
+
+export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
+  humidity: 'percent',
+  mgi_score: 'percent',
+  image_success_rate: 'percent',
+  wake_reliability: 'percent',
+  temperature: 'ambient',
+  battery_voltage: 'voltage',
+  alert_count: 'count',
+  mgi_velocity: 'score_rate',
+  mgi_speed: 'score_rate',
+};
+
+export function groupMetricsByScale(metricTypes: MetricType[]): {
+  primary: MetricType[];
+  secondary: MetricType[];
+} {
+  if (metricTypes.length <= 1) {
+    return { primary: metricTypes, secondary: [] };
+  }
+
+  const groups = new Map<MetricScaleGroup, MetricType[]>();
+  for (const m of metricTypes) {
+    const scale = METRIC_SCALE_HINTS[m];
+    if (!groups.has(scale)) groups.set(scale, []);
+    groups.get(scale)!.push(m);
+  }
+
+  const distinctGroups = Array.from(groups.entries());
+
+  if (distinctGroups.length === 1) {
+    return { primary: metricTypes, secondary: [] };
+  }
+
+  const primary = distinctGroups[0][1];
+  const secondary = distinctGroups.slice(1).flatMap(([, metrics]) => metrics);
+  return { primary, secondary };
+}
+
 export const AGGREGATION_LABELS: Record<AggregationFunction, string> = {
   avg: 'Average',
   min: 'Minimum',

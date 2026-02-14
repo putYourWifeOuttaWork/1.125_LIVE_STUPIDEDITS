@@ -161,10 +161,10 @@ console.log('\n📸 Step 4: Uploading petri dish images...');
 
 const PETRI_IMAGES = [
   'original.jpg',
-  'original (1).jpg',
-  'original (3).jpg',
-  'original (4).jpg',
-  'original (6).jpg'
+  'original-1.jpg',
+  'original-3.jpg',
+  'original-4.jpg',
+  'original-6.jpg'
 ];
 
 async function uploadImage(localPath, remotePath) {

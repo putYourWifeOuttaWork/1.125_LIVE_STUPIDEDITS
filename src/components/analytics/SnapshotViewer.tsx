@@ -1,8 +1,9 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Clock, User, Settings, Camera, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
-import { ReportSnapshot, METRIC_LABELS } from '../../types/analytics';
+import { ReportSnapshot, METRIC_LABELS, METRIC_UNITS, groupMetricsByScale } from '../../types/analytics';
 import { transformTimeSeriesForD3 } from '../../services/analyticsService';
+import type { MetricAxisInfo } from './LineChartWithBrush';
 import { LineChartWithBrush } from './LineChartWithBrush';
 import { BarChartWithBrush } from './BarChartWithBrush';
 import HeatmapChart from './HeatmapChart';
@@ -48,17 +49,39 @@ export default function SnapshotViewer({
   const config = snapshot.configuration_snapshot;
   const dataSnapshot = snapshot.data_snapshot;
 
+  const metricTypes = (config?.metrics || []).map(m => m.type);
+  const snapshotScaleGroups = groupMetricsByScale(metricTypes);
+
   const chartData = useMemo(() => {
     if (!dataSnapshot?.timeSeries || dataSnapshot.timeSeries.length === 0) return null;
-    const primaryMetric =
-      config?.metrics?.length > 0 ? config.metrics[0].type : 'mgi_score';
-    return transformTimeSeriesForD3(dataSnapshot.timeSeries, primaryMetric);
+    const activeMetrics = metricTypes.length > 0 ? metricTypes : ['mgi_score'];
+    return transformTimeSeriesForD3(dataSnapshot.timeSeries, activeMetrics);
   }, [dataSnapshot, config]);
 
   const primaryMetricLabel =
-    config?.metrics?.length > 0
-      ? METRIC_LABELS[config.metrics[0].type]
+    snapshotScaleGroups.primary.length > 0
+      ? snapshotScaleGroups.primary.map(m => METRIC_LABELS[m]).join(' / ')
       : 'Value';
+
+  const secondaryMetricLabel =
+    snapshotScaleGroups.secondary.length > 0
+      ? snapshotScaleGroups.secondary.map(m => METRIC_LABELS[m]).join(' / ')
+      : undefined;
+
+  const snapshotMetricAxisInfo: MetricAxisInfo[] = [
+    ...snapshotScaleGroups.primary.map(m => ({
+      name: m,
+      label: METRIC_LABELS[m],
+      unit: METRIC_UNITS[m],
+      axis: 'primary' as const,
+    })),
+    ...snapshotScaleGroups.secondary.map(m => ({
+      name: m,
+      label: METRIC_LABELS[m],
+      unit: METRIC_UNITS[m],
+      axis: 'secondary' as const,
+    })),
+  ];
 
   const chartHeight = compact ? 320 : 440;
   const hasCarousel = snapshots && snapshots.length > 1 && currentIndex !== undefined && onNavigate;
@@ -177,6 +200,8 @@ export default function SnapshotViewer({
               width={chartWidth}
               height={chartHeight}
               yAxisLabel={primaryMetricLabel}
+              secondaryYAxisLabel={secondaryMetricLabel}
+              metricInfo={snapshotMetricAxisInfo}
               loading={false}
             />
           ) : config.reportType === 'bar' ? (

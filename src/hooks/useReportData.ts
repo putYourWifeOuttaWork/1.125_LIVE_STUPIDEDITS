@@ -193,17 +193,17 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
   });
 
   const lineChartData = useMemo(() => {
+    const activeMetrics = metricNames.length > 0 ? metricNames : ['mgi_score'];
+
     if (isComparisonActive) {
       if (!comparisonQuery.data || comparisonQuery.data.length === 0)
         return null;
-      const primaryMetric = metricNames[0] || 'mgi_score';
-      return transformComparisonForD3(comparisonQuery.data, primaryMetric);
+      return transformComparisonForD3(comparisonQuery.data, activeMetrics);
     }
 
     if (!timeSeriesQuery.data || timeSeriesQuery.data.length === 0)
       return null;
-    const primaryMetric = metricNames[0] || 'mgi_score';
-    return transformTimeSeriesForD3(timeSeriesQuery.data, primaryMetric);
+    return transformTimeSeriesForD3(timeSeriesQuery.data, activeMetrics);
   }, [timeSeriesQuery.data, comparisonQuery.data, metricNames, isComparisonActive]);
 
   const barChartData = useMemo(() => {

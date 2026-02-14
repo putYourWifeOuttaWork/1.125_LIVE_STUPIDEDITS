@@ -11,6 +11,8 @@ import {
   ReportConfiguration,
   ReportQueryParams,
   CacheEntry,
+  METRIC_LABELS,
+  MetricType,
 } from '../types/analytics';
 
 // Cache configuration
@@ -884,84 +886,156 @@ export async function fetchDrillDownImages(params: {
   }
 }
 
-/**
- * Transform time series data for D3 chart consumption
- */
+export interface MultiMetricSeries {
+  id: string;
+  label: string;
+  values: number[];
+  metricName: string;
+  color?: string;
+  lineStyle?: 'solid' | 'dashed';
+}
+
+export interface MultiMetricChartData {
+  timestamps: Date[];
+  series: MultiMetricSeries[];
+}
+
+const DEVICE_BASE_COLORS = [
+  ['#2563eb', '#93c5fd'],
+  ['#059669', '#6ee7b7'],
+  ['#d97706', '#fcd34d'],
+  ['#dc2626', '#fca5a5'],
+  ['#0891b2', '#67e8f9'],
+  ['#7c3aed', '#c4b5fd'],
+];
+
 export function transformTimeSeriesForD3(
   data: TimeSeriesDataPoint[],
-  metricName: string
-): { timestamps: Date[]; series: { id: string; label: string; values: number[] }[] } {
-  const filtered = data.filter(d => d.metric_name === metricName);
+  metricNames: string | string[]
+): MultiMetricChartData {
+  const metrics = Array.isArray(metricNames) ? metricNames : [metricNames];
+  const filtered = data.filter(d => metrics.includes(d.metric_name));
 
-  const grouped = filtered.reduce((acc, point) => {
-    const key = point.device_code || point.site_name || point.program_name;
-    if (!acc[key]) {
-      acc[key] = {
-        id: point.device_id || point.site_id || point.program_id,
-        label: key,
-        points: []
-      };
+  const isMultiMetric = metrics.length > 1;
+  const deviceCodes = Array.from(new Set(filtered.map(d => d.device_code || d.site_name || d.program_name)));
+
+  const tsSet = new Set<string>();
+  for (const d of filtered) {
+    tsSet.add(String(d.timestamp));
+  }
+  const allTimestamps = Array.from(tsSet).sort().map(t => new Date(t));
+
+  type GroupEntry = {
+    id: string;
+    label: string;
+    metricName: string;
+    points: Map<number, number>;
+  };
+
+  const grouped = new Map<string, GroupEntry>();
+
+  for (const point of filtered) {
+    const entityKey = point.device_code || point.site_name || point.program_name;
+    const compoundKey = isMultiMetric ? `${entityKey}||${point.metric_name}` : entityKey;
+
+    if (!grouped.has(compoundKey)) {
+      const metricLabel = METRIC_LABELS[point.metric_name as MetricType] || point.metric_name;
+      grouped.set(compoundKey, {
+        id: `${point.device_id || point.site_id || point.program_id}_${point.metric_name}`,
+        label: isMultiMetric ? `${entityKey} - ${metricLabel}` : entityKey,
+        metricName: point.metric_name,
+        points: new Map(),
+      });
     }
-    acc[key].points.push({
-      timestamp: new Date(point.timestamp),
-      value: point.metric_value
+
+    const ts = new Date(point.timestamp).getTime();
+    grouped.get(compoundKey)!.points.set(ts, point.metric_value);
+  }
+
+  const series: MultiMetricSeries[] = [];
+
+  for (const group of grouped.values()) {
+    const deviceIdx = deviceCodes.indexOf(group.label.split(' - ')[0]);
+    const metricIdx = metrics.indexOf(group.metricName);
+    const colorPair = DEVICE_BASE_COLORS[deviceIdx % DEVICE_BASE_COLORS.length];
+
+    series.push({
+      id: group.id,
+      label: group.label,
+      metricName: group.metricName,
+      color: isMultiMetric ? colorPair[metricIdx % colorPair.length] : colorPair[0],
+      lineStyle: isMultiMetric && metricIdx > 0 ? 'dashed' : 'solid',
+      values: allTimestamps.map(ts => {
+        const val = group.points.get(ts.getTime());
+        return val !== undefined ? val : 0;
+      }),
     });
-    return acc;
-  }, {} as Record<string, { id: string; label: string; points: { timestamp: Date; value: number }[] }>);
-
-  const allTimestamps = Array.from(
-    new Set(filtered.map(d => d.timestamp))
-  ).sort().map(t => new Date(t));
-
-  const series = Object.values(grouped).map(group => ({
-    id: group.id,
-    label: group.label,
-    values: allTimestamps.map(ts => {
-      const point = group.points.find(p => p.timestamp.getTime() === ts.getTime());
-      return point ? point.value : 0;
-    })
-  }));
+  }
 
   return { timestamps: allTimestamps, series };
 }
 
 export function transformComparisonForD3(
   data: ComparisonDataPoint[],
-  metricName: string
-): { timestamps: Date[]; series: { id: string; label: string; values: number[] }[] } {
-  const filtered = data.filter((d) => d.metric_name === metricName);
+  metricNames: string | string[]
+): MultiMetricChartData {
+  const metrics = Array.isArray(metricNames) ? metricNames : [metricNames];
+  const filtered = data.filter((d) => metrics.includes(d.metric_name));
 
-  const grouped = filtered.reduce(
-    (acc, point) => {
-      const key = point.entity_id;
-      if (!acc[key]) {
-        acc[key] = {
-          id: point.entity_id,
-          label: point.entity_name,
-          points: [],
-        };
-      }
-      acc[key].points.push({
-        timestamp: new Date(point.timestamp),
-        value: point.metric_value,
+  const isMultiMetric = metrics.length > 1;
+  const entityNames = Array.from(new Set(filtered.map(d => d.entity_name)));
+
+  const tsSet = new Set<string>();
+  for (const d of filtered) {
+    tsSet.add(String(d.timestamp));
+  }
+  const allTimestamps = Array.from(tsSet).sort().map((t) => new Date(t));
+
+  type GroupEntry = {
+    id: string;
+    label: string;
+    metricName: string;
+    points: Map<number, number>;
+  };
+
+  const grouped = new Map<string, GroupEntry>();
+
+  for (const point of filtered) {
+    const compoundKey = isMultiMetric ? `${point.entity_id}||${point.metric_name}` : point.entity_id;
+
+    if (!grouped.has(compoundKey)) {
+      const metricLabel = METRIC_LABELS[point.metric_name as MetricType] || point.metric_name;
+      grouped.set(compoundKey, {
+        id: `${point.entity_id}_${point.metric_name}`,
+        label: isMultiMetric ? `${point.entity_name} - ${metricLabel}` : point.entity_name,
+        metricName: point.metric_name,
+        points: new Map(),
       });
-      return acc;
-    },
-    {} as Record<string, { id: string; label: string; points: { timestamp: Date; value: number }[] }>
-  );
+    }
 
-  const allTimestamps = Array.from(new Set(filtered.map((d) => d.timestamp)))
-    .sort()
-    .map((t) => new Date(t));
+    const ts = new Date(point.timestamp).getTime();
+    grouped.get(compoundKey)!.points.set(ts, point.metric_value);
+  }
 
-  const series = Object.values(grouped).map((group) => ({
-    id: group.id,
-    label: group.label,
-    values: allTimestamps.map((ts) => {
-      const point = group.points.find((p) => p.timestamp.getTime() === ts.getTime());
-      return point ? point.value : 0;
-    }),
-  }));
+  const series: MultiMetricSeries[] = [];
+
+  for (const group of grouped.values()) {
+    const entityIdx = entityNames.indexOf(group.label.split(' - ')[0]);
+    const metricIdx = metrics.indexOf(group.metricName);
+    const colorPair = DEVICE_BASE_COLORS[entityIdx % DEVICE_BASE_COLORS.length];
+
+    series.push({
+      id: group.id,
+      label: group.label,
+      metricName: group.metricName,
+      color: isMultiMetric ? colorPair[metricIdx % colorPair.length] : colorPair[0],
+      lineStyle: isMultiMetric && metricIdx > 0 ? 'dashed' : 'solid',
+      values: allTimestamps.map((ts) => {
+        const val = group.points.get(ts.getTime());
+        return val !== undefined ? val : 0;
+      }),
+    });
+  }
 
   return { timestamps: allTimestamps, series };
 }
