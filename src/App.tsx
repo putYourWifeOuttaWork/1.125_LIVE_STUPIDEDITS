@@ -19,7 +19,7 @@ import sessionManager from './lib/sessionManager';
 import { useSessionStore } from './stores/sessionStore';
 import { usePilotProgramStore } from './stores/pilotProgramStore';
 import NetworkStatusIndicator from './components/common/NetworkStatusIndicator';
-import { registerAuthErrorHandler, queryClient } from './lib/queryClient';
+import { registerAuthErrorHandler } from './lib/queryClient';
 import RequireSuperAdmin from './components/routing/RequireSuperAdmin';
 import RequireCompanyAdmin from './components/routing/RequireCompanyAdmin';
 import { createLogger } from './utils/logger';
@@ -67,7 +67,6 @@ function App() {
   
   const autoSyncInitialized = useRef(false);
   const visibilityChangeInitialized = useRef(false);
-  const isRefreshing = useRef(false);
 
   // Register auth error handler
   useEffect(() => {
@@ -121,39 +120,18 @@ function App() {
     };
   }, [user]);
 
-  const refreshSessionAndRefetch = async () => {
-    if (isRefreshing.current || !user) return;
-    isRefreshing.current = true;
-
-    try {
-      const { data, error } = await supabase.auth.refreshSession();
-      if (error || !data.session) {
-        log.warn('Session refresh failed on tab return, clearing state');
-        setUser(null);
-        setCurrentSessionId(null);
-        resetAll();
-        return;
-      }
-      queryClient.invalidateQueries({ refetchType: 'active' });
-    } catch {
-      // Network may be unavailable -- leave existing cache intact
-    } finally {
-      isRefreshing.current = false;
-    }
-  };
-
   useEffect(() => {
     if (visibilityChangeInitialized.current || !user) return;
     visibilityChangeInitialized.current = true;
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        refreshSessionAndRefetch();
+        window.location.reload();
       }
     };
 
     const handleOnline = () => {
-      refreshSessionAndRefetch();
+      window.location.reload();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -164,7 +142,7 @@ function App() {
       window.removeEventListener('online', handleOnline);
       visibilityChangeInitialized.current = false;
     };
-  }, [user, setUser, setCurrentSessionId, resetAll]);
+  }, [user]);
 
   // Check if user is deactivated and redirect if necessary
   const checkUserActive = async (userId: string) => {
