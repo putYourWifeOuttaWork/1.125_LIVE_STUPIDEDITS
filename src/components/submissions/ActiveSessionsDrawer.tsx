@@ -62,24 +62,66 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
     }
   }, [isOpen, selectedProgram, selectedSite]);
 
-  // Function to load active sessions (DEVICE SESSIONS ONLY)
   const loadActiveSessions = async () => {
     setIsRefreshing(true);
     try {
       setIsLoading(true);
 
-      // Get device sessions only
-      const { data, error } = await supabase.rpc('get_my_active_device_sessions');
+      const { data, error } = await supabase
+        .from('site_device_sessions')
+        .select(`
+          session_id,
+          session_date,
+          expected_wake_count,
+          completed_wake_count,
+          status,
+          site_id,
+          program_id,
+          company_id,
+          session_start_time,
+          failed_wake_count,
+          extra_wake_count,
+          session_end_time,
+          locked_at,
+          sites!inner(name),
+          pilot_programs!inner(name),
+          companies!inner(name)
+        `)
+        .in('status', ['in_progress'])
+        .order('session_start_time', { ascending: false });
 
       if (error) {
         console.error('Error getting active sessions:', error);
         throw error;
       }
 
-      // Device sessions only - no unclaimed sessions to check
-      setHasUnclaimedSessions(false);
+      const mapped = (data || []).map((s: any) => ({
+        session_id: s.session_id,
+        session_type: 'device',
+        session_date: s.session_date,
+        site_id: s.site_id,
+        site_name: s.sites?.name || 'Unknown Site',
+        program_id: s.program_id,
+        program_name: s.pilot_programs?.name || 'Unknown Program',
+        company_id: s.company_id,
+        company_name: s.companies?.name || '',
+        status: s.status,
+        started_at: s.session_start_time,
+        expected_items: s.expected_wake_count || 0,
+        completed_items: s.completed_wake_count || 0,
+        progress_percent: s.expected_wake_count > 0
+          ? Math.round((s.completed_wake_count / s.expected_wake_count) * 1000) / 10
+          : 0,
+        session_metadata: {
+          failed_wake_count: s.failed_wake_count,
+          extra_wake_count: s.extra_wake_count,
+          session_end_time: s.session_end_time,
+          locked_at: s.locked_at,
+        },
+      }));
 
-      setActiveSessions(data || []);
+      setHasUnclaimedSessions(false);
+      setActiveSessions(mapped as any);
     } catch (error) {
       console.error('Error loading active sessions:', error);
       setError('Failed to load active sessions');
