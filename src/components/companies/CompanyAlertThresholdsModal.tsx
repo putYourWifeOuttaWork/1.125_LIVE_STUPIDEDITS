@@ -311,6 +311,67 @@ const CompanyAlertThresholdsModal = ({
             </div>
           </ThresholdSection>
 
+          {/* Danger Zone (Combination Thresholds) */}
+          <div className="border border-amber-200 rounded-lg p-4 bg-amber-50/50">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Danger Zone Thresholds (Temp + Humidity Combined)</h3>
+            <div className="flex items-start gap-2 p-2.5 mb-3 bg-white border border-amber-100 rounded-md">
+              <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Danger Zone alerts trigger when <strong>both</strong> temperature AND humidity exceed their respective
+                thresholds at the same time. This detects conditions where the combination of warmth and moisture
+                creates elevated risk for mold growth, even if neither value alone has crossed its individual
+                absolute threshold above. These should typically be set lower than your absolute thresholds to provide
+                early warning of risky environmental combinations.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-amber-800">Warning Level</p>
+              <div className="grid grid-cols-2 gap-3">
+                <ThresholdInput
+                  label="Temperature (°F)"
+                  value={thresholds.combo_zone_warning?.temp_threshold ?? 60}
+                  onChange={(val) => setThresholds({
+                    ...thresholds,
+                    combo_zone_warning: { ...thresholds.combo_zone_warning, temp_threshold: val },
+                  })}
+                  helpText="Temp must be above this AND humidity above its threshold to trigger warning"
+                />
+                <ThresholdInput
+                  label="Relative Humidity (%)"
+                  value={thresholds.combo_zone_warning?.rh_threshold ?? 75}
+                  onChange={(val) => setThresholds({
+                    ...thresholds,
+                    combo_zone_warning: { ...thresholds.combo_zone_warning, rh_threshold: val },
+                  })}
+                  helpText="Humidity must be above this AND temp above its threshold to trigger warning"
+                />
+              </div>
+
+              <p className="text-xs font-medium text-red-800 pt-1">Critical Level</p>
+              <div className="grid grid-cols-2 gap-3">
+                <ThresholdInput
+                  label="Temperature (°F)"
+                  value={thresholds.combo_zone_critical?.temp_threshold ?? 70}
+                  onChange={(val) => setThresholds({
+                    ...thresholds,
+                    combo_zone_critical: { ...thresholds.combo_zone_critical, temp_threshold: val },
+                  })}
+                  helpText="Temp must be above this AND humidity above its threshold to trigger critical alert"
+                />
+                <ThresholdInput
+                  label="Relative Humidity (%)"
+                  value={thresholds.combo_zone_critical?.rh_threshold ?? 75}
+                  onChange={(val) => setThresholds({
+                    ...thresholds,
+                    combo_zone_critical: { ...thresholds.combo_zone_critical, rh_threshold: val },
+                  })}
+                  helpText="Humidity must be above this AND temp above its threshold to trigger critical alert"
+                />
+              </div>
+            </div>
+          </div>
+
         </div>
 
         {/* Footer Actions */}

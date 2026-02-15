@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, AlertTriangle, Copy, RotateCcw, Save } from 'lucide-react';
+import { X, AlertTriangle, Copy, RotateCcw, Save, Info } from 'lucide-react';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
 import { supabase } from '../../lib/supabaseClient';
@@ -310,6 +310,13 @@ const ComparisonView = ({
     { key: 'mgi_max_critical', label: 'MGI Max Critical (%)' },
   ];
 
+  const comboFields = [
+    { label: 'Danger Zone Warning Temp (°F)', zone: 'combo_zone_warning' as const, field: 'temp_threshold' as const },
+    { label: 'Danger Zone Warning RH (%)', zone: 'combo_zone_warning' as const, field: 'rh_threshold' as const },
+    { label: 'Danger Zone Critical Temp (°F)', zone: 'combo_zone_critical' as const, field: 'temp_threshold' as const },
+    { label: 'Danger Zone Critical RH (%)', zone: 'combo_zone_critical' as const, field: 'rh_threshold' as const },
+  ];
+
   return (
     <div className="space-y-4">
       <h3 className="font-medium text-gray-900">Threshold Comparison</h3>
@@ -334,6 +341,28 @@ const ComparisonView = ({
                   <td className="px-4 py-2 border-b">{field.label}</td>
                   <td className="px-4 py-2 border-b text-center">{String(companyVal)}</td>
                   <td className="px-4 py-2 border-b text-center font-medium">{String(deviceVal)}</td>
+                  <td className="px-4 py-2 border-b text-center">
+                    {isDifferent ? (
+                      <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                        Override
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-500">Default</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {comboFields.map((cf) => {
+              const deviceVal = deviceThresholds[cf.zone]?.[cf.field];
+              const companyVal = companyThresholds[cf.zone]?.[cf.field];
+              const isDifferent = deviceVal !== companyVal;
+
+              return (
+                <tr key={`${cf.zone}_${cf.field}`} className={isDifferent ? 'bg-orange-50' : ''}>
+                  <td className="px-4 py-2 border-b">{cf.label}</td>
+                  <td className="px-4 py-2 border-b text-center">{companyVal ?? '-'}</td>
+                  <td className="px-4 py-2 border-b text-center font-medium">{deviceVal ?? '-'}</td>
                   <td className="px-4 py-2 border-b text-center">
                     {isDifferent ? (
                       <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
@@ -474,6 +503,85 @@ const OverrideEditForm = ({
                 step="0.1"
                 value={thresholds.rh_max_critical}
                 onChange={(e) => onChange({ ...thresholds, rh_max_critical: parseFloat(e.target.value) })}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border border-amber-200 rounded-lg p-3 bg-amber-50/50 mt-2">
+        <h3 className="text-sm font-semibold text-gray-900 mb-1.5">Danger Zone (Temp + Humidity Combined)</h3>
+        <div className="flex items-start gap-2 p-2 mb-2 bg-white border border-amber-100 rounded-md">
+          <Info className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Alerts when <strong>both</strong> temp AND humidity exceed their thresholds simultaneously,
+            detecting conditions where warmth + moisture combine to elevate mold risk.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-amber-800">Warning</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-700 mb-0.5">
+                Temp (°F) {thresholds.combo_zone_warning?.temp_threshold !== companyThresholds.combo_zone_warning?.temp_threshold && '🔸'}
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={thresholds.combo_zone_warning?.temp_threshold ?? 60}
+                onChange={(e) => onChange({
+                  ...thresholds,
+                  combo_zone_warning: { ...thresholds.combo_zone_warning, temp_threshold: parseFloat(e.target.value) },
+                })}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-700 mb-0.5">
+                RH (%) {thresholds.combo_zone_warning?.rh_threshold !== companyThresholds.combo_zone_warning?.rh_threshold && '🔸'}
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={thresholds.combo_zone_warning?.rh_threshold ?? 75}
+                onChange={(e) => onChange({
+                  ...thresholds,
+                  combo_zone_warning: { ...thresholds.combo_zone_warning, rh_threshold: parseFloat(e.target.value) },
+                })}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <p className="text-xs font-medium text-red-800 pt-1">Critical</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-700 mb-0.5">
+                Temp (°F) {thresholds.combo_zone_critical?.temp_threshold !== companyThresholds.combo_zone_critical?.temp_threshold && '🔸'}
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={thresholds.combo_zone_critical?.temp_threshold ?? 70}
+                onChange={(e) => onChange({
+                  ...thresholds,
+                  combo_zone_critical: { ...thresholds.combo_zone_critical, temp_threshold: parseFloat(e.target.value) },
+                })}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-700 mb-0.5">
+                RH (%) {thresholds.combo_zone_critical?.rh_threshold !== companyThresholds.combo_zone_critical?.rh_threshold && '🔸'}
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={thresholds.combo_zone_critical?.rh_threshold ?? 75}
+                onChange={(e) => onChange({
+                  ...thresholds,
+                  combo_zone_critical: { ...thresholds.combo_zone_critical, rh_threshold: parseFloat(e.target.value) },
+                })}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
