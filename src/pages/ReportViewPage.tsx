@@ -193,10 +193,20 @@ export default function ReportViewPage() {
     };
   }, [mode]);
 
+  const drillDownRef = useRef<HTMLDivElement>(null);
+
   const handleBrush = useCallback((range: [Date, Date]) => {
     setBrushRange(range);
     setDrillOffset(0);
   }, []);
+
+  useEffect(() => {
+    if (brushRange && drillDownRef.current) {
+      setTimeout(() => {
+        drillDownRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [brushRange]);
 
   const handleHeatmapClick = useCallback((cell: HeatmapCell) => {
     try {
@@ -648,7 +658,7 @@ export default function ReportViewPage() {
           </div>
 
           {brushRange && (
-            <div className="space-y-2">
+            <div ref={drillDownRef} className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-gray-700">
                   Drill-down:{' '}
