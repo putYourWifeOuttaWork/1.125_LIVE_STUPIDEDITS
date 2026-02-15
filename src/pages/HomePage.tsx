@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building,
   ClipboardList,
   MapPin,
+  Activity,
 } from 'lucide-react';
 import Button from '../components/common/Button';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
@@ -32,25 +33,27 @@ const HomePage = () => {
   const [sessionDevices, setSessionDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
 
+  const sessionDetailsRef = useRef<HTMLDivElement>(null);
+
   const {
     setIsSessionsDrawerOpen,
   } = useSessionStore();
 
-  // Handle session selection
   const handleSessionSelect = async (session: ActiveSession) => {
     setSelectedSessionId(session.session_id);
     setSelectedSessionData(session);
 
-    // Load site data and devices for the map
     await loadSessionSiteData(session.site_id);
+
+    setTimeout(() => {
+      sessionDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
-  // Load site data and devices for the selected session
   const loadSessionSiteData = async (siteId: string) => {
     try {
       setDevicesLoading(true);
 
-      // Fetch site data
       const { data: siteData, error: siteError } = await supabase
         .from('sites')
         .select('*')
@@ -60,7 +63,6 @@ const HomePage = () => {
       if (siteError) throw siteError;
       setSessionSiteData(siteData);
 
-      // Fetch devices for the map
       const { data: devicesData, error: devicesError } = await supabase
         .from('devices')
         .select(`
@@ -82,7 +84,6 @@ const HomePage = () => {
 
       if (devicesError) throw devicesError;
 
-      // Fetch latest telemetry
       const deviceIds = (devicesData || []).map(d => d.device_id);
       const { data: telemetryData } = deviceIds.length > 0
         ? await supabase
@@ -93,7 +94,6 @@ const HomePage = () => {
             .limit(deviceIds.length * 2)
         : { data: [] };
 
-      // Get latest telemetry per device
       const telemetryMap = new Map();
       (telemetryData || []).forEach(t => {
         if (!telemetryMap.has(t.device_id)) {
@@ -104,7 +104,6 @@ const HomePage = () => {
         }
       });
 
-      // Format devices for the map
       const formattedDevices = (devicesData || []).map((device) => {
         const telemetry = telemetryMap.get(device.device_id);
         return {
@@ -135,9 +134,11 @@ const HomePage = () => {
     return <LoadingScreen />;
   }
 
+  const hasSiteMap = selectedSessionData && sessionSiteData &&
+    sessionDevices.length > 0 && sessionSiteData.length && sessionSiteData.width;
+
   return (
      <div className="animate-fade-in space-y-6">
-      {/* Tier 1: Company Context Banner (Super Admin Only) + Header */}
       {isSuperAdmin && activeCompanyId && (
         <Card className="border-l-4 border-l-blue-600">
           <CardContent className="p-4">
@@ -160,7 +161,6 @@ const HomePage = () => {
         </Card>
       )}
 
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex-grow">
           <h1 className="text-2xl font-bold text-gray-900">Command Center</h1>
@@ -187,86 +187,95 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Tier 2: Active Sessions + Session Details/Map (50/50 Split) */}
+      {/* Row 1: Active Alerts (left) + Active Sessions (right) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left Column: Active Alerts + Active Sessions List */}
-        <div className="space-y-4">
-          {/* Active Alerts - Top 50% - SCROLLABLE */}
-          <div className="max-h-[400px] overflow-y-auto">
-            <ActiveAlertsPanel />
-          </div>
-
-          {/* Active Sessions List - Bottom 50% */}
-          <div className="max-h-[400px] overflow-y-auto">
-            <Card>
-              <CardHeader>
-                <h2 className="text-lg font-semibold">Active Sessions Today</h2>
-                <p className="text-sm text-gray-600 mt-1">Real-time device session monitoring</p>
-              </CardHeader>
-              <CardContent>
-                <ActiveSessionsGrid
-                  limit={20}
-                  companyFilter={activeCompanyId}
-                  onSessionSelect={handleSessionSelect}
-                  selectedSessionId={selectedSessionId}
-                />
-              </CardContent>
-            </Card>
-          </div>
+        <div className="max-h-[400px] overflow-y-auto">
+          <ActiveAlertsPanel />
         </div>
 
-        {/* Right Column: Session Details + Map */}
-        <div className="space-y-4">
-          {/* Session Details Panel */}
-          <div className="max-h-[400px] overflow-y-auto">
-            <SessionDetailsPanel
-              selectedSession={selectedSessionData}
-              sessionId={selectedSessionId || ''}
-            />
-          </div>
-
-          {/* Site Map */}
-          {selectedSessionData && sessionSiteData && (
-            <Card className="min-h-[500px]">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-blue-600" />
-                  <h3 className="text-lg font-semibold">Site Map</h3>
-                </div>
-                <p className="text-sm text-gray-600 mt-1">Device positions and live metrics</p>
-              </CardHeader>
-              <CardContent>
-                {devicesLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  </div>
-                ) : sessionDevices.length > 0 && sessionSiteData.length && sessionSiteData.width ? (
-                  <SiteMapAnalyticsViewer
-                    siteLength={sessionSiteData.length}
-                    siteWidth={sessionSiteData.width}
-                    siteName={sessionSiteData.name}
-                    devices={sessionDevices}
-                    onDeviceClick={(deviceId) => {
-                      navigate(`/devices/${deviceId}`);
-                    }}
-                    showControls={true}
-                  />
-                ) : (
-                  <div className="text-center py-8 bg-gray-50 rounded-lg">
-                    <MapPin className="mx-auto h-16 w-16 text-gray-300" />
-                    <p className="text-gray-600 mt-4 font-medium">Site Map Not Ready</p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      {!sessionSiteData.length || !sessionSiteData.width
-                        ? 'Site dimensions need to be configured'
-                        : 'No devices have been placed on this site map yet'
-                      }
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+        <div className="max-h-[400px] overflow-y-auto">
+          <Card>
+            <CardHeader>
+              <h2 className="text-lg font-semibold">Active Sessions Today</h2>
+              <p className="text-sm text-gray-600 mt-1">Real-time device session monitoring</p>
+            </CardHeader>
+            <CardContent>
+              <ActiveSessionsGrid
+                limit={20}
+                companyFilter={activeCompanyId}
+                onSessionSelect={handleSessionSelect}
+                selectedSessionId={selectedSessionId}
+              />
+            </CardContent>
+          </Card>
         </div>
+      </div>
+
+      {/* Row 2: Session Details (full width) - scroll target */}
+      <div ref={sessionDetailsRef} className="scroll-mt-4">
+        {!selectedSessionData ? (
+          <Card className="flex items-center justify-center min-h-[200px]">
+            <CardContent className="text-center py-12">
+              <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Select a Session</h3>
+              <p className="text-sm text-gray-500 max-w-md mx-auto">
+                Click on any session card above to view detailed metrics and the site map with live device data
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            <div className="lg:col-span-2">
+              <SessionDetailsPanel
+                selectedSession={selectedSessionData}
+                sessionId={selectedSessionId || ''}
+              />
+            </div>
+
+            <div className="lg:col-span-3">
+              {sessionSiteData && (
+                <Card className="min-h-[500px] h-full">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-5 h-5 text-blue-600" />
+                      <h3 className="text-lg font-semibold">Site Map</h3>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">Device positions and live metrics</p>
+                  </CardHeader>
+                  <CardContent>
+                    {devicesLoading ? (
+                      <div className="flex justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    ) : hasSiteMap ? (
+                      <SiteMapAnalyticsViewer
+                        siteLength={sessionSiteData.length!}
+                        siteWidth={sessionSiteData.width!}
+                        siteName={sessionSiteData.name}
+                        devices={sessionDevices}
+                        onDeviceClick={(deviceId) => {
+                          navigate(`/devices/${deviceId}`);
+                        }}
+                        showControls={true}
+                      />
+                    ) : (
+                      <div className="text-center py-8 bg-gray-50 rounded-lg">
+                        <MapPin className="mx-auto h-16 w-16 text-gray-300" />
+                        <p className="text-gray-600 mt-4 font-medium">Site Map Not Ready</p>
+                        <p className="text-sm text-gray-500 mt-2">
+                          {!sessionSiteData.length || !sessionSiteData.width
+                            ? 'Site dimensions need to be configured'
+                            : 'No devices have been placed on this site map yet'
+                          }
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
