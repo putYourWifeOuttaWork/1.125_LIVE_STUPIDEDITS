@@ -11,6 +11,8 @@ export type AggregationFunction = 'avg' | 'min' | 'max' | 'sum' | 'count' | 'p50
 export type MetricType =
   | 'temperature'
   | 'humidity'
+  | 'pressure'
+  | 'gas_resistance'
   | 'mgi_score'
   | 'mgi_velocity'
   | 'mgi_speed'
@@ -276,6 +278,8 @@ export interface HeatmapCell {
 export const METRIC_LABELS: Record<MetricType, string> = {
   temperature: 'Temperature',
   humidity: 'Humidity',
+  pressure: 'Pressure',
+  gas_resistance: 'Gas Resistance',
   mgi_score: 'MGI Score',
   mgi_velocity: 'MGI Velocity',
   mgi_speed: 'MGI Speed',
@@ -288,6 +292,8 @@ export const METRIC_LABELS: Record<MetricType, string> = {
 export const METRIC_UNITS: Record<MetricType, string> = {
   temperature: '\u00B0C',
   humidity: '%',
+  pressure: 'hPa',
+  gas_resistance: '\u2126',
   mgi_score: 'pts',
   mgi_velocity: 'pts/day',
   mgi_speed: 'pts/hr',
@@ -297,7 +303,7 @@ export const METRIC_UNITS: Record<MetricType, string> = {
   image_success_rate: '%',
 };
 
-export type MetricScaleGroup = 'percent' | 'ambient' | 'voltage' | 'rate' | 'count' | 'score_rate';
+export type MetricScaleGroup = 'percent' | 'ambient' | 'pressure' | 'resistance' | 'voltage' | 'rate' | 'count' | 'score_rate';
 
 export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
   humidity: 'percent',
@@ -305,6 +311,8 @@ export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
   image_success_rate: 'percent',
   wake_reliability: 'percent',
   temperature: 'ambient',
+  pressure: 'pressure',
+  gas_resistance: 'resistance',
   battery_voltage: 'voltage',
   alert_count: 'count',
   mgi_velocity: 'score_rate',

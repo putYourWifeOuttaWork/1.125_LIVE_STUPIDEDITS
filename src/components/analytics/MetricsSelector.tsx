@@ -25,6 +25,8 @@ const ALL_METRICS: MetricType[] = [
   'mgi_speed',
   'temperature',
   'humidity',
+  'pressure',
+  'gas_resistance',
   'battery_voltage',
   'alert_count',
   'wake_reliability',
