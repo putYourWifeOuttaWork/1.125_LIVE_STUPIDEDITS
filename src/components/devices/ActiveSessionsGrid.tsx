@@ -196,13 +196,25 @@ export default function ActiveSessionsGrid({
     return 'border-green-300 bg-green-50';
   };
 
+  const getProgress = (session: ActiveSession) => {
+    if (session.expected_wake_count > 0) {
+      return (session.completed_wake_count / session.expected_wake_count) * 100;
+    }
+    if (session.completed_wake_count > 0) {
+      return 100;
+    }
+    return 0;
+  };
+
   const getStatusBadge = (session: ActiveSession) => {
-    const progress = session.expected_wake_count > 0
-      ? (session.completed_wake_count / session.expected_wake_count) * 100
-      : 0;
+    const progress = getProgress(session);
 
     if (session.status === 'pending') {
       return <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-700 rounded-full">Pending</span>;
+    }
+
+    if (session.expected_wake_count === 0 && session.completed_wake_count === 0) {
+      return <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-700 rounded-full">No Schedule</span>;
     }
 
     if (progress >= 100) {
@@ -311,10 +323,7 @@ export default function ActiveSessionsGrid({
                         : 'bg-green-500'
                     }`}
                     style={{
-                      width: `${Math.min(
-                        100,
-                        (session.completed_wake_count / session.expected_wake_count) * 100
-                      )}%`,
+                      width: `${Math.min(100, getProgress(session))}%`,
                     }}
                   />
                 </div>

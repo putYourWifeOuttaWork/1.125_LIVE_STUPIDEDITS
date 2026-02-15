@@ -154,6 +154,8 @@ export default function SessionDetailsPanel({
 
   const progress = selectedSession.expected_wake_count > 0
     ? (selectedSession.completed_wake_count / selectedSession.expected_wake_count) * 100
+    : selectedSession.completed_wake_count > 0
+    ? 100
     : 0;
 
   return (
