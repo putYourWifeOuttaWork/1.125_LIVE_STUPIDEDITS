@@ -75,8 +75,7 @@ export function useSubmissions(siteId?: string) {
       }
     },
     enabled: !!siteId && !!selectedCompanyId,
-    staleTime: 0, // Always refetch when window regains focus
-    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   // Update the local state whenever the query data changes

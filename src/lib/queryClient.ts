@@ -61,7 +61,7 @@ export const queryClient = new QueryClient({
       gcTime: 10 * 60 * 1000,
       // Retry failed queries 3 times with exponential backoff
       retry: 3,
-      refetchOnWindowFocus: 'always',
+      refetchOnWindowFocus: false,
       // Use our own error handling
       useErrorBoundary: false,
       // Global error handler for auth errors
@@ -90,15 +90,3 @@ export const queryClient = new QueryClient({
   },
 });
 
-// Set up offline/online event listeners
-// NOTE: Removed aggressive visibilitychange listener that was causing UI breaks
-// React Query's refetchOnWindowFocus handles this more gracefully
-if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    log.info('Connection restored. Invalidating stale queries...');
-    queryClient.invalidateQueries({
-      refetchType: 'active',
-      stale: true
-    });
-  });
-}

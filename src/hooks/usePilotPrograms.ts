@@ -84,8 +84,7 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
       return sortProgramsByPhase(data || []);
     },
     enabled: !!user && !!selectedCompanyId,
-    staleTime: 0, // Always refetch on window focus
-    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   // Use React Query for fetching a single program

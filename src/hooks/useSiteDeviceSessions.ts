@@ -122,7 +122,6 @@ export function useSiteDeviceSessions(siteId?: string) {
     },
     enabled: !!siteId,
     staleTime: 30000,
-    refetchOnWindowFocus: true,
   });
 
   const fetchWakePayloads = async (sessionId: string): Promise<DeviceWakePayload[]> => {

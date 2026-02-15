@@ -65,9 +65,9 @@ function App() {
     setCurrentSessionId
   } = useSessionStore();
   
-  // Add a ref to track if auto-sync has been initialized
   const autoSyncInitialized = useRef(false);
   const visibilityChangeInitialized = useRef(false);
+  const isRefreshing = useRef(false);
 
   // Register auth error handler
   useEffect(() => {
@@ -121,34 +121,47 @@ function App() {
     };
   }, [user]);
 
+  const refreshSessionAndRefetch = async () => {
+    if (isRefreshing.current || !user) return;
+    isRefreshing.current = true;
+
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error || !data.session) {
+        log.warn('Session refresh failed on tab return, clearing state');
+        setUser(null);
+        setCurrentSessionId(null);
+        resetAll();
+        return;
+      }
+      queryClient.invalidateQueries({ refetchType: 'active' });
+    } catch {
+      // Network may be unavailable -- leave existing cache intact
+    } finally {
+      isRefreshing.current = false;
+    }
+  };
+
   useEffect(() => {
     if (visibilityChangeInitialized.current || !user) return;
-
     visibilityChangeInitialized.current = true;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && user) {
-        (async () => {
-          try {
-            const { data, error } = await supabase.auth.getSession();
-            if (error || !data.session) {
-              setUser(null);
-              setCurrentSessionId(null);
-              resetAll();
-              return;
-            }
-            queryClient.invalidateQueries({ refetchType: 'active', stale: true });
-          } catch {
-            // Silently handle -- network may be unavailable
-          }
-        })();
+      if (document.visibilityState === 'visible') {
+        refreshSessionAndRefetch();
       }
     };
 
+    const handleOnline = () => {
+      refreshSessionAndRefetch();
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
       visibilityChangeInitialized.current = false;
     };
   }, [user, setUser, setCurrentSessionId, resetAll]);
