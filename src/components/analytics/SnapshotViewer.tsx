@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef, useState } from 'react';
+import { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, Clock, User, Settings, Camera, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ReportSnapshot, METRIC_LABELS, METRIC_UNITS, groupMetricsByScale } from '../../types/analytics';
@@ -7,6 +7,8 @@ import type { MetricAxisInfo } from './LineChartWithBrush';
 import { LineChartWithBrush } from './LineChartWithBrush';
 import { BarChartWithBrush } from './BarChartWithBrush';
 import HeatmapChart from './HeatmapChart';
+import { useDrillDown } from '../../hooks/useReportData';
+import DrillDownPanel from './DrillDownPanel';
 
 interface SnapshotViewerProps {
   snapshot: ReportSnapshot;
@@ -82,6 +84,45 @@ export default function SnapshotViewer({
       axis: 'secondary' as const,
     })),
   ];
+
+  const [brushRange, setBrushRange] = useState<[Date, Date] | null>(null);
+  const [drillOffset, setDrillOffset] = useState(0);
+  const drillDownRef = useRef<HTMLDivElement>(null);
+
+  const handleBrush = useCallback((range: [Date, Date]) => {
+    setBrushRange(range);
+    setDrillOffset(0);
+  }, []);
+
+  useEffect(() => {
+    setBrushRange(null);
+    setDrillOffset(0);
+  }, [snapshot.snapshot_id]);
+
+  useEffect(() => {
+    if (brushRange && drillDownRef.current) {
+      setTimeout(() => {
+        drillDownRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [brushRange]);
+
+  const {
+    data: drillData,
+    isLoading: drillLoading,
+  } = useDrillDown(
+    snapshot.company_id,
+    brushRange?.[0] || null,
+    brushRange?.[1] || null,
+    {
+      programIds: config?.programIds,
+      siteIds: config?.siteIds,
+      deviceIds: config?.deviceIds,
+      offset: drillOffset,
+    }
+  );
+
+  const isLineOrDot = !config || config.reportType === 'line' || config.reportType === 'dot';
 
   const chartHeight = compact ? 320 : 440;
   const hasCarousel = snapshots && snapshots.length > 1 && currentIndex !== undefined && onNavigate;
@@ -194,7 +235,7 @@ export default function SnapshotViewer({
 
       <div ref={containerRef} className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         <div className="w-full overflow-x-auto">
-          {(!config || config.reportType === 'line' || config.reportType === 'dot') ? (
+          {isLineOrDot ? (
             <LineChartWithBrush
               data={chartData || { timestamps: [], series: [] }}
               width={chartWidth}
@@ -202,6 +243,7 @@ export default function SnapshotViewer({
               yAxisLabel={primaryMetricLabel}
               secondaryYAxisLabel={secondaryMetricLabel}
               metricInfo={snapshotMetricAxisInfo}
+              onBrushEnd={handleBrush}
               loading={false}
             />
           ) : config.reportType === 'bar' ? (
@@ -224,6 +266,39 @@ export default function SnapshotViewer({
           ) : null}
         </div>
       </div>
+
+      {isLineOrDot && !brushRange && (
+        <p className="text-xs text-gray-400 italic px-1">
+          Click and drag on the chart to drill down into specific time ranges
+        </p>
+      )}
+
+      {brushRange && (
+        <div ref={drillDownRef} className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-sm font-medium text-gray-700">
+              Drill-down:{' '}
+              {format(brushRange[0], 'MMM d, HH:mm')} -{' '}
+              {format(brushRange[1], 'MMM d, HH:mm')}
+            </h3>
+            <button
+              onClick={() => {
+                setBrushRange(null);
+                setDrillOffset(0);
+              }}
+              className="text-xs text-gray-500 hover:text-gray-700"
+            >
+              Clear selection
+            </button>
+          </div>
+          <DrillDownPanel
+            records={drillData?.records || []}
+            hasMore={drillData?.hasMore || false}
+            loading={drillLoading}
+            onLoadMore={() => setDrillOffset((prev) => prev + 50)}
+          />
+        </div>
+      )}
 
       {dataSnapshot?.dateRange && (
         <div className="text-xs text-gray-400 px-1">
