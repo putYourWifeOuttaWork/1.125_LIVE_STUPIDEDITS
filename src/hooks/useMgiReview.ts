@@ -312,9 +312,9 @@ export function useReviewerAssignments(companyId: string | undefined) {
       if (userIds.length > 0) {
         const { data: users } = await supabase
           .from('users')
-          .select('id, email, name')
+          .select('id, email, full_name')
           .in('id', userIds);
-        userMap = new Map((users || []).map(u => [u.id, { email: u.email, name: u.name }]));
+        userMap = new Map((users || []).map(u => [u.id, { email: u.email, name: u.full_name ?? '' }]));
       }
 
       return (data || []).map(a => ({
@@ -406,12 +406,72 @@ export function useSuperAdminUsers() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, name')
+        .select('id, email, full_name')
         .eq('is_super_admin', true)
         .eq('is_active', true);
 
       if (error) throw error;
-      return data || [];
+      return (data || []).map(u => ({ id: u.id, email: u.email, name: u.full_name }));
+    },
+  });
+}
+
+export interface ScanFlaggedItem {
+  image_id: string;
+  device_id: string;
+  device_code: string;
+  score: number;
+  captured_at: string;
+  median: number | null;
+  modified_z_score: number;
+  growth_rate_per_hour: number;
+  flag_reasons: string[];
+  priority: 'normal' | 'high' | 'critical';
+  method: string;
+}
+
+export interface RetrospectiveScanResult {
+  total_scanned: number;
+  total_flagged: number;
+  skipped_already_reviewed: number;
+  flagged_items: ScanFlaggedItem[];
+  dry_run: boolean;
+  ran_at: string;
+}
+
+export interface RetrospectiveScanParams {
+  companyId?: string;
+  siteId?: string;
+  deviceId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  dryRun: boolean;
+}
+
+export function useRetrospectiveScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: RetrospectiveScanParams) => {
+      const { data, error } = await supabase.rpc('fn_retrospective_mgi_scan', {
+        p_company_id: params.companyId || null,
+        p_site_id: params.siteId || null,
+        p_device_id: params.deviceId || null,
+        p_date_from: params.dateFrom || null,
+        p_date_to: params.dateTo || null,
+        p_limit: params.limit ?? 500,
+        p_dry_run: params.dryRun,
+      });
+
+      if (error) throw error;
+      return data as RetrospectiveScanResult;
+    },
+    onSuccess: (_data, variables) => {
+      if (!variables.dryRun) {
+        queryClient.invalidateQueries({ queryKey: ['mgiReviewQueue'] });
+        queryClient.invalidateQueries({ queryKey: ['mgiReviewPendingCount'] });
+      }
     },
   });
 }

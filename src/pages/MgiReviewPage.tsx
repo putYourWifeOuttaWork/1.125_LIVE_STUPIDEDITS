@@ -11,6 +11,7 @@ import ReviewQueueTable from '../components/mgiReview/ReviewQueueTable';
 import ReviewDetailPanel from '../components/mgiReview/ReviewDetailPanel';
 import ThresholdConfigTab from '../components/mgiReview/ThresholdConfigTab';
 import ReviewerAssignmentTab from '../components/mgiReview/ReviewerAssignmentTab';
+import RetrospectiveScanPanel from '../components/mgiReview/RetrospectiveScanPanel';
 
 type TabId = 'queue' | 'thresholds' | 'reviewers';
 
@@ -85,7 +86,13 @@ export default function MgiReviewPage() {
 
       {/* Queue tab */}
       {activeTab === 'queue' && (
-        <div className="flex gap-0 h-[calc(100vh-280px)] min-h-[500px]">
+        <div>
+          <RetrospectiveScanPanel
+            companies={companiesArray}
+            sites={sitesArray || []}
+            hasQueueItems={(reviews || []).length > 0}
+          />
+          <div className="flex gap-0 h-[calc(100vh-340px)] min-h-[500px]">
           {/* Left: filters + table */}
           <div className={`flex flex-col ${selectedReview ? 'w-3/5' : 'w-full'} transition-all duration-200`}>
             {/* Filters */}
@@ -154,6 +161,7 @@ export default function MgiReviewPage() {
               />
             </div>
           )}
+          </div>
         </div>
       )}
 
