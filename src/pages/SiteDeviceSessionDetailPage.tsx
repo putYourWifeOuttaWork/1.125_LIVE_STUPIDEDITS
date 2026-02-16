@@ -45,6 +45,7 @@ import HistogramChart from '../components/lab/HistogramChart';
 import DeviceImageLightbox from '../components/devices/DeviceImageLightbox';
 import ManualWakeModal from '../components/devices/ManualWakeModal';
 import { createLogger } from '../utils/logger';
+import { formatMGI } from '../utils/mgiUtils';
 
 const log = createLogger('SessionDetail');
 
@@ -1023,7 +1024,7 @@ const SiteDeviceSessionDetailPage = () => {
                 value: mgiScore,
                 zScore: zScore,
                 severity: Math.abs(zScore) > 3 ? 'extreme' : 'moderate',
-                message: `MGI score ${mgiScore.toFixed(1)} is ${Math.abs(zScore).toFixed(1)}σ from mean at ${device.device_code}`,
+                message: `MGI score ${formatMGI(mgiScore)} is ${Math.abs(zScore).toFixed(1)}σ from mean at ${device.device_code}`,
               });
             }
           }
@@ -1694,7 +1695,7 @@ const SiteDeviceSessionDetailPage = () => {
               <div className="space-y-4">
                 <div className="text-center py-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg">
                   <p className="text-5xl font-bold text-teal-600">
-                    {environmentalAggregates.mgi.avg?.toFixed(1) || 'N/A'}
+                    {formatMGI(environmentalAggregates.mgi.avg)}
                   </p>
                   <p className="text-sm text-gray-600 mt-2">Average MGI Score</p>
                   <p className="text-xs text-gray-500 mt-1">{environmentalAggregates.mgi.samples} samples</p>
@@ -1707,7 +1708,7 @@ const SiteDeviceSessionDetailPage = () => {
                       <p className="text-xs text-gray-600">Maximum</p>
                     </div>
                     <p className="text-2xl font-bold text-red-600">
-                      {environmentalAggregates.mgi.max?.toFixed(1) || '-'}
+                      {formatMGI(environmentalAggregates.mgi.max)}
                     </p>
                   </div>
 
@@ -1717,7 +1718,7 @@ const SiteDeviceSessionDetailPage = () => {
                       <p className="text-xs text-gray-600">Minimum</p>
                     </div>
                     <p className="text-2xl font-bold text-green-600">
-                      {environmentalAggregates.mgi.min?.toFixed(1) || '-'}
+                      {formatMGI(environmentalAggregates.mgi.min)}
                     </p>
                   </div>
                 </div>
@@ -1726,7 +1727,7 @@ const SiteDeviceSessionDetailPage = () => {
                   <div className="bg-gray-50 rounded p-3">
                     <p className="text-xs text-gray-600 text-center">Standard Deviation</p>
                     <p className="text-lg font-bold text-gray-700 text-center mt-1">
-                      ±{environmentalAggregates.mgi.stdDev.toFixed(2)}
+                      ±{(environmentalAggregates.mgi.stdDev * 100).toFixed(1)}%
                     </p>
                     <p className="text-xs text-gray-500 text-center mt-1">Variability across session</p>
                   </div>
@@ -2604,7 +2605,7 @@ const SiteDeviceSessionDetailPage = () => {
                   <div className="space-y-4">
                     <div className="text-center py-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
                       <p className="text-5xl font-bold text-purple-600">
-                        {environmentalAggregates.mgi.avg?.toFixed(1) || 'N/A'}
+                        {formatMGI(environmentalAggregates.mgi.avg)}
                       </p>
                       <p className="text-sm text-gray-600 mt-2">Average MGI Score</p>
                       <p className="text-xs text-gray-500 mt-1">{environmentalAggregates.mgi.samples} samples</p>
@@ -2617,7 +2618,7 @@ const SiteDeviceSessionDetailPage = () => {
                           <p className="text-xs text-gray-600">Maximum</p>
                         </div>
                         <p className="text-2xl font-bold text-red-600">
-                          {environmentalAggregates.mgi.max?.toFixed(1) || '-'}
+                          {formatMGI(environmentalAggregates.mgi.max)}
                         </p>
                       </div>
 
@@ -2627,7 +2628,7 @@ const SiteDeviceSessionDetailPage = () => {
                           <p className="text-xs text-gray-600">Minimum</p>
                         </div>
                         <p className="text-2xl font-bold text-green-600">
-                          {environmentalAggregates.mgi.min?.toFixed(1) || '-'}
+                          {formatMGI(environmentalAggregates.mgi.min)}
                         </p>
                       </div>
                     </div>
@@ -2636,7 +2637,7 @@ const SiteDeviceSessionDetailPage = () => {
                       <div className="bg-gray-50 rounded p-3">
                         <p className="text-xs text-gray-600 text-center">Standard Deviation</p>
                         <p className="text-lg font-bold text-gray-700 text-center mt-1">
-                          ±{environmentalAggregates.mgi.stdDev.toFixed(2)}
+                          ±{(environmentalAggregates.mgi.stdDev * 100).toFixed(1)}%
                         </p>
                         <p className="text-xs text-gray-500 text-center mt-1">Variability across session</p>
                       </div>

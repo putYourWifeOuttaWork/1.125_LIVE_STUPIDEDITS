@@ -3,6 +3,7 @@ import { X, ChevronLeft, ChevronRight, ExternalLink, Loader2, Camera, MapPin, Ac
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { DrillDownRecord } from '../../types/analytics';
+import { formatMGI, getMGIColor } from '../../utils/mgiUtils';
 import Modal from '../common/Modal';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
@@ -166,14 +167,8 @@ export default function DrillDownImageModal({
                   </div>
                   <p className="text-sm font-semibold text-gray-900">
                     {currentRecord.mgi_score !== null ? (
-                      <span className={`${
-                        currentRecord.mgi_score > 0.7
-                          ? 'text-red-600'
-                          : currentRecord.mgi_score > 0.4
-                          ? 'text-yellow-600'
-                          : 'text-green-600'
-                      }`}>
-                        {currentRecord.mgi_score.toFixed(2)}
+                      <span style={{ color: getMGIColor(currentRecord.mgi_score) }}>
+                        {formatMGI(currentRecord.mgi_score)}
                       </span>
                     ) : (
                       'N/A'

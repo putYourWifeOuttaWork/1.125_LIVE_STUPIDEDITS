@@ -14,6 +14,7 @@ import {
 import { DrillDownRecord } from '../../types/analytics';
 import { exportDataToCSV } from '../../services/analyticsService';
 import { format } from 'date-fns';
+import { formatMGI } from '../../utils/mgiUtils';
 import DrillDownImageModal from './DrillDownImageModal';
 
 interface DrillDownPanelProps {
@@ -287,7 +288,7 @@ export default function DrillDownPanel({
                           </span>
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-center text-gray-700">
-                          {device.avg_mgi !== null ? device.avg_mgi.toFixed(2) : 'N/A'}
+                          {formatMGI(device.avg_mgi)}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-center text-gray-700 text-xs">
                           {device.min_temp !== null && device.max_temp !== null
@@ -346,7 +347,7 @@ export default function DrillDownPanel({
                             <td className="px-3 py-2 text-center text-xs text-gray-700">
                               {record.mgi_score !== null ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                  {record.mgi_score.toFixed(2)}
+                                  {formatMGI(record.mgi_score)}
                                 </span>
                               ) : (
                                 'N/A'
@@ -418,7 +419,7 @@ export default function DrillDownPanel({
                             {record.device_code}
                           </div>
                           <div className="text-white/80 text-[10px]">
-                            MGI: {record.mgi_score?.toFixed(2) ?? 'N/A'}
+                            MGI: {formatMGI(record.mgi_score ?? null)}
                           </div>
                           <div className="text-white/60 text-[10px]">
                             {format(new Date(record.captured_at), 'MMM d, HH:mm')}

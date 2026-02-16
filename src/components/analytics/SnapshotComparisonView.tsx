@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { ArrowLeft, Camera, Clock } from 'lucide-react';
 import { format } from 'date-fns';
-import { ReportSnapshot, METRIC_LABELS } from '../../types/analytics';
+import { ReportSnapshot, METRIC_LABELS, METRIC_DISPLAY_SCALE, MetricType } from '../../types/analytics';
 import { transformTimeSeriesForD3 } from '../../services/analyticsService';
 import Button from '../common/Button';
 import SnapshotViewer from './SnapshotViewer';
@@ -26,9 +26,10 @@ function computeStats(snapshot: ReportSnapshot): StatSummary {
   }
   const primaryMetric =
     snapshot.configuration_snapshot?.metrics?.[0]?.type || 'mgi_score';
+  const scale = METRIC_DISPLAY_SCALE[primaryMetric as MetricType] ?? 1;
   const values = ts
     .filter((d: any) => d.metric_name === primaryMetric && d.metric_value != null)
-    .map((d: any) => d.metric_value as number);
+    .map((d: any) => (d.metric_value as number) * scale);
 
   if (values.length === 0) return { count: ts.length, min: null, max: null, avg: null };
 

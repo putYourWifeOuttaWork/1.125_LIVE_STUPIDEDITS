@@ -294,14 +294,27 @@ export const METRIC_UNITS: Record<MetricType, string> = {
   humidity: '%',
   pressure: 'hPa',
   gas_resistance: '\u2126',
-  mgi_score: 'pts',
-  mgi_velocity: 'pts/day',
-  mgi_speed: 'pts/hr',
+  mgi_score: '%',
+  mgi_velocity: '%/session',
+  mgi_speed: '%/day',
   battery_voltage: 'V',
   alert_count: '',
   wake_reliability: '%',
   image_success_rate: '%',
 };
+
+export const METRIC_DISPLAY_SCALE: Partial<Record<MetricType, number>> = {
+  mgi_score: 100,
+  mgi_velocity: 100,
+  mgi_speed: 100,
+};
+
+export const METRIC_BAR_PREFERRED: Set<MetricType> = new Set([
+  'mgi_score',
+  'mgi_velocity',
+  'mgi_speed',
+  'alert_count',
+]);
 
 export type MetricScaleGroup = 'percent' | 'ambient' | 'pressure' | 'resistance' | 'voltage' | 'rate' | 'count' | 'score_rate';
 

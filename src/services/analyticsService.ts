@@ -14,6 +14,8 @@ import {
   ReportQueryParams,
   CacheEntry,
   METRIC_LABELS,
+  METRIC_DISPLAY_SCALE,
+  METRIC_BAR_PREFERRED,
   MetricType,
 } from '../types/analytics';
 
@@ -1030,6 +1032,9 @@ export function transformTimeSeriesForD3(
     const metricIdx = metrics.indexOf(group.metricName);
     const colorPair = DEVICE_BASE_COLORS[deviceIdx % DEVICE_BASE_COLORS.length];
     const isSecondary = hasScaleSplit && secondaryMetrics.has(group.metricName);
+    const scale = METRIC_DISPLAY_SCALE[group.metricName as MetricType] ?? 1;
+    const hasNonBarMetric = metrics.some(m => !METRIC_BAR_PREFERRED.has(m as MetricType));
+    const useBar = isSecondary && METRIC_BAR_PREFERRED.has(group.metricName as MetricType) && hasNonBarMetric;
 
     series.push({
       id: group.id,
@@ -1037,10 +1042,10 @@ export function transformTimeSeriesForD3(
       metricName: group.metricName,
       color: isMultiMetric ? colorPair[metricIdx % colorPair.length] : colorPair[0],
       lineStyle: isMultiMetric && !isSecondary && metricIdx > 0 ? 'dashed' : 'solid',
-      renderAs: isSecondary ? 'bar' : 'line',
+      renderAs: useBar ? 'bar' : 'line',
       values: allTimestamps.map(ts => {
         const val = group.points.get(ts.getTime());
-        return val !== undefined ? val : null;
+        return val !== undefined && val !== null ? val * scale : null;
       }),
     });
   }
@@ -1099,6 +1104,9 @@ export function transformComparisonForD3(
     const metricIdx = metrics.indexOf(group.metricName);
     const colorPair = DEVICE_BASE_COLORS[entityIdx % DEVICE_BASE_COLORS.length];
     const isSecondary = hasScaleSplit && secondaryMetrics.has(group.metricName);
+    const scale = METRIC_DISPLAY_SCALE[group.metricName as MetricType] ?? 1;
+    const hasNonBarMetric = metrics.some(m => !METRIC_BAR_PREFERRED.has(m as MetricType));
+    const useBar = isSecondary && METRIC_BAR_PREFERRED.has(group.metricName as MetricType) && hasNonBarMetric;
 
     series.push({
       id: group.id,
@@ -1106,10 +1114,10 @@ export function transformComparisonForD3(
       metricName: group.metricName,
       color: isMultiMetric ? colorPair[metricIdx % colorPair.length] : colorPair[0],
       lineStyle: isMultiMetric && !isSecondary && metricIdx > 0 ? 'dashed' : 'solid',
-      renderAs: isSecondary ? 'bar' : 'line',
+      renderAs: useBar ? 'bar' : 'line',
       values: allTimestamps.map((ts) => {
         const val = group.points.get(ts.getTime());
-        return val !== undefined ? val : null;
+        return val !== undefined && val !== null ? val * scale : null;
       }),
     });
   }

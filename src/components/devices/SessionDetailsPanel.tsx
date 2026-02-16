@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { parseDateOnly } from '../../utils/timeFormatters';
 import { ActiveSession } from './ActiveSessionsGrid';
 import { useActiveCompany } from '../../hooks/useActiveCompany';
+import { formatMGI } from '../../utils/mgiUtils';
 
 interface SessionDetailsPanelProps {
   selectedSession: ActiveSession | null;
@@ -302,7 +303,7 @@ export default function SessionDetailsPanel({
               <div className="flex items-center justify-between mb-2">
                 <TrendingUp className="w-5 h-5 text-green-600" />
                 <span className="text-2xl font-bold text-gray-900">
-                  {metrics.avgMgiScore.toFixed(1)}
+                  {formatMGI(metrics.avgMgiScore)}
                 </span>
               </div>
               <p className="text-xs text-gray-600 font-medium">Avg MGI Score</p>
