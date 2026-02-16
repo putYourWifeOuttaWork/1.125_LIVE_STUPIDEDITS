@@ -398,6 +398,10 @@ const ActiveAlertsPanel = () => {
                       <div className="text-xs text-gray-700 mt-0.5">
                         Site: {alert.site_name || 'Unknown'} - Device: {alert.metadata?.device_code || 'Unknown'}
                       </div>
+                      <div className="flex items-center gap-1 text-xs text-gray-600 mt-0.5">
+                        <Clock className="w-3 h-3" />
+                        {format(new Date(alert.triggered_at), 'MMM d, h:mm a')}
+                      </div>
                     </div>
                   </div>
 

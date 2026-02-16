@@ -113,10 +113,11 @@ export default function SessionDetailsPanel({
       };
 
       (devicesData || []).forEach(device => {
-        const battery = device.battery_health_percent || 0;
-        if (battery >= 70) {
+        if (device.battery_health_percent == null) {
           healthDistribution.healthy++;
-        } else if (battery >= 30) {
+        } else if (device.battery_health_percent >= 70) {
+          healthDistribution.healthy++;
+        } else if (device.battery_health_percent >= 30) {
           healthDistribution.warning++;
         } else {
           healthDistribution.critical++;

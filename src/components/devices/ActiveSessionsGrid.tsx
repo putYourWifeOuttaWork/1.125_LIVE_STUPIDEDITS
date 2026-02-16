@@ -89,9 +89,8 @@ export default function ActiveSessionsGrid({
       // Determine which company to filter by
       const effectiveCompanyFilter = companyFilter || activeCompanyId;
 
-      // Build query for active sessions
       let query = supabase
-        .from('site_device_sessions')
+        .from('vw_site_day_sessions')
         .select(`
           session_id,
           session_date,
@@ -101,9 +100,9 @@ export default function ActiveSessionsGrid({
           site_id,
           program_id,
           company_id,
-          sites!inner(name, company_id),
-          pilot_programs!inner(name, company_id),
-          companies!inner(name)
+          site_name,
+          program_name,
+          company_name
         `)
         .in('status', ['pending', 'in_progress'])
         .eq('session_date', new Date().toISOString().split('T')[0])
@@ -143,16 +142,15 @@ export default function ActiveSessionsGrid({
         }
       });
 
-      // Map to typed sessions
       const formattedSessions: ActiveSession[] = (sessionsData || []).map((session: any) => {
         const alerts = alertCounts.get(session.session_id) || { total: 0, critical: 0, warning: 0, latest: null };
         return {
           session_id: session.session_id,
-          site_name: session.sites.name,
+          site_name: session.site_name,
           site_id: session.site_id,
-          program_name: session.pilot_programs.name,
+          program_name: session.program_name,
           program_id: session.program_id,
-          company_name: session.companies.name,
+          company_name: session.company_name,
           company_id: session.company_id,
           session_date: session.session_date,
           expected_wake_count: session.expected_wake_count,

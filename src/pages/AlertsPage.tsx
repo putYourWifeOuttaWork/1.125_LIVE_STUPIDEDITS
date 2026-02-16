@@ -693,13 +693,17 @@ const AlertsPage = () => {
                           <AlertTriangle className="w-6 h-6" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          {/* Severity and Category Badge */}
+                          {/* Severity, Category Badge, and Timestamp */}
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-xs font-bold uppercase px-2 py-1 bg-white bg-opacity-50 rounded">
                               {alert.severity}
                             </span>
                             <span className="text-xs font-semibold px-2 py-1 bg-white bg-opacity-30 rounded">
                               {getCategoryLabel(alert.alert_category)}
+                            </span>
+                            <span className="text-xs opacity-75 ml-auto flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {format(new Date(alert.triggered_at), 'MMM d, h:mm a')}
                             </span>
                           </div>
 
@@ -734,11 +738,6 @@ const AlertsPage = () => {
                                 </div>
                               </>
                             )}
-                            <span className="text-gray-400">›</span>
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              <span>{format(new Date(alert.triggered_at), 'MMM d, h:mm a')}</span>
-                            </div>
                           </div>
 
                           {/* Session ID if available */}
