@@ -67,6 +67,8 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
     try {
       setIsLoading(true);
 
+      const todayStr = new Date().toISOString().split('T')[0];
+
       const { data, error } = await supabase
         .from('site_device_sessions')
         .select(`
@@ -88,6 +90,7 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
           companies!inner(name)
         `)
         .in('status', ['in_progress'])
+        .gte('session_date', todayStr)
         .order('session_start_time', { ascending: false });
 
       if (error) {

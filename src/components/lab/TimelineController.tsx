@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, Radio } from 'lucide-react';
 import Button from '../common/Button';
 import { format } from 'date-fns';
 
@@ -7,9 +7,13 @@ interface TimelineControllerProps {
   totalWakes: number;
   currentWake: number;
   onWakeChange: (wakeNumber: number) => void;
-  wakeTimestamps?: string[]; // Array of ISO timestamps for each wake
-  autoPlaySpeed?: number; // milliseconds between frames (default 2000)
+  wakeTimestamps?: string[];
+  autoPlaySpeed?: number;
   className?: string;
+  isLive?: boolean;
+  onExitLive?: () => void;
+  onReturnToLive?: () => void;
+  canGoLive?: boolean;
 }
 
 export function TimelineController({
@@ -19,11 +23,14 @@ export function TimelineController({
   wakeTimestamps = [],
   autoPlaySpeed = 2000,
   className = '',
+  isLive = false,
+  onExitLive,
+  onReturnToLive,
+  canGoLive = false,
 }: TimelineControllerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(autoPlaySpeed);
 
-  // Auto-play logic
   useEffect(() => {
     if (!isPlaying) return;
 
@@ -40,7 +47,6 @@ export function TimelineController({
 
   const handlePlayPause = () => {
     if (currentWake >= totalWakes) {
-      // If at the end, restart from beginning
       onWakeChange(1);
     }
     setIsPlaying(!isPlaying);
@@ -50,21 +56,33 @@ export function TimelineController({
     const newWake = parseInt(e.target.value, 10);
     onWakeChange(newWake);
     setIsPlaying(false);
+    if (isLive && onExitLive) {
+      onExitLive();
+    }
   };
 
   const handlePrevious = () => {
     onWakeChange(Math.max(1, currentWake - 1));
     setIsPlaying(false);
+    if (isLive && onExitLive) {
+      onExitLive();
+    }
   };
 
   const handleNext = () => {
     onWakeChange(Math.min(totalWakes, currentWake + 1));
     setIsPlaying(false);
+    if (isLive && onExitLive) {
+      onExitLive();
+    }
   };
 
   const handleSkipToStart = () => {
     onWakeChange(1);
     setIsPlaying(false);
+    if (isLive && onExitLive) {
+      onExitLive();
+    }
   };
 
   const handleSkipToEnd = () => {
@@ -72,13 +90,9 @@ export function TimelineController({
     setIsPlaying(false);
   };
 
-  // Ensure currentWake is a valid number
   const validCurrentWake = Number.isFinite(currentWake) ? currentWake : 1;
-
-  // Get timestamp for current wake
   const currentTimestamp = wakeTimestamps[validCurrentWake - 1];
 
-  // Format the timestamp
   const formatWakeTime = (timestamp: string) => {
     try {
       return format(new Date(timestamp), 'MMM d, yyyy h:mm a');
@@ -87,9 +101,53 @@ export function TimelineController({
     }
   };
 
+  if (isLive) {
+    const latestTimestamp = wakeTimestamps[wakeTimestamps.length - 1];
+
+    return (
+      <div className={`bg-white rounded-lg border border-green-200 p-3 ${className}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
+              </span>
+              <span className="text-sm font-semibold text-green-700">LIVE</span>
+            </div>
+            <div className="h-4 w-px bg-gray-300" />
+            <div>
+              <span className="text-sm text-gray-700">
+                Wake #{totalWakes} of {totalWakes}
+              </span>
+              {latestTimestamp && (
+                <span className="text-xs text-gray-500 ml-2">
+                  {formatWakeTime(latestTimestamp)}
+                </span>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (onExitLive) onExitLive();
+            }}
+            className="text-xs"
+          >
+            <Rewind className="w-3 h-3 mr-1" />
+            Review Timeline
+          </Button>
+        </div>
+        <div className="mt-2 text-xs text-gray-500">
+          Showing latest snapshot data. Refreshing every 60 seconds.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`bg-white rounded-lg border border-gray-200 p-3 ${className}`}>
-      {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div>
           <h3 className="text-sm font-semibold text-gray-700">
@@ -102,8 +160,18 @@ export function TimelineController({
           )}
         </div>
 
-        {/* Speed control */}
         <div className="flex items-center gap-2">
+          {canGoLive && onReturnToLive && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onReturnToLive}
+              className="text-xs !py-1 !px-2 bg-green-600 hover:bg-green-700"
+            >
+              <Radio className="w-3 h-3 mr-1" />
+              Return to Live
+            </Button>
+          )}
           <label htmlFor="speed" className="text-xs text-gray-600">
             Speed:
           </label>
@@ -121,7 +189,6 @@ export function TimelineController({
         </div>
       </div>
 
-      {/* Timeline slider */}
       <div className="mb-2">
         <input
           type="range"
@@ -135,7 +202,6 @@ export function TimelineController({
           }}
         />
 
-        {/* Wake markers */}
         <div className="flex justify-between mt-1 px-1">
           {[1, Math.floor(totalWakes / 2), totalWakes]
             .filter((wake, idx, arr) => arr.indexOf(wake) === idx)
@@ -150,7 +216,6 @@ export function TimelineController({
         </div>
       </div>
 
-      {/* Playback controls */}
       <div className="flex items-center justify-center gap-2">
         <Button
           variant="outline"
@@ -211,7 +276,6 @@ export function TimelineController({
         </Button>
       </div>
 
-      {/* Info text */}
       <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
         <p>
           Use the slider or playback controls to navigate through device wake

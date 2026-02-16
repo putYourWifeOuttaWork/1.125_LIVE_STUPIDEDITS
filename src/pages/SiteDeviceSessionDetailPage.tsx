@@ -108,6 +108,7 @@ const SiteDeviceSessionDetailPage = () => {
     deviceId: string;
     deviceCode: string;
   } | null>(null);
+  const [isLiveMode, setIsLiveMode] = useState(true);
 
   const { role } = useUserRole();
   const canEdit = role === 'company_admin' || role === 'maintenance' || role === 'super_admin';
@@ -115,9 +116,14 @@ const SiteDeviceSessionDetailPage = () => {
   const isAdmin = role === 'company_admin' || role === 'super_admin';
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch snapshots for this specific session
+  const isSessionActive = session?.status === 'in_progress' &&
+    session?.session_end_time && new Date(session.session_end_time) > new Date();
+
+  const pollIntervalMs = isSessionActive && isLiveMode ? 60000 : null;
+
   const { snapshots: sessionSnapshots, loading: snapshotsLoading, refetch: refetchSnapshots } = useSessionSnapshots(
-    sessionId || null
+    sessionId || null,
+    { pollIntervalMs }
   );
 
   useEffect(() => {
@@ -126,6 +132,18 @@ const SiteDeviceSessionDetailPage = () => {
       fetchDevicesData();
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    if (session?.status === 'locked') {
+      setIsLiveMode(false);
+    }
+  }, [session?.status]);
+
+  useEffect(() => {
+    if (isLiveMode && processedSnapshots.length > 0) {
+      setCurrentSnapshotIndex(processedSnapshots.length - 1);
+    }
+  }, [isLiveMode, processedSnapshots.length]);
 
   // Fetch session alerts
   useEffect(() => {
@@ -1180,12 +1198,20 @@ const SiteDeviceSessionDetailPage = () => {
     );
   }
 
+  const getDisplayStatus = () => {
+    if (session?.status === 'locked') return 'locked';
+    if (session?.status === 'in_progress' && isSessionExpired) return 'ended';
+    return session?.status || 'unknown';
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
         return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'in_progress':
         return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'ended':
+        return 'bg-gray-100 text-gray-800 border-gray-200';
       case 'locked':
         return 'bg-green-100 text-green-800 border-green-200';
       default:
@@ -1315,7 +1341,7 @@ const SiteDeviceSessionDetailPage = () => {
       {activeTab === 'overview' && (
         <>
       {/* Site Map with Timeline - MOVED TO TOP */}
-      {siteData && siteData.length > 0 && siteData.width > 0 && processedSnapshots.length > 0 && displayDevices.length > 0 && (
+      {siteData && siteData.length > 0 && siteData.width > 0 && (processedSnapshots.length > 0 && displayDevices.length > 0 ? (
         <Card className="animate-fade-in">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -1323,7 +1349,7 @@ const SiteDeviceSessionDetailPage = () => {
                 <MapPin className="w-5 h-5 text-gray-600" />
                 <h2 className="text-lg font-semibold">Session Timeline & Site Map</h2>
                 <span className="text-sm text-gray-600">
-                  {siteData.name} • {siteData.length}ft × {siteData.width}ft
+                  {siteData.name} • {siteData.length}ft x {siteData.width}ft
                 </span>
               </div>
               <div className="text-sm text-gray-600">
@@ -1343,16 +1369,25 @@ const SiteDeviceSessionDetailPage = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {/* Timeline Controller */}
               <TimelineController
                 totalWakes={processedSnapshots.length}
                 currentWake={currentSnapshotIndex + 1}
-                onWakeChange={(wakeNum) => setCurrentSnapshotIndex(Math.max(0, Math.min(processedSnapshots.length - 1, wakeNum - 1)))}
+                onWakeChange={(wakeNum) => {
+                  setCurrentSnapshotIndex(Math.max(0, Math.min(processedSnapshots.length - 1, wakeNum - 1)));
+                }}
                 wakeTimestamps={processedSnapshots.map(s => s.wake_round_start)}
                 autoPlaySpeed={2000}
+                isLive={isLiveMode}
+                onExitLive={() => {
+                  setIsLiveMode(false);
+                  setCurrentSnapshotIndex(0);
+                }}
+                onReturnToLive={() => {
+                  setIsLiveMode(true);
+                }}
+                canGoLive={!!isSessionActive && !isLiveMode}
               />
 
-              {/* Site Map */}
               <SiteMapAnalyticsViewer
                 siteLength={siteData.length}
                 siteWidth={siteData.width}
@@ -1364,14 +1399,43 @@ const SiteDeviceSessionDetailPage = () => {
                 onDeviceClick={(deviceId) => navigate(`/devices/${deviceId}`)}
               />
 
-              {/* Zone Analytics */}
               {zoneMode !== 'none' && displayDevices.length >= 2 && (
                 <ZoneAnalytics devices={displayDevices} zoneMode={zoneMode} />
               )}
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : isSessionActive && processedSnapshots.length === 0 ? (
+        <Card className="animate-fade-in">
+          <CardHeader>
+            <div className="flex items-center space-x-2">
+              <MapPin className="w-5 h-5 text-gray-600" />
+              <h2 className="text-lg font-semibold">Session Timeline & Site Map</h2>
+              <span className="text-sm text-gray-600">
+                {siteData.name} • {siteData.length}ft x {siteData.width}ft
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="relative mb-4">
+                <span className="relative flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500" />
+                </span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-1">Awaiting First Wake Data</h3>
+              <p className="text-sm text-gray-500 max-w-md">
+                This session is active but no wake data has been received yet. The map will populate
+                automatically as devices report in. Last known telemetry and MGI data will carry forward.
+              </p>
+              <p className="text-xs text-gray-400 mt-3">
+                Checking for new data every 60 seconds
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null)}
 
       {/* Missing Site Dimensions Warning */}
       {siteData && (!siteData.length || !siteData.width) && processedSnapshots.length > 0 && (
@@ -1423,8 +1487,8 @@ const SiteDeviceSessionDetailPage = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Status</p>
-                <p className={`text-2xl font-bold mt-1 px-3 py-1 rounded-full border inline-block ${getStatusColor(session.status)}`}>
-                  {session.status.toUpperCase()}
+                <p className={`text-2xl font-bold mt-1 px-3 py-1 rounded-full border inline-block ${getStatusColor(getDisplayStatus())}`}>
+                  {getDisplayStatus().toUpperCase().replace('_', ' ')}
                 </p>
               </div>
               <Activity className="h-8 w-8 text-blue-500" />
