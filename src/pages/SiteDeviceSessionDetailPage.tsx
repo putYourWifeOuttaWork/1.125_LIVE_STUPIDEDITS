@@ -139,12 +139,6 @@ const SiteDeviceSessionDetailPage = () => {
     }
   }, [session?.status]);
 
-  useEffect(() => {
-    if (isLiveMode && processedSnapshots.length > 0) {
-      setCurrentSnapshotIndex(processedSnapshots.length - 1);
-    }
-  }, [isLiveMode, processedSnapshots.length]);
-
   // Fetch session alerts
   useEffect(() => {
     const fetchSessionAlerts = async () => {
@@ -454,6 +448,12 @@ const SiteDeviceSessionDetailPage = () => {
     log.debug(`Processed ${processed.length} snapshots for session ${sessionId} with LOCF`);
     return processed;
   }, [sessionSnapshots, sessionId]);
+
+  useEffect(() => {
+    if (isLiveMode && processedSnapshots.length > 0) {
+      setCurrentSnapshotIndex(processedSnapshots.length - 1);
+    }
+  }, [isLiveMode, processedSnapshots.length]);
 
   // Transform snapshot data with smooth transitions
   const displayDevices = useMemo(() => {
