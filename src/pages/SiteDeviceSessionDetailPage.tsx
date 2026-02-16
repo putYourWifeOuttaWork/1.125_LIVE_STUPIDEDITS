@@ -2919,9 +2919,11 @@ const SiteDeviceSessionDetailPage = () => {
 
                               {/* MGI Score Badge */}
                               {image.mgi_score != null && (
-                                <div className="absolute top-2 right-2">
+                                <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
                                   <div
-                                    className="px-2 py-1 rounded text-xs font-bold text-white shadow-lg"
+                                    className={`px-2 py-1 rounded text-xs font-bold text-white shadow-lg ${
+                                      image.mgi_qa_status === 'pending_review' ? 'ring-2 ring-amber-400 ring-offset-1' : ''
+                                    }`}
                                     style={{
                                       backgroundColor:
                                         image.mgi_score >= 0.7 ? '#dc2626' :
@@ -2931,6 +2933,16 @@ const SiteDeviceSessionDetailPage = () => {
                                   >
                                     {(image.mgi_score * 100).toFixed(1)}%
                                   </div>
+                                  {image.mgi_qa_status === 'pending_review' && (
+                                    <div className="px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-bold shadow-lg">
+                                      QA REVIEW
+                                    </div>
+                                  )}
+                                  {image.mgi_original_score != null && image.mgi_original_score !== image.mgi_score && (
+                                    <div className="px-1.5 py-0.5 rounded bg-black bg-opacity-60 text-gray-300 text-[9px] line-through">
+                                      {(image.mgi_original_score * 100).toFixed(1)}%
+                                    </div>
+                                  )}
                                 </div>
                               )}
 

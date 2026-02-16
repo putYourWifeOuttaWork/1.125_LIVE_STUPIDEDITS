@@ -1,10 +1,3 @@
-/**
- * Score MGI Image via Roboflow - Device-Centric Version
- *
- * Accepts image_id and image_url, calls Roboflow workflow, stores MGI score in device_images
- * Triggers automatic cascade: velocity → speed → rollup → snapshots → alerts
- */
-
 import { createClient } from 'npm:@supabase/supabase-js@2.39.8';
 
 const corsHeaders = {
@@ -25,40 +18,62 @@ interface RoboflowResult {
   MGI: string;
 }
 
+interface PlausibilityResult {
+  plausible: boolean;
+  confidence: number;
+  adjusted_score: number | null;
+  flag_reasons: string[];
+  qa_method: string;
+  context_scores: number[];
+  median: number | null;
+  mad: number | null;
+  modified_z_score: number | null;
+  growth_rate_per_hour: number | null;
+  thresholds_used: Record<string, unknown>;
+  neighbor_image_ids: string[];
+}
+
+function determinePriority(result: PlausibilityResult): string {
+  const zScore = Math.abs(result.modified_z_score ?? 0);
+  if (zScore > 7 || (result.growth_rate_per_hour ?? 0) > 0.05) return 'critical';
+  if (zScore > 5 || (result.growth_rate_per_hour ?? 0) > 0.03) return 'high';
+  return 'normal';
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+  const supabaseClient = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
 
+  let imageId: string | undefined;
+
+  try {
     const body: ScoreRequest = await req.json();
     const { image_id, image_url } = body;
+    imageId = image_id;
 
     if (!image_id || !image_url) {
       throw new Error('Missing required fields: image_id, image_url');
     }
 
     console.log('[MGI Scoring] Processing image:', image_id);
-    console.log('[MGI Scoring] Image URL:', image_url);
 
-    // Mark scoring as in-progress
     await supabaseClient
       .from('device_images')
       .update({ mgi_scoring_status: 'in_progress' })
       .eq('image_id', image_id);
 
-    // Call Roboflow API with CORRECT parameters
     const roboflowPayload = {
       api_key: ROBOFLOW_API_KEY,
       inputs: {
         image: { type: 'url', value: image_url },
-        param2: 'MGI'  // Correct parameter name and value
-      }
+        param2: 'MGI',
+      },
     };
 
     console.log('[MGI Scoring] Calling Roboflow API...');
@@ -77,10 +92,7 @@ Deno.serve(async (req: Request) => {
     const roboflowData = await roboflowResponse.json();
     console.log('[MGI Scoring] Roboflow response:', JSON.stringify(roboflowData));
 
-    // Parse response: {"outputs": [{"MGI": "0.15"}], "profiler_trace": []}
     let mgiScore: number | null = null;
-
-    // Handle new format with outputs wrapper
     const outputs = roboflowData.outputs || roboflowData;
 
     if (Array.isArray(outputs) && outputs.length > 0) {
@@ -93,7 +105,6 @@ Deno.serve(async (req: Request) => {
     if (mgiScore === null || isNaN(mgiScore) || mgiScore < 0 || mgiScore > 1) {
       console.error('[MGI Scoring] Invalid MGI score:', mgiScore);
 
-      // Log error for monitoring
       await supabaseClient.from('async_error_logs').insert({
         table_name: 'device_images',
         trigger_name: 'score_mgi_image',
@@ -103,13 +114,9 @@ Deno.serve(async (req: Request) => {
         error_details: {},
       });
 
-      // Mark as failed
       await supabaseClient
         .from('device_images')
-        .update({
-          mgi_scoring_status: 'failed',
-          roboflow_response: roboflowData
-        })
+        .update({ mgi_scoring_status: 'failed', roboflow_response: roboflowData })
         .eq('image_id', image_id);
 
       throw new Error(`Invalid MGI score: ${mgiScore}`);
@@ -117,36 +124,66 @@ Deno.serve(async (req: Request) => {
 
     console.log('[MGI Scoring] Parsed MGI score:', mgiScore);
 
-    // Update device_images - cascade triggers automatically!
-    // This will trigger:
-    // 1. calculate_and_rollup_mgi() - calculates velocity, speed, rolls up to devices
-    // 2. Snapshot regeneration (if trigger exists)
-    // 3. Alert threshold checks (if trigger exists)
-    const { error: updateError } = await supabaseClient
-      .from('device_images')
-      .update({
-        mgi_score: mgiScore,
-        scored_at: new Date().toISOString(),
-        mgi_scoring_status: 'complete',
-        roboflow_response: roboflowData
-      })
-      .eq('image_id', image_id);
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    console.log('[MGI Scoring] Successfully scored image:', image_id, 'Score:', mgiScore);
-
-    const scoredAt = new Date().toISOString();
-
     const { data: imageRecord } = await supabaseClient
       .from('device_images')
-      .select('device_id')
+      .select('device_id, captured_at, company_id, program_id, site_id, session_id')
       .eq('image_id', image_id)
       .maybeSingle();
 
-    if (imageRecord?.device_id) {
+    if (!imageRecord?.device_id) {
+      throw new Error('Image record not found or missing device_id');
+    }
+
+    const scoredAt = new Date().toISOString();
+    const capturedAt = imageRecord.captured_at || scoredAt;
+
+    // --- QA PLAUSIBILITY GATE ---
+    let isPlausible = true;
+    let qaResult: PlausibilityResult | null = null;
+
+    try {
+      const { data: plausibilityData, error: plausibilityError } = await supabaseClient.rpc(
+        'fn_check_mgi_plausibility',
+        {
+          p_device_id: imageRecord.device_id,
+          p_proposed_score: mgiScore,
+          p_captured_at: capturedAt,
+        }
+      );
+
+      if (plausibilityError) {
+        console.error('[MGI Scoring] Plausibility check error:', plausibilityError.message);
+      } else if (plausibilityData) {
+        qaResult = plausibilityData as PlausibilityResult;
+        isPlausible = qaResult.plausible;
+        console.log('[MGI Scoring] Plausibility result:', JSON.stringify({
+          plausible: isPlausible,
+          confidence: qaResult.confidence,
+          flag_reasons: qaResult.flag_reasons,
+        }));
+      }
+    } catch (e) {
+      console.error('[MGI Scoring] Plausibility check exception (proceeding as plausible):', e);
+    }
+
+    if (isPlausible) {
+      // --- PLAUSIBLE: write score as-is, proceed with alerts ---
+      const { error: updateError } = await supabaseClient
+        .from('device_images')
+        .update({
+          mgi_score: mgiScore,
+          scored_at: scoredAt,
+          mgi_scoring_status: 'complete',
+          roboflow_response: roboflowData,
+          mgi_qa_status: 'accepted',
+          mgi_confidence: qaResult?.confidence ?? 1.0,
+        })
+        .eq('image_id', image_id);
+
+      if (updateError) throw updateError;
+
+      console.log('[MGI Scoring] Score accepted, running alert checks...');
+
       const mgiAlertChecks = [
         { fn: 'check_absolute_thresholds', params: { p_device_id: imageRecord.device_id, p_temperature: null, p_humidity: null, p_mgi: mgiScore, p_measurement_timestamp: scoredAt } },
         { fn: 'check_mgi_velocity', params: { p_device_id: imageRecord.device_id, p_current_mgi: mgiScore, p_measurement_timestamp: scoredAt } },
@@ -168,39 +205,140 @@ Deno.serve(async (req: Request) => {
           console.error(`[MGI Scoring] ${check.fn} exception:`, e);
         }
       }
+
+      return new Response(
+        JSON.stringify({ success: true, image_id, mgi_score: mgiScore, qa_status: 'accepted' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    // --- NOT PLAUSIBLE: auto-correct, queue for review, SKIP alerts ---
+    const adjustedScore = qaResult!.adjusted_score ?? 0;
+    const priority = determinePriority(qaResult!);
+
+    console.log('[MGI Scoring] Score flagged as outlier. Original:', mgiScore, 'Adjusted:', adjustedScore, 'Priority:', priority);
+
+    const { error: updateError } = await supabaseClient
+      .from('device_images')
+      .update({
+        mgi_score: adjustedScore,
+        mgi_original_score: mgiScore,
+        mgi_adjusted_score: adjustedScore,
+        scored_at: scoredAt,
+        mgi_scoring_status: 'complete',
+        roboflow_response: roboflowData,
+        mgi_qa_status: 'pending_review',
+        mgi_confidence: qaResult!.confidence,
+        mgi_qa_method: qaResult!.qa_method,
+        mgi_qa_details: qaResult as unknown as Record<string, unknown>,
+      })
+      .eq('image_id', image_id);
+
+    if (updateError) throw updateError;
+
+    // Insert into review queue
+    const { data: reviewRecord, error: reviewError } = await supabaseClient
+      .from('mgi_review_queue')
+      .insert({
+        image_id,
+        device_id: imageRecord.device_id,
+        company_id: imageRecord.company_id,
+        program_id: imageRecord.program_id,
+        site_id: imageRecord.site_id,
+        session_id: imageRecord.session_id,
+        original_score: mgiScore,
+        adjusted_score: adjustedScore,
+        qa_method: qaResult!.qa_method,
+        qa_details: qaResult as unknown as Record<string, unknown>,
+        neighbor_image_ids: qaResult!.neighbor_image_ids || [],
+        thresholds_used: qaResult!.thresholds_used,
+        status: 'pending',
+        priority,
+      })
+      .select('review_id')
+      .maybeSingle();
+
+    if (reviewError) {
+      console.error('[MGI Scoring] Failed to create review queue entry:', reviewError.message);
+    }
+
+    // Insert admin notification
+    if (reviewRecord?.review_id) {
+      const { data: deviceInfo } = await supabaseClient
+        .from('devices')
+        .select('device_code')
+        .eq('id', imageRecord.device_id)
+        .maybeSingle();
+
+      const deviceCode = deviceInfo?.device_code || imageRecord.device_id;
+      const medianStr = qaResult!.median !== null ? `${(qaResult!.median * 100).toFixed(1)}%` : 'N/A';
+
+      const { error: notifError } = await supabaseClient
+        .from('admin_notifications')
+        .insert({
+          notification_type: 'mgi_review_required',
+          reference_id: reviewRecord.review_id,
+          reference_type: 'mgi_review_queue',
+          title: `MGI Outlier: Device ${deviceCode} scored ${(mgiScore * 100).toFixed(1)}% (context median: ${medianStr})`,
+          body: `Auto-corrected to ${(adjustedScore * 100).toFixed(1)}%. Detection: ${qaResult!.qa_method}. Flagged reasons: ${qaResult!.flag_reasons?.join(', ') || 'unknown'}.`,
+          severity: priority === 'critical' ? 'critical' : priority === 'high' ? 'warning' : 'info',
+          company_id: imageRecord.company_id,
+          site_id: imageRecord.site_id,
+          status: 'pending',
+        });
+
+      if (notifError) {
+        console.error('[MGI Scoring] Failed to create admin notification:', notifError.message);
+      } else {
+        console.log('[MGI Scoring] Admin notification created for review:', reviewRecord.review_id);
+
+        // Invoke notify_admin_review edge function asynchronously
+        try {
+          const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+          const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+          fetch(`${supabaseUrl}/functions/v1/notify_admin_review`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${serviceRoleKey}`,
+            },
+            body: JSON.stringify({ review_id: reviewRecord.review_id }),
+          }).catch(e => console.error('[MGI Scoring] notify_admin_review dispatch error:', e));
+        } catch (e) {
+          console.error('[MGI Scoring] Failed to dispatch notify_admin_review:', e);
+        }
+      }
+    }
+
+    console.log('[MGI Scoring] Image flagged for review. Alerts SKIPPED.');
 
     return new Response(
       JSON.stringify({
         success: true,
         image_id,
-        mgi_score: mgiScore
+        mgi_score: adjustedScore,
+        mgi_original_score: mgiScore,
+        qa_status: 'pending_review',
+        review_id: reviewRecord?.review_id,
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('[MGI Scoring] Error:', error);
 
-    // Mark as failed
-    try {
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
-
-      const body = await req.json();
-      await supabaseClient
-        .from('device_images')
-        .update({
-          mgi_scoring_status: 'failed',
-          roboflow_response: { error: error instanceof Error ? error.message : 'Unknown error' }
-        })
-        .eq('image_id', body.image_id);
-    } catch (e) {
-      console.error('[MGI Scoring] Failed to update error status:', e);
+    if (imageId) {
+      try {
+        await supabaseClient
+          .from('device_images')
+          .update({
+            mgi_scoring_status: 'failed',
+            roboflow_response: { error: error instanceof Error ? error.message : 'Unknown error' },
+          })
+          .eq('image_id', imageId);
+      } catch (e) {
+        console.error('[MGI Scoring] Failed to update error status:', e);
+      }
     }
 
     return new Response(
@@ -210,7 +348,7 @@ Deno.serve(async (req: Request) => {
       }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
   }

@@ -30,6 +30,7 @@ import sessionManager from '../../lib/sessionManager';
 import Button from '../common/Button';
 import ReloadLink from '../common/ReloadLink';
 import { NotificationCenter } from '../notifications/NotificationCenter';
+import { useMgiReviewPendingCount } from '../../hooks/useMgiReview';
 
 const AppLayout = () => {
   const { user } = useAuthStore();
@@ -51,6 +52,7 @@ const AppLayout = () => {
   } = useSessionStore();
   const [hasActiveSessions, setHasActiveSessions] = useState(false);
   const [showSessionIndicator, setShowSessionIndicator] = useState(false);
+  const { data: mgiPendingCount } = useMgiReviewPendingCount();
 
   // Load all companies for super admins and initialize company context
   useEffect(() => {
@@ -289,6 +291,21 @@ const AppLayout = () => {
                   </ReloadLink>
                 </>
               )}
+              {isSuperAdmin && (
+                <Link
+                  to="/mgi-review"
+                  className="relative flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
+                  data-testid="mgi-review-link"
+                >
+                  <Shield size={18} />
+                  <span className="hidden lg:inline">QA Review</span>
+                  {!!mgiPendingCount && mgiPendingCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+                      {mgiPendingCount > 99 ? '99+' : mgiPendingCount}
+                    </span>
+                  )}
+                </Link>
+              )}
               <Link
                 to="/profile" 
                 className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
@@ -417,6 +434,24 @@ const AppLayout = () => {
                   </div>
                 </Link>
               </>
+            )}
+            {isSuperAdmin && (
+              <Link
+                to="/mgi-review"
+                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                onClick={() => setIsMobileMenuOpen(false)}
+                data-testid="mobile-mgi-review-link"
+              >
+                <div className="flex items-center space-x-2">
+                  <Shield size={18} />
+                  <span>QA Review</span>
+                  {!!mgiPendingCount && mgiPendingCount > 0 && (
+                    <span className="ml-auto px-1.5 py-0.5 text-xs font-bold bg-amber-500 text-white rounded-full">
+                      {mgiPendingCount > 99 ? '99+' : mgiPendingCount}
+                    </span>
+                  )}
+                </div>
+              </Link>
             )}
             <Link
               to="/profile" 

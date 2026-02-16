@@ -13,6 +13,8 @@ interface DeviceImageData {
   mgi_score?: number | null;
   mgi_velocity?: number | null;
   mgi_speed?: number | null;
+  mgi_original_score?: number | null;
+  mgi_qa_status?: string | null;
   temperature?: number | null;
   humidity?: number | null;
   battery_voltage?: number | null;
@@ -329,6 +331,19 @@ const DeviceImageLightbox = ({
                       : 'N/A'}
                   </p>
                   <p className="text-xs text-gray-600 mt-1">MGI Score</p>
+                  {currentImage.mgi_qa_status === 'pending_review' && (
+                    <div className="mt-1.5 flex items-center justify-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300 rounded-full">
+                        <AlertTriangle className="w-2.5 h-2.5" />
+                        Under QA Review
+                      </span>
+                    </div>
+                  )}
+                  {currentImage.mgi_original_score != null && currentImage.mgi_original_score !== currentImage.mgi_score && (
+                    <p className="text-xs text-gray-400 mt-1 line-through">
+                      Original: {(currentImage.mgi_original_score * 100).toFixed(1)}%
+                    </p>
+                  )}
                 </div>
 
                 {/* MGI Velocity with Trend */}

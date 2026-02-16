@@ -12,12 +12,14 @@ import {
   Building,
   MapPin,
   Cpu,
+  Shield,
 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useAlertNotifications } from '../../hooks/useAlertNotifications';
+import { useMgiReviewPendingCount } from '../../hooks/useMgiReview';
 import { formatDistanceToNow, format } from 'date-fns';
 
-type TabId = 'alerts' | 'notifications';
+type TabId = 'alerts' | 'notifications' | 'reviews';
 
 export function NotificationCenter() {
   const navigate = useNavigate();
@@ -39,6 +41,8 @@ export function NotificationCenter() {
     loading: alertsLoading,
     acknowledgeAlert,
   } = useAlertNotifications();
+
+  const { data: reviewPendingCount } = useMgiReviewPendingCount();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -119,13 +123,20 @@ export function NotificationCenter() {
     if (notification.status !== 'read') {
       markAsRead(notification.id);
     }
-    if (notification.metadata?.device_id) {
+    const meta = notification.metadata as Record<string, unknown> | undefined;
+    if (meta?.link) {
+      navigate(meta.link as string);
+      setIsOpen(false);
+    } else if (meta?.notification_type === 'mgi_review_required') {
+      navigate('/mgi-review');
+      setIsOpen(false);
+    } else if (notification.metadata?.device_id) {
       navigate(`/devices/${notification.metadata.device_id}`);
       setIsOpen(false);
     }
   };
 
-  const totalBadgeCount = alertCount + unreadCount;
+  const totalBadgeCount = alertCount + unreadCount + (reviewPendingCount || 0);
   const hasAlerts = alertCount > 0;
 
   return (
@@ -201,6 +212,22 @@ export function NotificationCenter() {
                   </span>
                 )}
               </button>
+              {!!reviewPendingCount && reviewPendingCount > 0 && (
+                <button
+                  onClick={() => setActiveTab('reviews')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    activeTab === 'reviews'
+                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  Reviews
+                  <span className="ml-1 px-1.5 py-0.5 text-xs font-bold bg-amber-500 text-white rounded-full">
+                    {reviewPendingCount > 99 ? '99+' : reviewPendingCount}
+                  </span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -216,6 +243,28 @@ export function NotificationCenter() {
                 onAcknowledge={acknowledgeAlert}
                 onClick={handleAlertClick}
               />
+            ) : activeTab === 'reviews' ? (
+              <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
+                <div className="p-3 bg-amber-100 rounded-full mb-4">
+                  <Shield className="w-8 h-8 text-amber-600" />
+                </div>
+                <p className="text-sm font-semibold text-gray-900 mb-1">
+                  {reviewPendingCount} MGI Score{reviewPendingCount !== 1 ? 's' : ''} Flagged for Review
+                </p>
+                <p className="text-xs text-gray-500 mb-4">
+                  Outlier scores have been auto-corrected and need your verification.
+                </p>
+                <button
+                  onClick={() => {
+                    navigate('/mgi-review');
+                    setIsOpen(false);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                >
+                  <Shield className="w-4 h-4" />
+                  Open QA Review Dashboard
+                </button>
+              </div>
             ) : (
               <NotificationsTab
                 notifications={notifications}

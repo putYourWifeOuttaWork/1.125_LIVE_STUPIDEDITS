@@ -338,10 +338,32 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
                     </div>
                   )}
                   <div className="p-3">
-                    <p className="font-medium text-sm text-gray-900 truncate">{image.image_name}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-sm text-gray-900 truncate">{image.image_name}</p>
+                      {image.mgi_score != null && (
+                        <span
+                          className={`flex-shrink-0 ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${
+                            image.mgi_qa_status === 'pending_review' ? 'ring-1 ring-amber-400' : ''
+                          }`}
+                          style={{
+                            backgroundColor:
+                              image.mgi_score >= 0.7 ? '#dc2626' :
+                              image.mgi_score >= 0.4 ? '#f59e0b' :
+                              '#10b981'
+                          }}
+                        >
+                          {(image.mgi_score * 100).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500 mt-1">
                       {format(new Date(image.received_at), 'MMM d, yyyy HH:mm')}
                     </p>
+                    {image.mgi_qa_status === 'pending_review' && (
+                      <span className="inline-block mt-1 px-1.5 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 rounded">
+                        QA Review Pending
+                      </span>
+                    )}
                     {(image.temperature != null || image.humidity != null) && (
                       <div className="mt-2 flex gap-3 text-xs text-gray-600">
                         {image.temperature != null && <span>{image.temperature.toFixed(1)}°F</span>}

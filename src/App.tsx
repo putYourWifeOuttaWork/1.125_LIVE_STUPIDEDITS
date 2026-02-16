@@ -47,6 +47,7 @@ const LanderPage = lazy(() => import('./pages/LanderPage'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const ReportBuilderPage = lazy(() => import('./pages/ReportBuilderPage'));
 const ReportViewPage = lazy(() => import('./pages/ReportViewPage'));
+const MgiReviewPage = lazy(() => import('./pages/MgiReviewPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -399,6 +400,13 @@ function App() {
               <Route path="/analytics/:reportId/edit" element={
                 <Suspense fallback={<LoadingScreen />}>
                   <ReportBuilderPage />
+                </Suspense>
+              } />
+              <Route path="/mgi-review" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <RequireSuperAdmin>
+                    <MgiReviewPage />
+                  </RequireSuperAdmin>
                 </Suspense>
               } />
             </Route>
