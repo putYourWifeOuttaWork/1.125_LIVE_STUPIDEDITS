@@ -88,7 +88,8 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
 
     const pad = (ext: [number, number]) => {
       const range = ext[1] - ext[0] || 1;
-      return [ext[0] - range * 0.05, ext[1] + range * 0.05] as [number, number];
+      const lo = ext[0] >= 0 ? Math.max(0, ext[0] - range * 0.05) : ext[0] - range * 0.05;
+      return [lo, ext[1] + range * 0.05] as [number, number];
     };
 
     const xScale = d3.scaleTime()
@@ -117,6 +118,13 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
 
       svg.attr('width', effectiveWidth).attr('height', height);
 
+      svg.append('defs').append('clipPath')
+        .attr('id', 'animated-chart-clip')
+        .append('rect')
+        .attr('class', 'clip-rect')
+        .attr('width', innerWidth)
+        .attr('height', innerHeight);
+
       const g = svg.append('g')
         .attr('class', 'chart-area')
         .attr('transform', `translate(${margin.left},${margin.top})`);
@@ -133,8 +141,12 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
           .attr('transform', `translate(${innerWidth},0)`);
       }
 
-      g.append('g').attr('class', 'lines-group');
-      g.append('g').attr('class', 'dots-group');
+      const clippedArea = g.append('g')
+        .attr('class', 'clipped-area')
+        .attr('clip-path', 'url(#animated-chart-clip)');
+
+      clippedArea.append('g').attr('class', 'lines-group');
+      clippedArea.append('g').attr('class', 'dots-group');
 
       svg.append('text')
         .attr('class', 'y-label-primary')
@@ -163,7 +175,12 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
 
     svg.attr('width', effectiveWidth).attr('height', height);
 
+    svg.select('.clip-rect')
+      .attr('width', innerWidth)
+      .attr('height', innerHeight);
+
     const g = svg.select<SVGGElement>('.chart-area');
+    const clippedArea = g.select<SVGGElement>('.clipped-area');
     const t = d3.transition().duration(transitionDuration).ease(d3.easeCubicInOut);
 
     g.select<SVGGElement>('.x-axis')
@@ -188,13 +205,13 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
         .text(secondaryYAxisLabel);
     }
 
-    const linesGroup = g.select('.lines-group');
-    const dotsGroup = g.select('.dots-group');
+    const linesGroup = clippedArea.select('.lines-group');
+    const dotsGroup = clippedArea.select('.dots-group');
 
-    if (!g.select('.bars-group').node()) {
-      g.insert('g', '.lines-group').attr('class', 'bars-group');
+    if (!clippedArea.select('.bars-group').node()) {
+      clippedArea.insert('g', '.lines-group').attr('class', 'bars-group');
     }
-    const barsGroup = g.select('.bars-group');
+    const barsGroup = clippedArea.select('.bars-group');
 
     const barSeriesList = data.series.filter(s => s.renderAs === 'bar');
     const lineSeriesList = data.series.filter(s => s.renderAs !== 'bar');
@@ -209,7 +226,7 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
       const color = series.color || FALLBACK_COLORS[barIdx % FALLBACK_COLORS.length];
       const yScale = getScale(series);
       const safeCls = series.id.replace(/[^a-zA-Z0-9-]/g, '_');
-      const yBaseline = yScale(yScale.domain()[0]);
+      const yBaseline = innerHeight;
 
       const barData = series.values
         .map((val, idx) => ({ val, idx }))

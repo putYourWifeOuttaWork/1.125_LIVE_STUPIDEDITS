@@ -80,8 +80,18 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
       .attr('width', effectiveWidth)
       .attr('height', height);
 
+    const clipId = `chart-clip-${Math.random().toString(36).slice(2, 9)}`;
+    svg.append('defs').append('clipPath')
+      .attr('id', clipId)
+      .append('rect')
+      .attr('width', innerWidth)
+      .attr('height', innerHeight);
+
     const g = svg.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const plotArea = g.append('g')
+      .attr('clip-path', `url(#${clipId})`);
 
     const xScale = d3.scaleTime()
       .domain(d3.extent(data.timestamps) as [Date, Date])
@@ -101,8 +111,9 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
       if (allVals.length === 0) return d3.scaleLinear().domain([0, 1]).range([innerHeight, 0]);
       const ext = d3.extent(allVals) as [number, number];
       const pad = (ext[1] - ext[0]) * 0.1 || 1;
+      const domainMin = ext[0] >= 0 ? Math.max(0, ext[0] - pad) : ext[0] - pad;
       return d3.scaleLinear()
-        .domain([ext[0] - pad, ext[1] + pad])
+        .domain([domainMin, ext[1] + pad])
         .range([innerHeight, 0])
         .nice();
     };
@@ -175,6 +186,15 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
       return info?.label || metricName;
     };
 
+    const formatMetricValue = (value: number, metricName: string, unit: string) => {
+      const pctMetrics = ['mgi_score', 'mgi_velocity', 'mgi_speed', 'humidity', 'wake_reliability', 'image_success_rate'];
+      const intMetrics = ['alert_count'];
+      if (intMetrics.includes(metricName)) return `${Math.round(value)}${unit ? ' ' + unit : ''}`;
+      if (pctMetrics.includes(metricName)) return `${value.toFixed(1)}${unit ? ' ' + unit : ''}`;
+      if (metricName === 'battery_voltage') return `${value.toFixed(2)}${unit ? ' ' + unit : ''}`;
+      return `${value.toFixed(1)}${unit ? ' ' + unit : ''}`;
+    };
+
     const formatTooltipDate = (date: Date) => {
       const month = date.toLocaleString('default', { month: 'short' });
       const day = date.getDate();
@@ -227,7 +247,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
 
       const lineTexts = [
         deviceName,
-        `${metricLabel}: ${(d.val as number).toFixed(2)}${unit ? ' ' + unit : ''}`,
+        `${metricLabel}: ${formatMetricValue(d.val as number, seriesItem.metricName || '', unit)}`,
         formatTooltipDate(timestamp),
       ];
 
@@ -293,13 +313,13 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
       const color = series.color || FALLBACK_COLORS[barIdx % FALLBACK_COLORS.length];
       const yScale = getScale(series);
       const safeCls = series.id.replace(/[^a-zA-Z0-9-]/g, '_');
-      const yBaseline = yScale(yScale.domain()[0]);
+      const yBaseline = innerHeight;
 
       const barData = series.values
         .map((val, idx) => ({ val, idx }))
         .filter(d => d.val !== null && d.val !== undefined && !isNaN(d.val as number));
 
-      g.selectAll(`.bar-${safeCls}`)
+      plotArea.selectAll(`.bar-${safeCls}`)
         .data(barData)
         .enter()
         .append('rect')
@@ -347,7 +367,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .y(d => yScale(d as number))
         .curve(d3.curveMonotoneX);
 
-      const path = g.append('path')
+      const path = plotArea.append('path')
         .datum(series.values)
         .attr('fill', 'none')
         .attr('stroke', color)
@@ -379,7 +399,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .map((val, idx) => ({ val, idx }))
         .filter(d => d.val !== null && d.val !== undefined && !isNaN(d.val as number));
 
-      g.selectAll(`.dot-${safeCls}`)
+      plotArea.selectAll(`.dot-${safeCls}`)
         .data(dotData)
         .enter()
         .append('circle')
