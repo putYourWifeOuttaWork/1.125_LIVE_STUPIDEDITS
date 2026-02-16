@@ -17,6 +17,8 @@ export interface AvailableDevice {
   status: string;
   battery_level: number | null;
   last_seen: string | null;
+  last_wake_at: string | null;
+  wake_schedule_cron: string | null;
   firmware_version: string | null;
   is_currently_assigned: boolean;
   current_site_id: string | null;
@@ -212,7 +214,10 @@ export default function DevicePoolSelector({
                     </div>
 
                     <div className="flex flex-col items-end gap-1">
-                      <DeviceStatusBadge status={device.status} size="sm" />
+                      <DeviceStatusBadge
+                        lastWakeAt={device.last_wake_at}
+                        wakeScheduleCron={device.wake_schedule_cron}
+                      />
                       {isSelected && (
                         <ChevronRight size={16} className="text-primary-600" />
                       )}

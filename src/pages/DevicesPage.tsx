@@ -8,6 +8,7 @@ import DeviceCard from '../components/devices/DeviceCard';
 import DeviceMappingModal from '../components/devices/DeviceMappingModal';
 import DeviceSetupWizard from '../components/devices/DeviceSetupWizard';
 import DeviceRegistrationModal from '../components/devices/DeviceRegistrationModal';
+import { computeDeviceStatus } from '../components/devices/DeviceStatusBadge';
 import { useDevices, usePendingDevices, useUnmappedDevices } from '../hooks/useDevices';
 import { useDevice } from '../hooks/useDevice';
 import { DeviceWithStats } from '../lib/types';
@@ -20,7 +21,7 @@ const DevicesPage = () => {
   const { isAdmin, isSuperAdmin } = useCompanies();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'inactive'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'warning' | 'inactive'>('all');
   const [showMappingModal, setShowMappingModal] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
@@ -108,18 +109,14 @@ const DevicesPage = () => {
     if (!matchesSearch) return false;
 
     if (statusFilter === 'all') return true;
-    if (statusFilter === 'inactive') return !device.is_active;
 
-    if (!device.last_seen_at) return false;
+    const { status } = computeDeviceStatus({
+      lastWakeAt: device.last_wake_at,
+      wakeScheduleCron: device.wake_schedule_cron,
+      isActive: device.is_active,
+    });
 
-    const lastSeenDate = new Date(device.last_seen_at);
-    const now = new Date();
-    const hoursSinceLastSeen = (now.getTime() - lastSeenDate.getTime()) / (1000 * 60 * 60);
-
-    if (statusFilter === 'online') return hoursSinceLastSeen < 2 && device.is_active;
-    if (statusFilter === 'offline') return hoursSinceLastSeen >= 2 && device.is_active;
-
-    return true;
+    return status === statusFilter;
   });
 
   return (
@@ -277,24 +274,24 @@ const DevicesPage = () => {
             All
           </button>
           <button
-            onClick={() => setStatusFilter('online')}
+            onClick={() => setStatusFilter('active')}
             className={`px-4 py-2 text-sm font-medium rounded-md ${
-              statusFilter === 'online'
+              statusFilter === 'active'
                 ? 'bg-green-100 text-green-700'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            Online
+            Active
           </button>
           <button
-            onClick={() => setStatusFilter('offline')}
+            onClick={() => setStatusFilter('warning')}
             className={`px-4 py-2 text-sm font-medium rounded-md ${
-              statusFilter === 'offline'
-                ? 'bg-yellow-100 text-yellow-700'
+              statusFilter === 'warning'
+                ? 'bg-amber-100 text-amber-700'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            Offline
+            Warning
           </button>
           <button
             onClick={() => setStatusFilter('inactive')}

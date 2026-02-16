@@ -16,7 +16,6 @@ import {
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
 import { format } from 'date-fns';
-import DeviceStatusBadge from './DeviceStatusBadge';
 
 interface WakePayload {
   payload_id: string;

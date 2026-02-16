@@ -66,7 +66,8 @@ const DeviceCard = ({
               )}
             </div>
             <DeviceStatusBadge
-              lastSeenAt={device.last_seen_at}
+              lastWakeAt={device.last_wake_at}
+              wakeScheduleCron={device.wake_schedule_cron}
               isActive={device.is_active}
             />
           </div>

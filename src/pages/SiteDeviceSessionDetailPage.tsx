@@ -59,6 +59,13 @@ interface DeviceSessionData {
   battery_voltage?: number;
   battery_health_percent?: number;
   wifi_ssid?: string;
+  is_active?: boolean;
+  last_seen_at?: string | null;
+  last_wake_at?: string | null;
+  next_wake_at?: string | null;
+  last_session_wake_at?: string | null;
+  missed_wakes_in_session?: number;
+  missed_wakes_global?: number;
   assigned_at: string;
   is_primary?: boolean;
   expected_wakes_in_session: number;
@@ -2356,8 +2363,10 @@ const SiteDeviceSessionDetailPage = () => {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <DeviceStatusBadge
+                            lastWakeAt={device.last_session_wake_at || device.last_wake_at}
+                            wakeScheduleCron={device.wake_schedule_cron}
+                            missedWakes={device.missed_wakes_in_session ?? 0}
                             isActive={device.is_active}
-                            lastSeenAt={device.last_seen_at}
                           />
                         </td>
                         <td className="px-4 py-3 text-right">

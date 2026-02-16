@@ -169,7 +169,8 @@ const DeviceDetailPage = () => {
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <DeviceStatusBadge
-            lastSeenAt={device.last_seen_at}
+            lastWakeAt={device.last_wake_at}
+            wakeScheduleCron={device.wake_schedule_cron}
             isActive={device.is_active}
           />
           {isAdmin && (
