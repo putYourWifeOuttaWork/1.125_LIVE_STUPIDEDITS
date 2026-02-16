@@ -5,7 +5,7 @@ export interface BarChartData {
   labels: string[];
   datasets: {
     metricName: string;
-    values: number[];
+    values: (number | null)[];
     color?: string;
   }[];
 }
@@ -63,7 +63,7 @@ export const BarChartWithBrush: React.FC<BarChartWithBrushProps> = ({
       .range([0, x0.bandwidth()])
       .padding(0.05);
 
-    const allValues = data.datasets.flatMap(d => d.values);
+    const allValues = data.datasets.flatMap(d => d.values.filter((v): v is number => v !== null));
     const yScale = d3.scaleLinear()
       .domain([0, d3.max(allValues) || 100])
       .range([innerHeight, 0])
@@ -111,7 +111,10 @@ export const BarChartWithBrush: React.FC<BarChartWithBrushProps> = ({
       const color = dataset.color || COLORS[i % COLORS.length];
 
       groups.selectAll(`.bar-${i}`)
-        .data((label, j) => [{ label, value: dataset.values[j], metric: dataset.metricName }])
+        .data((label, j) => {
+          const value = dataset.values[j];
+          return value !== null ? [{ label, value, metric: dataset.metricName }] : [];
+        })
         .enter()
         .append('rect')
         .attr('class', `bar-${i}`)

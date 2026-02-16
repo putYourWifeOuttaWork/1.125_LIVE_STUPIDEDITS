@@ -80,8 +80,8 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
     const primarySeries = data.series.filter(s => getAxisForSeries(s) === 'primary');
     const secondarySeries = data.series.filter(s => getAxisForSeries(s) === 'secondary');
 
-    const primaryValues = primarySeries.flatMap(s => s.values.filter(v => v !== null && !isNaN(v)));
-    const secondaryValues = secondarySeries.flatMap(s => s.values.filter(v => v !== null && !isNaN(v)));
+    const primaryValues = primarySeries.flatMap(s => s.values.filter((v): v is number => v !== null && v !== undefined && !isNaN(v as number)));
+    const secondaryValues = secondarySeries.flatMap(s => s.values.filter((v): v is number => v !== null && v !== undefined && !isNaN(v as number)));
 
     const primaryExtent = d3.extent(primaryValues) as [number, number];
     const secondaryExtent = d3.extent(secondaryValues) as [number, number];
@@ -193,10 +193,10 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
 
     const lineGenerator = (series: MultiMetricSeries) => {
       const yScale = getScale(series);
-      return d3.line<number>()
-        .defined(d => d !== null && d !== undefined && !isNaN(d))
+      return d3.line<number | null>()
+        .defined(d => d !== null && d !== undefined && !isNaN(d as number))
         .x((_d, idx) => xScale(data.timestamps[idx]))
-        .y(d => yScale(d))
+        .y(d => yScale(d as number))
         .curve(d3.curveMonotoneX);
     };
 
@@ -235,8 +235,12 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
       const yScale = getScale(series);
       const safeCls = series.id.replace(/[^a-zA-Z0-9-]/g, '_');
 
-      const dots = dotsGroup.selectAll<SVGCircleElement, number>(`.dot-${safeCls}`)
-        .data(series.values);
+      const dotData = series.values
+        .map((val, idx) => ({ val, idx }))
+        .filter(d => d.val !== null && d.val !== undefined && !isNaN(d.val as number));
+
+      const dots = dotsGroup.selectAll<SVGCircleElement, { val: number | null; idx: number }>(`.dot-${safeCls}`)
+        .data(dotData, (d: { val: number | null; idx: number }) => d.idx);
 
       dots.exit()
         .transition(t as any)
@@ -251,8 +255,8 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
         .attr('opacity', 0.7)
         .merge(dots as any)
         .transition(t as any)
-        .attr('cx', (_d: number, idx: number) => xScale(data.timestamps[idx]))
-        .attr('cy', (d: number) => yScale(d))
+        .attr('cx', (d: { val: number | null; idx: number }) => xScale(data.timestamps[d.idx]))
+        .attr('cy', (d: { val: number | null; idx: number }) => yScale(d.val as number))
         .attr('r', 3)
         .attr('fill', color)
         .attr('opacity', 0.7);

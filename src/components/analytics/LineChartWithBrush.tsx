@@ -7,7 +7,7 @@ export interface LineChartData {
   series: (MultiMetricSeries | {
     id: string;
     label: string;
-    values: number[];
+    values: (number | null)[];
     color?: string;
     metricName?: string;
     lineStyle?: 'solid' | 'dashed';
@@ -205,10 +205,10 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
       const yScale = getScale(series);
       const isDashed = series.lineStyle === 'dashed';
 
-      const line = d3.line<number>()
-        .defined((d) => d !== null && d !== undefined && !isNaN(d))
+      const line = d3.line<number | null>()
+        .defined((d) => d !== null && d !== undefined && !isNaN(d as number))
         .x((_d, idx) => xScale(data.timestamps[idx]))
-        .y(d => yScale(d))
+        .y(d => yScale(d as number))
         .curve(d3.curveMonotoneX);
 
       const path = g.append('path')
@@ -239,17 +239,21 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
 
       const safeCls = series.id.replace(/[^a-zA-Z0-9-]/g, '_');
 
+      const dotData = series.values
+        .map((val, idx) => ({ val, idx }))
+        .filter(d => d.val !== null && d.val !== undefined && !isNaN(d.val as number));
+
       g.selectAll(`.dot-${safeCls}`)
-        .data(series.values)
+        .data(dotData)
         .enter()
         .append('circle')
         .attr('class', `dot-${safeCls}`)
-        .attr('cx', (_d, idx) => xScale(data.timestamps[idx]))
-        .attr('cy', d => yScale(d))
+        .attr('cx', d => xScale(data.timestamps[d.idx]))
+        .attr('cy', d => yScale(d.val as number))
         .attr('r', 3)
         .attr('fill', color)
         .attr('opacity', 0)
-        .on('mouseover', function (event: MouseEvent, d: number) {
+        .on('mouseover', function (event: MouseEvent, d: { val: number | null; idx: number }) {
           d3.select(this)
             .transition()
             .duration(150)
@@ -258,8 +262,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
 
           svg.selectAll('.chart-tooltip').remove();
 
-          const idx = series.values.indexOf(d);
-          const timestamp = data.timestamps[idx];
+          const timestamp = data.timestamps[d.idx];
           const unit = getMetricUnit(series.metricName || '');
           const metricLabel = getMetricLabel(series.metricName || '');
           const deviceName = series.label.split(' - ')[0];
@@ -268,7 +271,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
 
           const lineTexts = [
             deviceName,
-            `${metricLabel}: ${d.toFixed(2)}${unit ? ' ' + unit : ''}`,
+            `${metricLabel}: ${(d.val as number).toFixed(2)}${unit ? ' ' + unit : ''}`,
             formatTooltipDate(timestamp),
           ];
 
@@ -295,13 +298,13 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
           const tooltipW = maxTextW + tooltipPadX * 2 + 16;
 
           let tx = xScale(timestamp) + margin.left + 12;
-          let ty = yScale(d) + margin.top - tooltipH - 8;
+          let ty = yScale(d.val as number) + margin.top - tooltipH - 8;
 
           if (tx + tooltipW > width - 10) {
             tx = xScale(timestamp) + margin.left - tooltipW - 12;
           }
           if (ty < 5) {
-            ty = yScale(d) + margin.top + 12;
+            ty = yScale(d.val as number) + margin.top + 12;
           }
 
           tooltipG.attr('transform', `translate(${tx},${ty})`);

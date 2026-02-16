@@ -271,12 +271,12 @@ export async function fetchDrillDownRecords(
       wake_payload_id: img.wake_payload_id,
       temperature: img.temperature,
       humidity: img.humidity,
-      pressure: null,
-      gas_resistance: null,
+      pressure: img.pressure ?? null,
+      gas_resistance: img.gas_resistance ?? null,
       mgi_score: img.mgi_score,
-      mgi_velocity: null,
-      mgi_speed: null,
-      battery_voltage: null,
+      mgi_velocity: img.mgi_velocity ?? null,
+      mgi_speed: img.mgi_speed ?? null,
+      battery_voltage: img.battery_voltage ?? null,
       image_url: img.image_url,
       status: 'complete',
     }));
@@ -957,7 +957,7 @@ export async function fetchDrillDownImages(params: {
 export interface MultiMetricSeries {
   id: string;
   label: string;
-  values: number[];
+  values: (number | null)[];
   metricName: string;
   color?: string;
   lineStyle?: 'solid' | 'dashed';
@@ -997,7 +997,7 @@ export function transformTimeSeriesForD3(
     id: string;
     label: string;
     metricName: string;
-    points: Map<number, number>;
+    points: Map<number, number | null>;
   };
 
   const grouped = new Map<string, GroupEntry>();
@@ -1035,7 +1035,7 @@ export function transformTimeSeriesForD3(
       lineStyle: isMultiMetric && metricIdx > 0 ? 'dashed' : 'solid',
       values: allTimestamps.map(ts => {
         const val = group.points.get(ts.getTime());
-        return val !== undefined ? val : 0;
+        return val !== undefined ? val : null;
       }),
     });
   }
@@ -1063,7 +1063,7 @@ export function transformComparisonForD3(
     id: string;
     label: string;
     metricName: string;
-    points: Map<number, number>;
+    points: Map<number, number | null>;
   };
 
   const grouped = new Map<string, GroupEntry>();
@@ -1100,7 +1100,7 @@ export function transformComparisonForD3(
       lineStyle: isMultiMetric && metricIdx > 0 ? 'dashed' : 'solid',
       values: allTimestamps.map((ts) => {
         const val = group.points.get(ts.getTime());
-        return val !== undefined ? val : 0;
+        return val !== undefined ? val : null;
       }),
     });
   }
@@ -1113,7 +1113,7 @@ export function transformComparisonForD3(
  */
 export function transformAggregatedForD3(
   data: AggregatedDataPoint[]
-): { labels: string[]; datasets: { metricName: string; values: number[] }[] } {
+): { labels: string[]; datasets: { metricName: string; values: (number | null)[] }[] } {
   const metricNames = Array.from(new Set(data.map(d => d.metric_name)));
   const labels = Array.from(new Set(data.map(d => d.group_key)));
 
@@ -1121,7 +1121,7 @@ export function transformAggregatedForD3(
     metricName: metric,
     values: labels.map(label => {
       const point = data.find(d => d.group_key === label && d.metric_name === metric);
-      return point ? point.metric_value : 0;
+      return point ? point.metric_value : null;
     })
   }));
 
