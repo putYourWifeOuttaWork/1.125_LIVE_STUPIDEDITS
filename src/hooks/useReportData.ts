@@ -4,6 +4,8 @@ import {
   ReportConfiguration,
   TimeRange,
   HeatmapCell,
+  MetricType,
+  groupMetricsByScale,
 } from '../types/analytics';
 import { useActiveCompany } from './useActiveCompany';
 import {
@@ -192,19 +194,27 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     staleTime: 60_000,
   });
 
+  const secondaryMetricsSet = useMemo(() => {
+    const types = metricNames as MetricType[];
+    if (types.length <= 1) return undefined;
+    const groups = groupMetricsByScale(types);
+    if (groups.secondary.length === 0) return undefined;
+    return new Set<string>(groups.secondary);
+  }, [metricNames]);
+
   const lineChartData = useMemo(() => {
     const activeMetrics = metricNames.length > 0 ? metricNames : ['mgi_score'];
 
     if (isComparisonActive) {
       if (!comparisonQuery.data || comparisonQuery.data.length === 0)
         return null;
-      return transformComparisonForD3(comparisonQuery.data, activeMetrics);
+      return transformComparisonForD3(comparisonQuery.data, activeMetrics, secondaryMetricsSet);
     }
 
     if (!timeSeriesQuery.data || timeSeriesQuery.data.length === 0)
       return null;
-    return transformTimeSeriesForD3(timeSeriesQuery.data, activeMetrics);
-  }, [timeSeriesQuery.data, comparisonQuery.data, metricNames, isComparisonActive]);
+    return transformTimeSeriesForD3(timeSeriesQuery.data, activeMetrics, secondaryMetricsSet);
+  }, [timeSeriesQuery.data, comparisonQuery.data, metricNames, isComparisonActive, secondaryMetricsSet]);
 
   const barChartData = useMemo(() => {
     if (!aggregatedQuery.data || aggregatedQuery.data.length === 0)

@@ -308,15 +308,6 @@ export default function ReportViewPage() {
     setPlaybackIndex(idx);
   }, []);
 
-  const playbackChartData = useMemo(() => {
-    if (snapshotView !== 'playback' || sortedSnapshots.length === 0) return null;
-    const snap = sortedSnapshots[playbackIndex];
-    if (!snap?.data_snapshot?.timeSeries) return null;
-    const config = snap.configuration_snapshot;
-    const activeMetrics = config?.metrics?.map((m: any) => m.type) || ['mgi_score'];
-    return transformTimeSeriesForD3(snap.data_snapshot.timeSeries, activeMetrics);
-  }, [snapshotView, sortedSnapshots, playbackIndex]);
-
   const playbackScaleGroups = useMemo(() => {
     if (snapshotView !== 'playback' || sortedSnapshots.length === 0) return null;
     const snap = sortedSnapshots[playbackIndex];
@@ -324,6 +315,18 @@ export default function ReportViewPage() {
     const types = (config?.metrics || []).map((m: any) => m.type);
     return groupMetricsByScale(types);
   }, [snapshotView, sortedSnapshots, playbackIndex]);
+
+  const playbackChartData = useMemo(() => {
+    if (snapshotView !== 'playback' || sortedSnapshots.length === 0) return null;
+    const snap = sortedSnapshots[playbackIndex];
+    if (!snap?.data_snapshot?.timeSeries) return null;
+    const config = snap.configuration_snapshot;
+    const activeMetrics = config?.metrics?.map((m: any) => m.type) || ['mgi_score'];
+    const secSet = playbackScaleGroups && playbackScaleGroups.secondary.length > 0
+      ? new Set<string>(playbackScaleGroups.secondary)
+      : undefined;
+    return transformTimeSeriesForD3(snap.data_snapshot.timeSeries, activeMetrics, secSet);
+  }, [snapshotView, sortedSnapshots, playbackIndex, playbackScaleGroups]);
 
   const playbackMetricAxisInfo: MetricAxisInfo[] = useMemo(() => {
     if (!playbackScaleGroups) return [];

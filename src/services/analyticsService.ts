@@ -961,6 +961,7 @@ export interface MultiMetricSeries {
   metricName: string;
   color?: string;
   lineStyle?: 'solid' | 'dashed';
+  renderAs?: 'line' | 'bar';
 }
 
 export interface MultiMetricChartData {
@@ -979,12 +980,14 @@ const DEVICE_BASE_COLORS = [
 
 export function transformTimeSeriesForD3(
   data: TimeSeriesDataPoint[],
-  metricNames: string | string[]
+  metricNames: string | string[],
+  secondaryMetrics?: Set<string>
 ): MultiMetricChartData {
   const metrics = Array.isArray(metricNames) ? metricNames : [metricNames];
   const filtered = data.filter(d => metrics.includes(d.metric_name));
 
   const isMultiMetric = metrics.length > 1;
+  const hasScaleSplit = secondaryMetrics && secondaryMetrics.size > 0;
   const deviceCodes = Array.from(new Set(filtered.map(d => d.device_code || d.site_name || d.program_name)));
 
   const tsSet = new Set<string>();
@@ -1026,13 +1029,15 @@ export function transformTimeSeriesForD3(
     const deviceIdx = deviceCodes.indexOf(group.label.split(' - ')[0]);
     const metricIdx = metrics.indexOf(group.metricName);
     const colorPair = DEVICE_BASE_COLORS[deviceIdx % DEVICE_BASE_COLORS.length];
+    const isSecondary = hasScaleSplit && secondaryMetrics.has(group.metricName);
 
     series.push({
       id: group.id,
       label: group.label,
       metricName: group.metricName,
       color: isMultiMetric ? colorPair[metricIdx % colorPair.length] : colorPair[0],
-      lineStyle: isMultiMetric && metricIdx > 0 ? 'dashed' : 'solid',
+      lineStyle: isMultiMetric && !isSecondary && metricIdx > 0 ? 'dashed' : 'solid',
+      renderAs: isSecondary ? 'bar' : 'line',
       values: allTimestamps.map(ts => {
         const val = group.points.get(ts.getTime());
         return val !== undefined ? val : null;
@@ -1045,12 +1050,14 @@ export function transformTimeSeriesForD3(
 
 export function transformComparisonForD3(
   data: ComparisonDataPoint[],
-  metricNames: string | string[]
+  metricNames: string | string[],
+  secondaryMetrics?: Set<string>
 ): MultiMetricChartData {
   const metrics = Array.isArray(metricNames) ? metricNames : [metricNames];
   const filtered = data.filter((d) => metrics.includes(d.metric_name));
 
   const isMultiMetric = metrics.length > 1;
+  const hasScaleSplit = secondaryMetrics && secondaryMetrics.size > 0;
   const entityNames = Array.from(new Set(filtered.map(d => d.entity_name)));
 
   const tsSet = new Set<string>();
@@ -1091,13 +1098,15 @@ export function transformComparisonForD3(
     const entityIdx = entityNames.indexOf(group.label.split(' - ')[0]);
     const metricIdx = metrics.indexOf(group.metricName);
     const colorPair = DEVICE_BASE_COLORS[entityIdx % DEVICE_BASE_COLORS.length];
+    const isSecondary = hasScaleSplit && secondaryMetrics.has(group.metricName);
 
     series.push({
       id: group.id,
       label: group.label,
       metricName: group.metricName,
       color: isMultiMetric ? colorPair[metricIdx % colorPair.length] : colorPair[0],
-      lineStyle: isMultiMetric && metricIdx > 0 ? 'dashed' : 'solid',
+      lineStyle: isMultiMetric && !isSecondary && metricIdx > 0 ? 'dashed' : 'solid',
+      renderAs: isSecondary ? 'bar' : 'line',
       values: allTimestamps.map((ts) => {
         const val = group.points.get(ts.getTime());
         return val !== undefined ? val : null;

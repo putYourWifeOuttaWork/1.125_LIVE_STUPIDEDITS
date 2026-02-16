@@ -191,6 +191,68 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
     const linesGroup = g.select('.lines-group');
     const dotsGroup = g.select('.dots-group');
 
+    if (!g.select('.bars-group').node()) {
+      g.insert('g', '.lines-group').attr('class', 'bars-group');
+    }
+    const barsGroup = g.select('.bars-group');
+
+    const barSeriesList = data.series.filter(s => s.renderAs === 'bar');
+    const lineSeriesList = data.series.filter(s => s.renderAs !== 'bar');
+
+    const barCountPerTimestamp = barSeriesList.length;
+    const maxBarWidth = barCountPerTimestamp > 0
+      ? Math.min(28, Math.max(6, innerWidth / data.timestamps.length * 0.5 / barCountPerTimestamp))
+      : 0;
+    const barGroupWidth = maxBarWidth * barCountPerTimestamp;
+
+    barSeriesList.forEach((series, barIdx) => {
+      const color = series.color || FALLBACK_COLORS[barIdx % FALLBACK_COLORS.length];
+      const yScale = getScale(series);
+      const safeCls = series.id.replace(/[^a-zA-Z0-9-]/g, '_');
+      const yBaseline = yScale(yScale.domain()[0]);
+
+      const barData = series.values
+        .map((val, idx) => ({ val, idx }))
+        .filter(d => d.val !== null && d.val !== undefined && !isNaN(d.val as number));
+
+      const bars = barsGroup.selectAll<SVGRectElement, { val: number | null; idx: number }>(`.bar-${safeCls}`)
+        .data(barData, (d: { val: number | null; idx: number }) => d.idx);
+
+      bars.exit()
+        .transition(t as any)
+        .attr('height', 0)
+        .attr('y', yBaseline)
+        .remove();
+
+      bars.enter()
+        .append('rect')
+        .attr('class', `bar-${safeCls}`)
+        .attr('x', d => xScale(data.timestamps[d.idx]) - barGroupWidth / 2 + barIdx * maxBarWidth)
+        .attr('y', yBaseline)
+        .attr('width', maxBarWidth)
+        .attr('height', 0)
+        .attr('fill', color)
+        .attr('opacity', 0.35)
+        .attr('rx', 2)
+        .attr('ry', 2)
+        .merge(bars as any)
+        .transition(t as any)
+        .attr('x', (d: { val: number | null; idx: number }) => xScale(data.timestamps[d.idx]) - barGroupWidth / 2 + barIdx * maxBarWidth)
+        .attr('width', maxBarWidth)
+        .attr('y', (d: { val: number | null; idx: number }) => yScale(d.val as number))
+        .attr('height', (d: { val: number | null; idx: number }) => Math.max(0, yBaseline - yScale(d.val as number)))
+        .attr('fill', color)
+        .attr('opacity', 0.35);
+    });
+
+    const activeBarClasses = new Set(barSeriesList.map(s => `bar-${s.id.replace(/[^a-zA-Z0-9-]/g, '_')}`));
+    barsGroup.selectAll('rect').nodes().forEach(n => {
+      const cls = (n as SVGRectElement).getAttribute('class') || '';
+      if (cls.startsWith('bar-') && !activeBarClasses.has(cls)) {
+        d3.select(n).transition(t as any).attr('height', 0).style('opacity', 0).remove();
+      }
+    });
+
     const lineGenerator = (series: MultiMetricSeries) => {
       const yScale = getScale(series);
       return d3.line<number | null>()
@@ -200,10 +262,8 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
         .curve(d3.curveMonotoneX);
     };
 
-    const seriesIds = data.series.map(s => s.id);
-
     const paths = linesGroup.selectAll<SVGPathElement, MultiMetricSeries>('.series-line')
-      .data(data.series, (d: MultiMetricSeries) => d.id);
+      .data(lineSeriesList, (d: MultiMetricSeries) => d.id);
 
     paths.exit()
       .transition(t as any)
@@ -230,7 +290,7 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
           .style('opacity', 1);
       });
 
-    data.series.forEach((series, seriesIdx) => {
+    lineSeriesList.forEach((series, seriesIdx) => {
       const color = series.color || FALLBACK_COLORS[seriesIdx % FALLBACK_COLORS.length];
       const yScale = getScale(series);
       const safeCls = series.id.replace(/[^a-zA-Z0-9-]/g, '_');
@@ -267,7 +327,7 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
       .map(n => (n as SVGCircleElement).getAttribute('class') || '')
       .filter(c => c.startsWith('dot-'));
 
-    const activeClasses = new Set(data.series.map(s => `dot-${s.id.replace(/[^a-zA-Z0-9-]/g, '_')}`));
+    const activeClasses = new Set(lineSeriesList.map(s => `dot-${s.id.replace(/[^a-zA-Z0-9-]/g, '_')}`));
     staleClasses.forEach(cls => {
       if (!activeClasses.has(cls)) {
         dotsGroup.selectAll(`.${cls}`)
@@ -288,6 +348,7 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
       label: s.label,
       color: s.color || FALLBACK_COLORS[i % FALLBACK_COLORS.length],
       dashed: s.lineStyle === 'dashed',
+      isBar: s.renderAs === 'bar',
     }));
   }, [data]);
 
@@ -298,15 +359,21 @@ export const AnimatedLineChart: React.FC<AnimatedLineChartProps> = ({
         <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mt-3 px-4">
           {legendItems.map(item => (
             <div key={item.id} className="flex items-center gap-1.5 text-xs text-gray-600">
-              <svg width="20" height="10">
-                <line
-                  x1="0" y1="5" x2="20" y2="5"
-                  stroke={item.color}
-                  strokeWidth="2"
-                  strokeDasharray={item.dashed ? '4,2' : 'none'}
-                />
-                <circle cx="10" cy="5" r="2.5" fill={item.color} />
-              </svg>
+              {item.isBar ? (
+                <svg width="20" height="10">
+                  <rect x="2" y="0" width="16" height="10" rx="2" fill={item.color} opacity={0.45} />
+                </svg>
+              ) : (
+                <svg width="20" height="10">
+                  <line
+                    x1="0" y1="5" x2="20" y2="5"
+                    stroke={item.color}
+                    strokeWidth="2"
+                    strokeDasharray={item.dashed ? '4,2' : 'none'}
+                  />
+                  <circle cx="10" cy="5" r="2.5" fill={item.color} />
+                </svg>
+              )}
               <span>{item.label}</span>
             </div>
           ))}

@@ -54,11 +54,16 @@ export default function SnapshotViewer({
   const metricTypes = (config?.metrics || []).map(m => m.type);
   const snapshotScaleGroups = groupMetricsByScale(metricTypes);
 
+  const secondaryMetricsSet = useMemo(() => {
+    if (snapshotScaleGroups.secondary.length === 0) return undefined;
+    return new Set<string>(snapshotScaleGroups.secondary);
+  }, [snapshotScaleGroups.secondary.join(',')]);
+
   const chartData = useMemo(() => {
     if (!dataSnapshot?.timeSeries || dataSnapshot.timeSeries.length === 0) return null;
     const activeMetrics = metricTypes.length > 0 ? metricTypes : ['mgi_score'];
-    return transformTimeSeriesForD3(dataSnapshot.timeSeries, activeMetrics);
-  }, [dataSnapshot, config]);
+    return transformTimeSeriesForD3(dataSnapshot.timeSeries, activeMetrics, secondaryMetricsSet);
+  }, [dataSnapshot, config, secondaryMetricsSet]);
 
   const primaryMetricLabel =
     snapshotScaleGroups.primary.length > 0

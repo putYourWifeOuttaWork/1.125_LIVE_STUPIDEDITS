@@ -200,7 +200,143 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .call(brush);
     }
 
-    filteredSeries.forEach((series, i) => {
+    const barSeriesList = filteredSeries.filter(s => s.renderAs === 'bar');
+    const lineSeriesList = filteredSeries.filter(s => s.renderAs !== 'bar');
+
+    const barCountPerTimestamp = barSeriesList.length;
+    const maxBarWidth = barCountPerTimestamp > 0
+      ? Math.min(28, Math.max(6, innerWidth / data.timestamps.length * 0.5 / barCountPerTimestamp))
+      : 0;
+    const barGroupWidth = maxBarWidth * barCountPerTimestamp;
+
+    const showTooltip = (
+      svgEl: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+      color: string,
+      seriesItem: typeof filteredSeries[0],
+      d: { val: number | null; idx: number },
+      yScale: d3.ScaleLinear<number, number>,
+    ) => {
+      svgEl.selectAll('.chart-tooltip').remove();
+
+      const timestamp = data.timestamps[d.idx];
+      const unit = getMetricUnit(seriesItem.metricName || '');
+      const metricLabel = getMetricLabel(seriesItem.metricName || '');
+      const deviceName = seriesItem.label.split(' - ')[0];
+
+      const tooltipG = svgEl.append('g').attr('class', 'chart-tooltip');
+
+      const lineTexts = [
+        deviceName,
+        `${metricLabel}: ${(d.val as number).toFixed(2)}${unit ? ' ' + unit : ''}`,
+        formatTooltipDate(timestamp),
+      ];
+
+      const tooltipPadX = 12;
+      const tooltipPadY = 8;
+      const lineHeight = 18;
+      const tooltipH = lineTexts.length * lineHeight + tooltipPadY * 2;
+
+      const tempTexts = lineTexts.map((text, tIdx) => {
+        return tooltipG.append('text')
+          .attr('font-size', tIdx === 0 ? 12 : 11)
+          .attr('font-weight', tIdx === 0 ? 600 : 400)
+          .attr('fill', 'white')
+          .text(text);
+      });
+
+      let maxTextW = 0;
+      tempTexts.forEach(t => {
+        const bbox = t.node()?.getBBox();
+        if (bbox && bbox.width > maxTextW) maxTextW = bbox.width;
+      });
+      tempTexts.forEach(t => t.remove());
+
+      const tooltipW = maxTextW + tooltipPadX * 2 + 16;
+
+      let tx = xScale(timestamp) + margin.left + 12;
+      let ty = yScale(d.val as number) + margin.top - tooltipH - 8;
+
+      if (tx + tooltipW > effectiveWidth - 10) {
+        tx = xScale(timestamp) + margin.left - tooltipW - 12;
+      }
+      if (ty < 5) {
+        ty = yScale(d.val as number) + margin.top + 12;
+      }
+
+      tooltipG.attr('transform', `translate(${tx},${ty})`);
+
+      tooltipG.append('rect')
+        .attr('width', tooltipW)
+        .attr('height', tooltipH)
+        .attr('fill', 'rgba(17,24,39,0.92)')
+        .attr('rx', 6)
+        .attr('ry', 6);
+
+      tooltipG.append('circle')
+        .attr('cx', tooltipPadX)
+        .attr('cy', tooltipPadY + 8)
+        .attr('r', 4)
+        .attr('fill', color);
+
+      lineTexts.forEach((text, tIdx) => {
+        tooltipG.append('text')
+          .attr('x', tooltipPadX + (tIdx === 0 ? 12 : 0))
+          .attr('y', tooltipPadY + lineHeight * (tIdx + 1) - 4)
+          .attr('font-size', tIdx === 0 ? 12 : 11)
+          .attr('font-weight', tIdx === 0 ? 600 : 400)
+          .attr('fill', tIdx === 2 ? '#9ca3af' : 'white')
+          .text(text);
+      });
+    };
+
+    barSeriesList.forEach((series, barIdx) => {
+      const color = series.color || FALLBACK_COLORS[barIdx % FALLBACK_COLORS.length];
+      const yScale = getScale(series);
+      const safeCls = series.id.replace(/[^a-zA-Z0-9-]/g, '_');
+      const yBaseline = yScale(yScale.domain()[0]);
+
+      const barData = series.values
+        .map((val, idx) => ({ val, idx }))
+        .filter(d => d.val !== null && d.val !== undefined && !isNaN(d.val as number));
+
+      g.selectAll(`.bar-${safeCls}`)
+        .data(barData)
+        .enter()
+        .append('rect')
+        .attr('class', `bar-${safeCls}`)
+        .attr('x', d => {
+          const cx = xScale(data.timestamps[d.idx]);
+          return cx - barGroupWidth / 2 + barIdx * maxBarWidth;
+        })
+        .attr('y', yBaseline)
+        .attr('width', maxBarWidth)
+        .attr('height', 0)
+        .attr('fill', color)
+        .attr('opacity', 0.35)
+        .attr('rx', 2)
+        .attr('ry', 2)
+        .on('mouseover', function (_event: MouseEvent, d: { val: number | null; idx: number }) {
+          d3.select(this)
+            .transition()
+            .duration(150)
+            .attr('opacity', 0.7);
+          showTooltip(svg, color, series, d, yScale);
+        })
+        .on('mouseout', function () {
+          d3.select(this)
+            .transition()
+            .duration(150)
+            .attr('opacity', 0.35);
+          svg.selectAll('.chart-tooltip').remove();
+        })
+        .transition()
+        .duration(600)
+        .delay((_d, idx) => idx * 20)
+        .attr('y', d => yScale(d.val as number))
+        .attr('height', d => Math.max(0, yBaseline - yScale(d.val as number)));
+    });
+
+    lineSeriesList.forEach((series, i) => {
       const color = series.color || FALLBACK_COLORS[i % FALLBACK_COLORS.length];
       const yScale = getScale(series);
       const isDashed = series.lineStyle === 'dashed';
@@ -253,84 +389,13 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .attr('r', 3)
         .attr('fill', color)
         .attr('opacity', 0)
-        .on('mouseover', function (event: MouseEvent, d: { val: number | null; idx: number }) {
+        .on('mouseover', function (_event: MouseEvent, d: { val: number | null; idx: number }) {
           d3.select(this)
             .transition()
             .duration(150)
             .attr('r', 6)
             .attr('opacity', 1);
-
-          svg.selectAll('.chart-tooltip').remove();
-
-          const timestamp = data.timestamps[d.idx];
-          const unit = getMetricUnit(series.metricName || '');
-          const metricLabel = getMetricLabel(series.metricName || '');
-          const deviceName = series.label.split(' - ')[0];
-
-          const tooltipG = svg.append('g').attr('class', 'chart-tooltip');
-
-          const lineTexts = [
-            deviceName,
-            `${metricLabel}: ${(d.val as number).toFixed(2)}${unit ? ' ' + unit : ''}`,
-            formatTooltipDate(timestamp),
-          ];
-
-          const tooltipPadX = 12;
-          const tooltipPadY = 8;
-          const lineHeight = 18;
-          const tooltipH = lineTexts.length * lineHeight + tooltipPadY * 2;
-
-          const tempTexts = lineTexts.map((text, tIdx) => {
-            return tooltipG.append('text')
-              .attr('font-size', tIdx === 0 ? 12 : 11)
-              .attr('font-weight', tIdx === 0 ? 600 : 400)
-              .attr('fill', 'white')
-              .text(text);
-          });
-
-          let maxTextW = 0;
-          tempTexts.forEach(t => {
-            const bbox = t.node()?.getBBox();
-            if (bbox && bbox.width > maxTextW) maxTextW = bbox.width;
-          });
-          tempTexts.forEach(t => t.remove());
-
-          const tooltipW = maxTextW + tooltipPadX * 2 + 16;
-
-          let tx = xScale(timestamp) + margin.left + 12;
-          let ty = yScale(d.val as number) + margin.top - tooltipH - 8;
-
-          if (tx + tooltipW > width - 10) {
-            tx = xScale(timestamp) + margin.left - tooltipW - 12;
-          }
-          if (ty < 5) {
-            ty = yScale(d.val as number) + margin.top + 12;
-          }
-
-          tooltipG.attr('transform', `translate(${tx},${ty})`);
-
-          tooltipG.append('rect')
-            .attr('width', tooltipW)
-            .attr('height', tooltipH)
-            .attr('fill', 'rgba(17,24,39,0.92)')
-            .attr('rx', 6)
-            .attr('ry', 6);
-
-          tooltipG.append('circle')
-            .attr('cx', tooltipPadX)
-            .attr('cy', tooltipPadY + 8)
-            .attr('r', 4)
-            .attr('fill', color);
-
-          lineTexts.forEach((text, tIdx) => {
-            tooltipG.append('text')
-              .attr('x', tooltipPadX + (tIdx === 0 ? 12 : 0))
-              .attr('y', tooltipPadY + lineHeight * (tIdx + 1) - 4)
-              .attr('font-size', tIdx === 0 ? 12 : 11)
-              .attr('font-weight', tIdx === 0 ? 600 : 400)
-              .attr('fill', tIdx === 2 ? '#9ca3af' : 'white')
-              .text(text);
-          });
+          showTooltip(svg, color, series, d, yScale);
         })
         .on('mouseout', function () {
           d3.select(this)
@@ -402,6 +467,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
             const color = series.color || FALLBACK_COLORS[i % FALLBACK_COLORS.length];
             const isSelected = selectedSeries.has(series.id);
             const isDashed = series.lineStyle === 'dashed';
+            const isBar = series.renderAs === 'bar';
 
             return (
               <button
@@ -409,16 +475,26 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
                 onClick={() => toggleSeries(series.id)}
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
               >
-                <svg width="20" height="12" className="flex-shrink-0">
-                  <line
-                    x1="0" y1="6" x2="20" y2="6"
-                    stroke={color}
-                    strokeWidth={2}
-                    strokeDasharray={isDashed ? '4,2' : 'none'}
-                    opacity={isSelected ? 1 : 0.3}
-                  />
-                  <circle cx="10" cy="6" r="3" fill={color} opacity={isSelected ? 1 : 0.3} />
-                </svg>
+                {isBar ? (
+                  <svg width="20" height="12" className="flex-shrink-0">
+                    <rect
+                      x="2" y="1" width="16" height="10" rx="2"
+                      fill={color}
+                      opacity={isSelected ? 0.45 : 0.15}
+                    />
+                  </svg>
+                ) : (
+                  <svg width="20" height="12" className="flex-shrink-0">
+                    <line
+                      x1="0" y1="6" x2="20" y2="6"
+                      stroke={color}
+                      strokeWidth={2}
+                      strokeDasharray={isDashed ? '4,2' : 'none'}
+                      opacity={isSelected ? 1 : 0.3}
+                    />
+                    <circle cx="10" cy="6" r="3" fill={color} opacity={isSelected ? 1 : 0.3} />
+                  </svg>
+                )}
                 <span
                   className="text-sm font-medium"
                   style={{ color: isSelected ? '#374151' : '#9ca3af' }}
