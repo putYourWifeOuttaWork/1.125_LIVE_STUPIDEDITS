@@ -119,10 +119,31 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
     const primarySeries = filteredSeries.filter(s => !secondaryMetrics.has(s.metricName || ''));
     const secondarySeries = filteredSeries.filter(s => secondaryMetrics.has(s.metricName || ''));
 
-    const buildScale = (seriesList: typeof filteredSeries) => {
+    const collectAnnotationValues = (metricNames: Set<string>, isPrimary: boolean) => {
+      if (!annotations || annotations.length === 0) return [];
+      const vals: number[] = [];
+      for (const ann of annotations) {
+        const belongsToPrimary = !ann.metricName || !secondaryMetrics.has(ann.metricName);
+        const belongsToSecondary = ann.metricName && secondaryMetrics.has(ann.metricName);
+        const matches = isPrimary ? belongsToPrimary : belongsToSecondary;
+        if (!matches) continue;
+
+        if ((ann.type === 'threshold_line' || ann.type === 'highlight_point') && ann.value !== undefined) {
+          vals.push(ann.value);
+        }
+        if (ann.type === 'shaded_region') {
+          if (ann.y1 !== undefined) vals.push(ann.y1);
+          if (ann.y2 !== undefined) vals.push(ann.y2);
+        }
+      }
+      return vals;
+    };
+
+    const buildScale = (seriesList: typeof filteredSeries, extraValues: number[] = []) => {
       const allVals = seriesList.flatMap(s => s.values.filter(v => v !== null && v !== undefined && !isNaN(v)));
-      if (allVals.length === 0) return d3.scaleLinear().domain([0, 1]).range([innerHeight, 0]);
-      const ext = d3.extent(allVals) as [number, number];
+      const combined = [...allVals, ...extraValues] as number[];
+      if (combined.length === 0) return d3.scaleLinear().domain([0, 1]).range([innerHeight, 0]);
+      const ext = d3.extent(combined) as [number, number];
       const pad = (ext[1] - ext[0]) * 0.1 || 1;
       const domainMin = ext[0] >= 0 ? Math.max(0, ext[0] - pad) : ext[0] - pad;
       return d3.scaleLinear()
@@ -131,8 +152,12 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .nice();
     };
 
-    const yScalePrimary = buildScale(hasSecondaryAxis ? primarySeries : filteredSeries);
-    const yScaleSecondary = hasSecondaryAxis ? buildScale(secondarySeries) : null;
+    const primaryMetricNames = new Set(primarySeries.map(s => s.metricName || ''));
+    const primaryAnnotationVals = collectAnnotationValues(primaryMetricNames, true);
+    const secondaryAnnotationVals = hasSecondaryAxis ? collectAnnotationValues(secondaryMetrics, false) : [];
+
+    const yScalePrimary = buildScale(hasSecondaryAxis ? primarySeries : filteredSeries, primaryAnnotationVals);
+    const yScaleSecondary = hasSecondaryAxis ? buildScale(secondarySeries, secondaryAnnotationVals) : null;
 
     const getScale = (s: typeof filteredSeries[0]) => {
       if (hasSecondaryAxis && secondaryMetrics.has(s.metricName || '')) {
@@ -460,38 +485,37 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
 
         if (ann.type === 'threshold_line' && ann.value !== undefined) {
           const yScale = getAnnotationScale(ann);
-          const yPos = yScale(ann.value);
+          const yPos = Math.max(0, Math.min(innerHeight, yScale(ann.value)));
 
-          if (yPos >= 0 && yPos <= innerHeight) {
-            annotationGroup.append('line')
-              .attr('x1', 0)
-              .attr('x2', innerWidth)
-              .attr('y1', yPos)
-              .attr('y2', yPos)
-              .attr('stroke', annColor)
-              .attr('stroke-width', 1.5)
-              .attr('stroke-dasharray', '6,4')
-              .attr('opacity', 0.8);
+          annotationGroup.append('line')
+            .attr('x1', 0)
+            .attr('x2', innerWidth)
+            .attr('y1', yPos)
+            .attr('y2', yPos)
+            .attr('stroke', annColor)
+            .attr('stroke-width', 1.5)
+            .attr('stroke-dasharray', '6,4')
+            .attr('opacity', 0.8);
 
-            if (ann.label) {
-              annotationGroup.append('rect')
-                .attr('x', innerWidth - ann.label.length * 6.5 - 12)
-                .attr('y', yPos - 18)
-                .attr('width', ann.label.length * 6.5 + 10)
-                .attr('height', 16)
-                .attr('fill', 'white')
-                .attr('rx', 3)
-                .attr('opacity', 0.9);
+          if (ann.label) {
+            const labelY = Math.max(18, Math.min(innerHeight - 4, yPos));
+            annotationGroup.append('rect')
+              .attr('x', innerWidth - ann.label.length * 6.5 - 12)
+              .attr('y', labelY - 18)
+              .attr('width', ann.label.length * 6.5 + 10)
+              .attr('height', 16)
+              .attr('fill', 'white')
+              .attr('rx', 3)
+              .attr('opacity', 0.9);
 
-              annotationGroup.append('text')
-                .attr('x', innerWidth - 6)
-                .attr('y', yPos - 7)
-                .attr('text-anchor', 'end')
-                .attr('font-size', 10)
-                .attr('font-weight', 600)
-                .attr('fill', annColor)
-                .text(ann.label);
-            }
+            annotationGroup.append('text')
+              .attr('x', innerWidth - 6)
+              .attr('y', labelY - 7)
+              .attr('text-anchor', 'end')
+              .attr('font-size', 10)
+              .attr('font-weight', 600)
+              .attr('fill', annColor)
+              .text(ann.label);
           }
         }
 
@@ -539,37 +563,44 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
 
         if (ann.type === 'highlight_point' && ann.timestamp && ann.value !== undefined) {
           const yScale = getAnnotationScale(ann);
-          const cx = xScale(ann.timestamp);
-          const cy = yScale(ann.value);
+          const cx = Math.max(0, Math.min(innerWidth, xScale(ann.timestamp)));
+          const cy = Math.max(0, Math.min(innerHeight, yScale(ann.value)));
 
-          if (cx >= 0 && cx <= innerWidth && cy >= 0 && cy <= innerHeight) {
-            annotationGroup.append('circle')
-              .attr('cx', cx)
-              .attr('cy', cy)
-              .attr('r', 10)
-              .attr('fill', annColor)
-              .attr('opacity', 0.15);
+          annotationGroup.append('circle')
+            .attr('cx', cx)
+            .attr('cy', cy)
+            .attr('r', 12)
+            .attr('fill', annColor)
+            .attr('opacity', 0.12);
 
-            annotationGroup.append('circle')
-              .attr('cx', cx)
-              .attr('cy', cy)
-              .attr('r', 6)
-              .attr('fill', annColor)
-              .attr('stroke', 'white')
-              .attr('stroke-width', 2)
-              .attr('opacity', 0.9);
+          annotationGroup.append('circle')
+            .attr('cx', cx)
+            .attr('cy', cy)
+            .attr('r', 7)
+            .attr('fill', annColor)
+            .attr('stroke', 'white')
+            .attr('stroke-width', 2)
+            .attr('opacity', 0.9);
 
-            if (ann.label) {
-              annotationGroup.append('text')
-                .attr('x', cx)
-                .attr('y', cy - 14)
-                .attr('text-anchor', 'middle')
-                .attr('font-size', 10)
-                .attr('font-weight', 600)
-                .attr('fill', annColor)
-                .text(ann.label);
-            }
-          }
+          const labelText = ann.label || `${ann.value.toFixed(1)}`;
+          const labelY = cy <= 24 ? cy + 22 : cy - 16;
+          annotationGroup.append('rect')
+            .attr('x', cx - labelText.length * 3.5 - 6)
+            .attr('y', labelY - 10)
+            .attr('width', labelText.length * 7 + 12)
+            .attr('height', 16)
+            .attr('fill', annColor)
+            .attr('rx', 3)
+            .attr('opacity', 0.9);
+
+          annotationGroup.append('text')
+            .attr('x', cx)
+            .attr('y', labelY + 2)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', 10)
+            .attr('font-weight', 600)
+            .attr('fill', 'white')
+            .text(labelText);
         }
       });
     }

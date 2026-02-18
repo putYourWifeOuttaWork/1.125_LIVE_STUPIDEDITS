@@ -38,27 +38,44 @@ function buildAbsoluteConfig(alert: DeviceAlert): AlertInvestigationConfig {
     complementary.push('humidity');
   }
 
-  const allMetrics: MetricType[] = [primaryMetric, ...complementary];
   const hasSecondary = complementary.length > 0;
+  const sevColor = alert.severity === 'critical' ? '#dc2626' : '#d97706';
 
   const annotations: ChartAnnotation[] = [];
-  if (alert.threshold_value !== null) {
-    const displayThreshold = scaleValue(primaryMetric, alert.threshold_value);
+  const displayThreshold = alert.threshold_value !== null
+    ? scaleValue(primaryMetric, alert.threshold_value)
+    : null;
+  const displayActual = alert.actual_value !== null
+    ? scaleValue(primaryMetric, alert.actual_value)
+    : null;
+
+  if (displayThreshold !== null) {
     annotations.push({
       type: 'threshold_line',
       value: displayThreshold,
       label: `Threshold: ${displayThreshold.toFixed(1)}${METRIC_UNITS[primaryMetric]}`,
-      color: alert.severity === 'critical' ? '#dc2626' : '#d97706',
+      color: sevColor,
+      metricName: primaryMetric,
+    });
+
+    const dangerCeiling = displayActual !== null
+      ? Math.max(displayActual, displayThreshold) * 1.05
+      : displayThreshold * 1.15;
+    annotations.push({
+      type: 'shaded_region',
+      y1: displayThreshold,
+      y2: dangerCeiling,
+      color: sevColor,
       metricName: primaryMetric,
     });
   }
 
-  if (alert.measurement_timestamp && alert.actual_value !== null) {
-    const displayActual = scaleValue(primaryMetric, alert.actual_value);
+  if (alert.measurement_timestamp && displayActual !== null) {
     annotations.push({
       type: 'highlight_point',
       timestamp: new Date(alert.measurement_timestamp),
       value: displayActual,
+      label: `${displayActual.toFixed(1)}${METRIC_UNITS[primaryMetric]}`,
       color: '#dc2626',
       metricName: primaryMetric,
     });
@@ -70,12 +87,14 @@ function buildAbsoluteConfig(alert: DeviceAlert): AlertInvestigationConfig {
     });
   }
 
+  const allMetrics: MetricType[] = [primaryMetric, ...complementary];
+
   return {
     reportConfig: {
       reportType: 'line',
       name: `Alert Investigation: ${alert.message}`,
-      timeRange: 'last_30d',
-      timeGranularity: 'day',
+      timeRange: 'last_7d',
+      timeGranularity: 'hour',
       programIds: alert.program_id ? [alert.program_id] : [],
       siteIds: alert.site_id ? [alert.site_id] : [],
       deviceIds: [alert.device_id],
@@ -300,8 +319,8 @@ function buildCombinationConfig(alert: DeviceAlert): AlertInvestigationConfig {
     reportConfig: {
       reportType: 'line',
       name: `Danger Zone Investigation: ${alert.message}`,
-      timeRange: 'last_30d',
-      timeGranularity: 'day',
+      timeRange: 'last_7d',
+      timeGranularity: 'hour',
       programIds: alert.program_id ? [alert.program_id] : [],
       siteIds: alert.site_id ? [alert.site_id] : [],
       deviceIds: [alert.device_id],
@@ -335,6 +354,15 @@ export function buildAlertInvestigationConfig(alert: DeviceAlert): AlertInvestig
     default:
       return buildAbsoluteConfig(alert);
   }
+}
+
+export function getAlertMetricInfo(alert: DeviceAlert): { unit: string; scale: number } {
+  const metric = getAlertMetricType(alert);
+  if (!metric) return { unit: '', scale: 1 };
+  return {
+    unit: METRIC_UNITS[metric] || '',
+    scale: METRIC_DISPLAY_SCALE[metric] ?? 1,
+  };
 }
 
 export function getCategoryLabel(category: string): string {

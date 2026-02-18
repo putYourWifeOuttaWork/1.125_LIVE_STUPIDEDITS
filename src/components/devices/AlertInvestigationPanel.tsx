@@ -18,6 +18,7 @@ import {
   buildAlertInvestigationConfig,
   getCategoryLabel,
   getSeverityColor,
+  getAlertMetricInfo,
 } from '../../utils/alertInvestigation';
 import type { DeviceAlert } from '../../types/alerts';
 import {
@@ -175,12 +176,17 @@ export default function AlertInvestigationPanel({
                 <span>
                   Site: <strong className="text-gray-700">{alert.site_name || 'Unknown'}</strong>
                 </span>
-                {alert.actual_value !== null && alert.threshold_value !== null && (
-                  <span>
-                    Value: <strong className="text-gray-700">{alert.actual_value}</strong>
-                    {' '}(threshold: {alert.threshold_value})
-                  </span>
-                )}
+                {alert.actual_value !== null && alert.threshold_value !== null && (() => {
+                  const info = getAlertMetricInfo(alert);
+                  const displayVal = (alert.actual_value * info.scale).toFixed(1);
+                  const displayThresh = (alert.threshold_value * info.scale).toFixed(1);
+                  return (
+                    <span>
+                      Value: <strong className="text-red-600">{displayVal}{info.unit}</strong>
+                      {' '}(threshold: {displayThresh}{info.unit})
+                    </span>
+                  );
+                })()}
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   {format(new Date(alert.triggered_at), 'MMM d, yyyy h:mm a')}
