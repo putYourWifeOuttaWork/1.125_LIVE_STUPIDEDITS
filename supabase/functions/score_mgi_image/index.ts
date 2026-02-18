@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: imageRecord } = await supabaseClient
       .from('device_images')
-      .select('device_id, captured_at, company_id, program_id, site_id, session_id')
+      .select('device_id, captured_at, company_id, program_id, site_id, site_device_session_id')
       .eq('image_id', image_id)
       .maybeSingle();
 
@@ -245,7 +245,7 @@ Deno.serve(async (req: Request) => {
         company_id: imageRecord.company_id,
         program_id: imageRecord.program_id,
         site_id: imageRecord.site_id,
-        session_id: imageRecord.session_id,
+        session_id: imageRecord.site_device_session_id,
         original_score: mgiScore,
         adjusted_score: adjustedScore,
         qa_method: qaResult!.qa_method,
@@ -267,7 +267,7 @@ Deno.serve(async (req: Request) => {
       const { data: deviceInfo } = await supabaseClient
         .from('devices')
         .select('device_code')
-        .eq('id', imageRecord.device_id)
+        .eq('device_id', imageRecord.device_id)
         .maybeSingle();
 
       const deviceCode = deviceInfo?.device_code || imageRecord.device_id;
