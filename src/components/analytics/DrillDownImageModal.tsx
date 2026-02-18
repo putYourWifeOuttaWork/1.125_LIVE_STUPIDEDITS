@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, ExternalLink, Loader2, Camera, MapPin, Activity } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -7,6 +7,8 @@ import { formatMGI, getMGIColor } from '../../utils/mgiUtils';
 import Modal from '../common/Modal';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
+import ImageTimelineControls from '../common/ImageTimelineControls';
+import { useImageAutoPlay } from '../../hooks/useImageAutoPlay';
 
 interface DrillDownImageModalProps {
   isOpen: boolean;
@@ -24,6 +26,20 @@ export default function DrillDownImageModal({
   const navigate = useNavigate();
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [imageLoading, setImageLoading] = useState(true);
+  const [imageOpacity, setImageOpacity] = useState(1);
+  const thumbnailContainerRef = useRef<HTMLDivElement>(null);
+
+  const hasMultipleImages = records.length > 1;
+
+  const handleIndexChange = useCallback((newIndex: number) => {
+    setCurrentIndex(newIndex);
+  }, []);
+
+  const autoPlay = useImageAutoPlay({
+    totalImages: records.length,
+    currentIndex,
+    onIndexChange: handleIndexChange,
+  });
 
   const currentRecord = records[currentIndex];
   const hasNext = currentIndex < records.length - 1;
@@ -37,29 +53,48 @@ export default function DrillDownImageModal({
     setImageLoading(true);
   }, [currentIndex]);
 
-  const handleNext = () => {
-    if (hasNext) {
-      setCurrentIndex(currentIndex + 1);
+  useEffect(() => {
+    if (autoPlay.isTransitioning) {
+      setImageOpacity(0);
+      const fadeIn = setTimeout(() => setImageOpacity(1), 50);
+      return () => clearTimeout(fadeIn);
     }
+  }, [autoPlay.isTransitioning, currentIndex]);
+
+  useEffect(() => {
+    if (thumbnailContainerRef.current) {
+      const activeThumb = thumbnailContainerRef.current.querySelector(`[data-index="${currentIndex}"]`);
+      if (activeThumb) {
+        activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }
+  }, [currentIndex]);
+
+  const handleNext = () => {
+    autoPlay.pause();
+    if (hasNext) setCurrentIndex(currentIndex + 1);
   };
 
   const handlePrev = () => {
-    if (hasPrev) {
-      setCurrentIndex(currentIndex - 1);
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (!isOpen) return;
-    if (e.key === 'ArrowRight') handleNext();
-    if (e.key === 'ArrowLeft') handlePrev();
-    if (e.key === 'Escape') onClose();
+    autoPlay.pause();
+    if (hasPrev) setCurrentIndex(currentIndex - 1);
   };
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'ArrowRight') handleNext();
+      if (e.key === 'ArrowLeft') handlePrev();
+      if (e.key === ' ' && hasMultipleImages) {
+        e.preventDefault();
+        autoPlay.togglePlayPause();
+      }
+      if (e.key === 'Escape') onClose();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentIndex, records.length]);
+  }, [isOpen, currentIndex, records.length, hasMultipleImages]);
 
   const handleViewSession = () => {
     if (currentRecord?.session_id && currentRecord?.program_id && currentRecord?.site_id) {
@@ -107,6 +142,10 @@ export default function DrillDownImageModal({
                 src={currentRecord.image_url}
                 alt={`${currentRecord.device_code} - ${format(new Date(currentRecord.captured_at), 'MMM d, yyyy HH:mm')}`}
                 className="w-full h-full object-contain"
+                style={{
+                  opacity: imageOpacity,
+                  transition: `opacity ${autoPlay.transitionDuration}ms ease-in-out`,
+                }}
                 onLoad={() => setImageLoading(false)}
                 onError={() => setImageLoading(false)}
               />
@@ -138,6 +177,25 @@ export default function DrillDownImageModal({
             </button>
           )}
         </div>
+
+        {/* Auto-play Timeline Controls */}
+        {hasMultipleImages && (
+          <ImageTimelineControls
+            totalImages={records.length}
+            currentIndex={currentIndex}
+            isPlaying={autoPlay.isPlaying}
+            speedIndex={autoPlay.speedIndex}
+            onSpeedChange={autoPlay.setSpeedIndex}
+            onTogglePlayPause={autoPlay.togglePlayPause}
+            onPrevious={autoPlay.previous}
+            onNext={autoPlay.next}
+            onSkipToStart={autoPlay.skipToStart}
+            onSkipToEnd={autoPlay.skipToEnd}
+            onSliderChange={autoPlay.stopAndNavigate}
+            timestamps={records.map(r => r.captured_at)}
+            className="rounded-none border-x-0"
+          />
+        )}
 
         {/* Metadata Cards */}
         <div className="p-6 space-y-4 bg-gray-50">
@@ -248,11 +306,12 @@ export default function DrillDownImageModal({
         {/* Thumbnail Strip */}
         {records.length > 1 && (
           <div className="px-6 py-3 bg-white border-t border-gray-200">
-            <div className="flex gap-2 overflow-x-auto pb-2">
+            <div ref={thumbnailContainerRef} className="flex gap-2 overflow-x-auto pb-2">
               {records.map((record, index) => (
                 <button
                   key={record.image_id}
-                  onClick={() => setCurrentIndex(index)}
+                  data-index={index}
+                  onClick={() => autoPlay.stopAndNavigate(index)}
                   className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
                     index === currentIndex
                       ? 'border-blue-500 ring-2 ring-blue-200'

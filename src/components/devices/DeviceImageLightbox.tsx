@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Download, Share2, Maximize, ChevronLeft, ChevronRight, Thermometer, Droplets, Battery, Activity, TrendingUp, TrendingDown, Clock, AlertTriangle } from 'lucide-react';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
+import ImageTimelineControls from '../common/ImageTimelineControls';
+import { useImageAutoPlay } from '../../hooks/useImageAutoPlay';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 
@@ -67,29 +69,48 @@ const DeviceImageLightbox = ({
 }: DeviceImageLightboxProps) => {
   const [zoom, setZoom] = useState(100);
   const [localIndex, setLocalIndex] = useState(currentIndex);
+  const [imageOpacity, setImageOpacity] = useState(1);
 
-  // Sync localIndex when currentIndex changes from parent
+  const hasMultipleImages = images.length > 1;
+
+  const handleIndexChange = useCallback((newIndex: number) => {
+    setLocalIndex(newIndex);
+    onNavigate?.(newIndex);
+    setZoom(100);
+  }, [onNavigate]);
+
+  const autoPlay = useImageAutoPlay({
+    totalImages: images.length,
+    currentIndex: localIndex,
+    onIndexChange: handleIndexChange,
+  });
+
   useEffect(() => {
     setLocalIndex(currentIndex);
   }, [currentIndex]);
 
+  useEffect(() => {
+    if (autoPlay.isTransitioning) {
+      setImageOpacity(0);
+      const fadeIn = setTimeout(() => setImageOpacity(1), 50);
+      return () => clearTimeout(fadeIn);
+    }
+  }, [autoPlay.isTransitioning, localIndex]);
+
   const currentImage = images[localIndex];
 
   const handlePrevious = () => {
+    autoPlay.pause();
     const newIndex = Math.max(0, localIndex - 1);
-    setLocalIndex(newIndex);
-    onNavigate?.(newIndex);
-    setZoom(100); // Reset zoom when changing images
+    handleIndexChange(newIndex);
   };
 
   const handleNext = () => {
+    autoPlay.pause();
     const newIndex = Math.min(images.length - 1, localIndex + 1);
-    setLocalIndex(newIndex);
-    onNavigate?.(newIndex);
-    setZoom(100); // Reset zoom when changing images
+    handleIndexChange(newIndex);
   };
 
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
@@ -101,6 +122,10 @@ const DeviceImageLightbox = ({
         case 'ArrowRight':
           handleNext();
           break;
+        case ' ':
+          e.preventDefault();
+          if (hasMultipleImages) autoPlay.togglePlayPause();
+          break;
         case 'Escape':
           onClose();
           break;
@@ -109,7 +134,7 @@ const DeviceImageLightbox = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, localIndex, images.length]);
+  }, [isOpen, localIndex, images.length, hasMultipleImages]);
 
   const handleDownload = async () => {
     if (!currentImage?.image_url) return;
@@ -221,7 +246,11 @@ const DeviceImageLightbox = ({
               <img
                 src={currentImage.image_url}
                 alt={`${deviceInfo.device_code} - Image ${localIndex + 1}`}
-                style={{ transform: `scale(${zoom / 100})`, transition: 'transform 0.2s ease-out' }}
+                style={{
+                  transform: `scale(${zoom / 100})`,
+                  opacity: imageOpacity,
+                  transition: `transform 0.2s ease-out, opacity ${autoPlay.transitionDuration}ms ease-in-out`,
+                }}
                 className="object-contain max-w-full max-h-full"
               />
             </div>
@@ -255,7 +284,7 @@ const DeviceImageLightbox = ({
             </div>
 
             {/* Image action buttons */}
-            <div className="p-3 bg-white border-t border-gray-200 flex justify-between">
+            <div className="p-3 bg-white border-t border-gray-200 flex justify-between items-center">
               <div className="flex space-x-2">
                 <Button
                   size="sm"
@@ -275,10 +304,29 @@ const DeviceImageLightbox = ({
                 </Button>
               </div>
 
-              <div className="text-sm text-gray-500">
-                Use ← → arrow keys to navigate
+              <div className="text-xs text-gray-400">
+                {hasMultipleImages ? 'Space to play/pause, arrow keys to navigate' : 'Use arrow keys to navigate'}
               </div>
             </div>
+
+            {/* Auto-play Timeline Controls */}
+            {hasMultipleImages && (
+              <ImageTimelineControls
+                totalImages={images.length}
+                currentIndex={localIndex}
+                isPlaying={autoPlay.isPlaying}
+                speedIndex={autoPlay.speedIndex}
+                onSpeedChange={autoPlay.setSpeedIndex}
+                onTogglePlayPause={autoPlay.togglePlayPause}
+                onPrevious={autoPlay.previous}
+                onNext={autoPlay.next}
+                onSkipToStart={autoPlay.skipToStart}
+                onSkipToEnd={autoPlay.skipToEnd}
+                onSliderChange={autoPlay.stopAndNavigate}
+                timestamps={images.map(img => img.captured_at)}
+                className="mx-0 rounded-t-none border-t-0"
+              />
+            )}
           </div>
 
           {/* Metadata column */}

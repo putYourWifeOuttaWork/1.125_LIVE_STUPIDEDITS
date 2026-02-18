@@ -1,9 +1,13 @@
-import { useState } from 'react';
-import { X, Download, Share2, Maximize, PenLine, SplitSquareVertical, MapPin } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Download, Share2, Maximize, PenLine, SplitSquareVertical, MapPin, ChevronLeft, ChevronRight, Thermometer, Droplets } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
+import ImageTimelineControls from '../common/ImageTimelineControls';
+import { useImageAutoPlay } from '../../hooks/useImageAutoPlay';
 import { PetriObservation, GasifierObservation } from '../../lib/types';
 import { toast } from 'react-toastify';
+import { format } from 'date-fns';
 
 interface ObservationWithType {
   type: 'petri' | 'gasifier';
@@ -14,40 +18,89 @@ interface ImageLightboxProps {
   isOpen: boolean;
   onClose: () => void;
   observation: ObservationWithType;
+  observations?: ObservationWithType[];
+  initialIndex?: number;
 }
 
-const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => {
+const ImageLightbox = ({ isOpen, onClose, observation, observations, initialIndex = 0 }: ImageLightboxProps) => {
+  const navigate = useNavigate();
   const [zoom, setZoom] = useState(100);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [imageOpacity, setImageOpacity] = useState(1);
+
+  const allObservations = observations && observations.length > 1 ? observations : null;
+  const hasMultipleImages = !!allObservations;
+  const activeObservation = allObservations ? allObservations[currentIndex] : observation;
+
+  const handleIndexChange = useCallback((newIndex: number) => {
+    setCurrentIndex(newIndex);
+    setZoom(100);
+  }, []);
+
+  const autoPlay = useImageAutoPlay({
+    totalImages: allObservations ? allObservations.length : 1,
+    currentIndex,
+    onIndexChange: handleIndexChange,
+  });
+
+  useEffect(() => {
+    setCurrentIndex(initialIndex);
+  }, [initialIndex]);
+
+  useEffect(() => {
+    if (autoPlay.isTransitioning) {
+      setImageOpacity(0);
+      const fadeIn = setTimeout(() => setImageOpacity(1), 50);
+      return () => clearTimeout(fadeIn);
+    }
+  }, [autoPlay.isTransitioning, currentIndex]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'ArrowLeft' && hasMultipleImages) {
+        autoPlay.pause();
+        handleIndexChange(Math.max(0, currentIndex - 1));
+      }
+      if (e.key === 'ArrowRight' && hasMultipleImages) {
+        autoPlay.pause();
+        handleIndexChange(Math.min((allObservations?.length || 1) - 1, currentIndex + 1));
+      }
+      if (e.key === ' ' && hasMultipleImages) {
+        e.preventDefault();
+        autoPlay.togglePlayPause();
+      }
+      if (e.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, currentIndex, hasMultipleImages, allObservations?.length]);
 
   const handleDownload = async () => {
-    if (!observation.data.image_url) return;
-    
+    if (!activeObservation.data.image_url) return;
+
     try {
-      // Fetch the image
-      const response = await fetch(observation.data.image_url);
+      const response = await fetch(activeObservation.data.image_url);
       const blob = await response.blob();
-      
-      // Create a download link
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      
-      // Generate filename based on observation type and code
-      const code = observation.type === 'petri' 
-        ? (observation.data as PetriObservation).petri_code
-        : (observation.data as GasifierObservation).gasifier_code;
-      
-      a.download = `${observation.type}_${code}_${Date.now()}.jpg`;
-      
-      // Trigger download
+
+      const code = activeObservation.type === 'petri'
+        ? (activeObservation.data as PetriObservation).petri_code
+        : (activeObservation.data as GasifierObservation).gasifier_code;
+
+      a.download = `${activeObservation.type}_${code}_${Date.now()}.jpg`;
+
       document.body.appendChild(a);
       a.click();
-      
-      // Clean up
+
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
+
       toast.success('Image downloaded successfully');
     } catch (error) {
       console.error('Error downloading image:', error);
@@ -56,10 +109,9 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
   };
 
   const handleShare = () => {
-    if (!observation.data.image_url) return;
-    
-    // Copy the image URL to clipboard
-    navigator.clipboard.writeText(observation.data.image_url)
+    if (!activeObservation.data.image_url) return;
+
+    navigator.clipboard.writeText(activeObservation.data.image_url)
       .then(() => {
         toast.success('Image URL copied to clipboard');
       })
@@ -67,10 +119,6 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
         console.error('Error copying to clipboard:', error);
         toast.error('Failed to copy URL to clipboard');
       });
-  };
-
-  const handleAnalyze = () => {
-    toast.info('Image analysis feature is coming soon');
   };
 
   const handleMarkUp = () => {
@@ -81,17 +129,16 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
     toast.info('Image splitting feature is coming soon');
   };
 
-  // Get observation metadata
   const getObservationDetails = () => {
-    if (observation.type === 'petri') {
-      const petri = observation.data as PetriObservation;
+    if (activeObservation.type === 'petri') {
+      const petri = activeObservation.data as PetriObservation;
       return (
         <>
           <div className="space-y-1 mb-3">
             <h3 className="text-lg font-bold">{petri.petri_code}</h3>
             <p className="text-sm text-gray-600">Petri Observation</p>
           </div>
-          
+
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
               <span className="text-gray-500">Fungicide Used:</span>
@@ -132,7 +179,7 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
               </div>
             )}
           </div>
-          
+
           {petri.notes && (
             <div className="mt-3">
               <h4 className="text-sm font-medium text-gray-600 mb-1">Notes:</h4>
@@ -142,14 +189,14 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
         </>
       );
     } else {
-      const gasifier = observation.data as GasifierObservation;
+      const gasifier = activeObservation.data as GasifierObservation;
       return (
         <>
           <div className="space-y-1 mb-3">
             <h3 className="text-lg font-bold">{gasifier.gasifier_code}</h3>
             <p className="text-sm text-gray-600">Gasifier Observation</p>
           </div>
-          
+
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
               <span className="text-gray-500">Chemical Type:</span>
@@ -187,7 +234,7 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
               </div>
             )}
           </div>
-          
+
           {gasifier.notes && (
             <div className="mt-3">
               <h4 className="text-sm font-medium text-gray-600 mb-1">Notes:</h4>
@@ -199,9 +246,14 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
     }
   };
 
-  if (!observation.data.image_url) {
+  if (!activeObservation.data.image_url) {
     return null;
   }
+
+  const observationLabel = activeObservation.type === 'petri' ? 'Petri' : 'Gasifier';
+  const titleSuffix = hasMultipleImages
+    ? ` (${currentIndex + 1} of ${allObservations!.length})`
+    : '';
 
   return (
     <Modal
@@ -210,7 +262,7 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
       title={
         <div className="flex items-center justify-between w-full">
           <span className="font-semibold text-xl">
-            {observation.type === 'petri' ? 'Petri' : 'Gasifier'} Observation
+            {observationLabel} Observation{titleSuffix}
           </span>
           <button
             onClick={onClose}
@@ -225,7 +277,6 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
     >
       <div className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Image column - takes 2/3 of the space on medium screens and up */}
           <div className="md:col-span-2 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden relative">
             <div className="absolute top-0 left-0 right-0 p-2 flex justify-between items-center bg-black bg-opacity-30 z-10">
               <div className="flex space-x-1">
@@ -245,32 +296,67 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
                   +
                 </button>
               </div>
-              
+
               <Button
                 size="sm"
                 variant="outline"
                 icon={<Maximize size={14} />}
-                onClick={() => window.open(observation.data.image_url, '_blank')}
+                onClick={() => window.open(activeObservation.data.image_url, '_blank')}
                 className="!py-1 !px-2 bg-white bg-opacity-80"
               >
                 Full Size
               </Button>
             </div>
-            
+
             <div className="h-[400px] flex items-center justify-center overflow-auto">
-              <img 
-                src={observation.data.image_url} 
-                alt={observation.type === 'petri' 
-                  ? `Petri ${(observation.data as PetriObservation).petri_code}` 
-                  : `Gasifier ${(observation.data as GasifierObservation).gasifier_code}`
-                } 
-                style={{ transform: `scale(${zoom / 100})`, transition: 'transform 0.2s ease-out' }}
+              <img
+                src={activeObservation.data.image_url}
+                alt={activeObservation.type === 'petri'
+                  ? `Petri ${(activeObservation.data as PetriObservation).petri_code}`
+                  : `Gasifier ${(activeObservation.data as GasifierObservation).gasifier_code}`
+                }
+                style={{
+                  transform: `scale(${zoom / 100})`,
+                  opacity: imageOpacity,
+                  transition: `transform 0.2s ease-out, opacity ${autoPlay.transitionDuration}ms ease-in-out`,
+                }}
                 className="object-contain max-w-full max-h-full"
               />
             </div>
-            
-            {/* Image action buttons */}
-            <div className="p-3 bg-white border-t border-gray-200 flex justify-between">
+
+            {/* Navigation Arrows */}
+            {hasMultipleImages && (
+              <>
+                <div className="absolute inset-y-0 left-0 flex items-center p-2">
+                  <button
+                    onClick={() => { autoPlay.pause(); handleIndexChange(Math.max(0, currentIndex - 1)); }}
+                    disabled={currentIndex === 0}
+                    className={`p-2 bg-white bg-opacity-80 rounded-full shadow-lg transition-all ${
+                      currentIndex === 0
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:bg-opacity-100 hover:scale-110'
+                    }`}
+                  >
+                    <ChevronLeft size={24} />
+                  </button>
+                </div>
+                <div className="absolute inset-y-0 right-0 flex items-center p-2">
+                  <button
+                    onClick={() => { autoPlay.pause(); handleIndexChange(Math.min((allObservations?.length || 1) - 1, currentIndex + 1)); }}
+                    disabled={currentIndex === (allObservations?.length || 1) - 1}
+                    className={`p-2 bg-white bg-opacity-80 rounded-full shadow-lg transition-all ${
+                      currentIndex === (allObservations?.length || 1) - 1
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:bg-opacity-100 hover:scale-110'
+                    }`}
+                  >
+                    <ChevronRight size={24} />
+                  </button>
+                </div>
+              </>
+            )}
+
+            <div className="p-3 bg-white border-t border-gray-200 flex justify-between items-center">
               <div className="flex space-x-2">
                 <Button
                   size="sm"
@@ -289,7 +375,7 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
                   Share
                 </Button>
               </div>
-              
+
               <div className="flex space-x-2">
                 <Button
                   size="sm"
@@ -300,8 +386,8 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
                 >
                   Mark Up
                 </Button>
-                
-                {observation.type === 'petri' && (
+
+                {activeObservation.type === 'petri' && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -314,42 +400,59 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
                 )}
               </div>
             </div>
+
+            {hasMultipleImages && (
+              <ImageTimelineControls
+                totalImages={allObservations!.length}
+                currentIndex={currentIndex}
+                isPlaying={autoPlay.isPlaying}
+                speedIndex={autoPlay.speedIndex}
+                onSpeedChange={autoPlay.setSpeedIndex}
+                onTogglePlayPause={autoPlay.togglePlayPause}
+                onPrevious={autoPlay.previous}
+                onNext={autoPlay.next}
+                onSkipToStart={autoPlay.skipToStart}
+                onSkipToEnd={autoPlay.skipToEnd}
+                onSliderChange={autoPlay.stopAndNavigate}
+                timestamps={allObservations!.map(o => o.data.updated_at)}
+                className="mx-0 rounded-t-none border-t-0"
+              />
+            )}
           </div>
-          
-          {/* Metadata column */}
+
           <div className="md:col-span-1">
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               {getObservationDetails()}
             </div>
-            
+
             <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
               <h3 className="text-sm font-medium mb-2">Environmental Data</h3>
-              
+
               <div className="space-y-2">
-                {observation.data.outdoor_temperature && (
+                {activeObservation.data.outdoor_temperature && (
                   <div className="flex items-center">
                     <Thermometer className="text-error-500 mr-2" size={14} />
                     <span className="text-sm text-gray-600">Temperature:</span>
-                    <span className="text-sm font-medium ml-auto">{observation.data.outdoor_temperature}°F</span>
+                    <span className="text-sm font-medium ml-auto">{activeObservation.data.outdoor_temperature}°F</span>
                   </div>
                 )}
-                
-                {observation.data.outdoor_humidity && (
+
+                {activeObservation.data.outdoor_humidity && (
                   <div className="flex items-center">
                     <Droplets className="text-secondary-500 mr-2" size={14} />
                     <span className="text-sm text-gray-600">Humidity:</span>
-                    <span className="text-sm font-medium ml-auto">{observation.data.outdoor_humidity}%</span>
+                    <span className="text-sm font-medium ml-auto">{activeObservation.data.outdoor_humidity}%</span>
                   </div>
                 )}
-                
+
                 <div className="pt-2 border-t border-gray-100 mt-2">
                   <span className="text-xs text-gray-500">
-                    Last updated: {format(new Date(observation.data.updated_at), 'PPp')}
+                    Last updated: {format(new Date(activeObservation.data.updated_at), 'PPp')}
                   </span>
                 </div>
               </div>
             </div>
-            
+
             <div className="mt-4">
               <Button
                 variant="secondary"
@@ -357,7 +460,7 @@ const ImageLightbox = ({ isOpen, onClose, observation }: ImageLightboxProps) => 
                 icon={<MapPin size={14} />}
                 onClick={() => {
                   onClose();
-                  navigate(`/programs/${observation.data.program_id}/sites/${observation.data.site_id}/submissions/${observation.data.submission_id}/edit`);
+                  navigate(`/programs/${activeObservation.data.program_id}/sites/${activeObservation.data.site_id}/submissions/${activeObservation.data.submission_id}/edit`);
                 }}
                 className="w-full"
               >

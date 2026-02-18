@@ -111,8 +111,12 @@ const SubmissionAnalysis = ({ submission, programId, siteId }: SubmissionAnalysi
     fetchObservations();
   }, [submission.submission_id]);
 
+  const [selectedLightboxIndex, setSelectedLightboxIndex] = useState(0);
+
   const handleImageClick = (observation: ObservationWithType) => {
+    const idx = observations.indexOf(observation);
     setSelectedObservation(observation);
+    setSelectedLightboxIndex(idx >= 0 ? idx : 0);
     setIsLightboxOpen(true);
   };
 
@@ -363,10 +367,12 @@ const SubmissionAnalysis = ({ submission, programId, siteId }: SubmissionAnalysi
 
       {/* Image Lightbox */}
       {selectedObservation && (
-        <ImageLightbox 
+        <ImageLightbox
           isOpen={isLightboxOpen}
           onClose={() => setIsLightboxOpen(false)}
           observation={selectedObservation}
+          observations={observations.filter(o => o.data.image_url)}
+          initialIndex={selectedLightboxIndex}
         />
       )}
     </div>
