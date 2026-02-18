@@ -10,7 +10,7 @@ import type { MqttClient } from 'npm:mqtt@5.3.4';
 import type { DeviceStatusMessage, ImageMetadata, ImageChunk, TelemetryOnlyMessage } from './types.ts';
 import { getOrCreateBuffer, storeChunk } from './idempotency.ts';
 import { normalizeMacAddress } from './utils.ts';
-import { publishSnapCommand, publishSleepCommand, calculateNextWake } from './ack.ts';
+import { publishCaptureCommand, publishSleepCommand, calculateNextWake } from './ack.ts';
 import { formatNextWakeTime } from './protocol.ts';
 
 // System user UUID for automated updates
@@ -302,11 +302,9 @@ export async function handleHelloStatus(
         const nextWakeFormatted = nextWake ? formatNextWakeTime(nextWake) : '8:00AM'; // Default fallback
 
         if (!isProvisioned || !isMapped) {
-          // Unmapped or unprovisvioned device: Send SLEEP only (no image capture)
           console.log('[Ingest] Device not fully provisioned or unmapped - sending SLEEP only');
           await publishSleepCommand(client, normalizedMac, nextWakeFormatted, supabase, payloadId);
 
-          // Update to sleep_only state
           if (payloadId) {
             await supabase
               .from('device_wake_payloads')
@@ -318,63 +316,80 @@ export async function handleHelloStatus(
               .eq('payload_id', payloadId);
           }
         } else {
-          // Provisioned and mapped: Check for pending images first
-          console.log('[Ingest] Device provisioned - checking for pending images');
+          console.log('[Ingest] Device provisioned - checking for active session and pending images');
 
-          const pendingCount = payload.pending_count || 0;
-
-          // Check database for oldest incomplete image
-          const { data: pendingImage } = await supabase
-            .from('device_images')
-            .select('image_id, image_name, status, received_chunks, total_chunks')
+          const { data: activePayload } = await supabase
+            .from('device_wake_payloads')
+            .select('payload_id, protocol_state')
             .eq('device_id', existingDevice.device_id)
-            .in('status', ['pending', 'receiving'])
-            .order('captured_at', { ascending: true })
+            .in('protocol_state', ['capture_sent', 'snap_sent', 'ack_sent', 'ack_pending_sent', 'draining_pending'])
+            .eq('is_complete', false)
+            .neq('payload_id', payloadId || '')
+            .order('received_at', { ascending: false })
             .limit(1)
             .maybeSingle();
 
-          if (pendingCount > 0 && pendingImage) {
-            // Device has pending image and we found it in DB - send ACK to resume
-            console.log('[Ingest] Resuming pending image transfer:', pendingImage.image_name,
-                       `(${pendingImage.received_chunks}/${pendingImage.total_chunks} chunks)`);
-
-            // Update wake payload to track pending image resume
+          if (activePayload) {
+            console.log(`[Ingest] Active session already exists for device (payload: ${activePayload.payload_id}, state: ${activePayload.protocol_state}) -- skipping command issuance to prevent conflict`);
             if (payloadId) {
               await supabase
                 .from('device_wake_payloads')
                 .update({
-                  protocol_state: 'ack_pending_sent',
-                  ack_sent_at: new Date().toISOString(),
-                  server_image_name: pendingImage.image_name,
-                  device_image_id: pendingImage.image_id,
+                  protocol_state: 'deferred_to_existing',
+                  payload_status: 'complete',
+                  is_complete: true,
                 })
                 .eq('payload_id', payloadId);
             }
-
-            // Send ACK for pending image (empty ACK_OK, no next_wake_time)
-            const { publishPendingImageAck } = await import('./ack.ts');
-            await publishPendingImageAck(client, normalizedMac, pendingImage.image_name, supabase);
-
-            console.log('[Ingest] Pending image ACK sent - device will continue transfer');
           } else {
-            // No pending images (or device reports 0) - proceed with new capture
-            console.log('[Ingest] No pending images - initiating new image capture');
+            const pendingCount = payload.pending_count ?? 0;
 
-            // Update state to ACK sent
-            if (payloadId) {
-              await supabase
-                .from('device_wake_payloads')
-                .update({
-                  protocol_state: 'ack_sent',
-                  ack_sent_at: new Date().toISOString(),
-                })
-                .eq('payload_id', payloadId);
+            const { data: pendingImage } = await supabase
+              .from('device_images')
+              .select('image_id, image_name, status, received_chunks, total_chunks')
+              .eq('device_id', existingDevice.device_id)
+              .in('status', ['pending', 'receiving'])
+              .order('captured_at', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+
+            if (pendingCount > 0 && pendingImage) {
+              console.log('[Ingest] Resuming pending image transfer:', pendingImage.image_name,
+                         `(${pendingImage.received_chunks}/${pendingImage.total_chunks} chunks)`);
+
+              if (payloadId) {
+                await supabase
+                  .from('device_wake_payloads')
+                  .update({
+                    protocol_state: 'ack_pending_sent',
+                    ack_sent_at: new Date().toISOString(),
+                    server_image_name: pendingImage.image_name,
+                    device_image_id: pendingImage.image_id,
+                  })
+                  .eq('payload_id', payloadId);
+              }
+
+              const { publishPendingImageAck } = await import('./ack.ts');
+              await publishPendingImageAck(client, normalizedMac, pendingImage.image_name, supabase);
+
+              console.log('[Ingest] Pending image ACK sent - device will continue transfer');
+            } else {
+              console.log('[Ingest] No pending images - sending capture_image command');
+
+              if (payloadId) {
+                await supabase
+                  .from('device_wake_payloads')
+                  .update({
+                    protocol_state: 'capture_sent',
+                    ack_sent_at: new Date().toISOString(),
+                  })
+                  .eq('payload_id', payloadId);
+              }
+
+              await publishCaptureCommand(client, normalizedMac, serverImageName, supabase, payloadId);
+
+              console.log('[Ingest] Protocol flow initiated: HELLO -> capture_image, waiting for metadata');
             }
-
-            // Send SNAP command to capture new image
-            await publishSnapCommand(client, normalizedMac, serverImageName, supabase, payloadId);
-
-            console.log('[Ingest] Protocol flow initiated: HELLO -> ACK -> SNAP, waiting for metadata');
           }
         }
       }

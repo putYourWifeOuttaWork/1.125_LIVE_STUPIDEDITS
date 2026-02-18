@@ -49,9 +49,25 @@ const COMPLETED_IMAGE_TTL_MS = 5 * 60 * 1000;
 const SESSION_TIMEOUT_MS = 10 * 60 * 1000;
 const MISSING_CHUNK_CHECK_DELAY_MS = 15000;
 const MAX_IMAGE_RETRIES = 3;
+const RECONNECT_THRESHOLD_MS = 60 * 1000;
+const MAX_CAPTURES_PER_SESSION = 2;
 
 function getOrCreateSession(deviceMac, deviceId, pendingCount) {
   let session = deviceSessions.get(deviceMac);
+
+  if (session) {
+    const timeSinceLastActivity = Date.now() - session.lastActivityAt.getTime();
+    const isActiveTransfer = ['capture_sent', 'send_image_sent', 'draining_pending'].includes(session.state);
+
+    if (isActiveTransfer && timeSinceLastActivity >= RECONNECT_THRESHOLD_MS) {
+      const oldState = session.state;
+      const oldPending = session.initialPendingCount;
+      console.log(`[SESSION] ${deviceMac} reconnected after ${Math.round(timeSinceLastActivity / 1000)}s inactivity -- cancelling prior session (was: ${oldState}, pending: ${oldPending}) and starting fresh`);
+      deviceSessions.delete(deviceMac);
+      session = null;
+    }
+  }
+
   if (!session) {
     session = {
       deviceMac,
@@ -248,7 +264,7 @@ async function processPendingList(device, pendingList, lineage) {
     try {
       const { data: existing, error: checkError } = await supabase
         .from('device_images')
-        .select('image_id, status')
+        .select('image_id, status, updated_at')
         .eq('device_id', device.device_id)
         .eq('image_name', imageName)
         .maybeSingle();
@@ -260,6 +276,11 @@ async function processPendingList(device, pendingList, lineage) {
 
       if (existing) {
         if (existing.status === 'complete') {
+          const completedAt = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
+          if (Date.now() - completedAt < COMPLETED_IMAGE_TTL_MS) {
+            console.log(`[PENDING_LIST] Image ${imageName} recently completed ${Math.round((Date.now() - completedAt) / 1000)}s ago -- skipping reset`);
+            continue;
+          }
           console.log(`[PENDING_LIST] Image ${imageName} marked complete but device says pending - resetting to pending for re-reception`);
           await supabase
             .from('device_images')
@@ -388,23 +409,35 @@ async function handleStatusMessage(payload, client) {
     }
   }
 
-  const pendingCount = payload.pendingImg || payload.pending_count || 0;
+  const pendingCount = payload.pendingImg ?? payload.pending_count ?? 0;
   const cmdTopic = `ESP32CAM/${normalizedMac}/cmd`;
 
   const session = getOrCreateSession(normalizedMac, device.device_id, pendingCount);
 
   try {
     if (session.state === 'sleep_ack_sent') {
-      console.log(`[STATUS] Device re-published status after sleep ACK was sent - ignoring (device should be entering deep sleep)`);
-      console.log(`[STATUS] Sleep ACK was sent ${Math.round((Date.now() - (session.sleepAckSentAt || 0)) / 1000)}s ago, captureCompletedCount: ${session.captureCompletedCount || 0}`);
+      console.log(`[SESSION] ${normalizedMac} status update after sleep ACK -- ignoring (sent ${Math.round((Date.now() - (session.sleepAckSentAt || 0)) / 1000)}s ago, captures: ${session.captureCompletedCount || 0})`);
+      return { device, pendingCount };
+    }
+
+    const ACTIVE_TRANSFER_STATES = ['capture_sent', 'send_image_sent', 'draining_pending'];
+    if (ACTIVE_TRANSFER_STATES.includes(session.state)) {
+      console.log(`[SESSION] ${normalizedMac} mid-session status update (state: ${session.state}) -- ignoring command logic to prevent recursion`);
+      return { device, pendingCount };
+    }
+
+    if (sentCommandTypes.has('send_image')) {
+      console.log(`[SESSION] ${normalizedMac} send_image already dispatched via command queue -- setting state and skipping`);
+      session.state = 'send_image_sent';
       return { device, pendingCount };
     }
 
     if (pendingCount > 0) {
-      console.log(`[STATUS] Device reports ${pendingCount} pending images - sending send_all_pending`);
+      const prevState = session.state;
       session.state = 'draining_pending';
       session.initialPendingCount = pendingCount;
       session.pendingDrained = 0;
+      console.log(`[SESSION] ${normalizedMac} state: ${prevState} -> draining_pending (${pendingCount} pending)`);
 
       const drainCmd = {
         send_all_pending: true,
@@ -418,10 +451,25 @@ async function handleStatusMessage(payload, client) {
       session.lastCaptureSentAt = Date.now();
     } else if (session.lastCaptureSentAt && (Date.now() - session.lastCaptureSentAt) < 30000) {
       console.log(`[STATUS] capture_image sent ${Math.round((Date.now() - session.lastCaptureSentAt) / 1000)}s ago - skipping duplicate`);
+    } else if (session.captureCompletedCount >= MAX_CAPTURES_PER_SESSION) {
+      console.log(`[SAFETY] Max captures (${MAX_CAPTURES_PER_SESSION}) reached for ${normalizedMac} -- sending sleep ACK instead`);
+      const nextWakeTime = await calculateNextWakeTime(device.device_id);
+      const ackTopic = `ESP32CAM/${normalizedMac}/ack`;
+      const ackMessage = {
+        ACK_OK: { next_wake_time: nextWakeTime },
+      };
+      client.publish(ackTopic, JSON.stringify(ackMessage));
+      await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, ackMessage, 'ack_ok_circuit_breaker');
+      console.log(`[ACK] Sent circuit-breaker sleep ACK to ${normalizedMac} with next wake: ${nextWakeTime}`);
+      session.state = 'sleep_ack_sent';
+      session.sleepAckSentAt = Date.now();
+      console.log(`[SESSION] ${normalizedMac} state: hello_received -> sleep_ack_sent (circuit breaker)`);
+      setTimeout(() => cleanupSession(normalizedMac), 60000);
     } else {
-      console.log(`[STATUS] Device has no pending images - sending capture_image`);
+      const prevState = session.state;
       session.state = 'capture_sent';
       session.lastCaptureSentAt = Date.now();
+      console.log(`[SESSION] ${normalizedMac} state: ${prevState} -> capture_sent`);
 
       await supabase
         .from('device_commands')
@@ -1311,21 +1359,36 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
         await logAckToAudit(supabase, normalizedMac, imageName, 'ACK_OK_BATCH_FINAL', ackTopic, simpleAck, true);
         console.log(`[ACK] Sent simple ACK_OK for last batch image ${imageName} (pending drain complete)`);
 
-        await supabase
-          .from('device_commands')
-          .update({ status: 'superseded', delivered_at: new Date().toISOString() })
-          .eq('device_id', buffer?.imageRecord?.device_id || buffer?.device?.device_id)
-          .eq('command_type', 'capture_image')
-          .eq('status', 'pending');
+        if (session.captureCompletedCount >= MAX_CAPTURES_PER_SESSION) {
+          console.log(`[SAFETY] Max captures (${MAX_CAPTURES_PER_SESSION}) reached after drain for ${normalizedMac} -- sending sleep ACK instead of capture`);
+          const nextWakeTime = await calculateNextWakeTime(buffer?.imageRecord?.device_id || buffer?.device?.device_id);
+          const sleepAck = {
+            ACK_OK: { next_wake_time: nextWakeTime },
+          };
+          client.publish(ackTopic, JSON.stringify(sleepAck));
+          await logMqttMessage(supabase, normalizedMac, 'outbound', ackTopic, sleepAck, 'ack_ok_circuit_breaker');
+          session.state = 'sleep_ack_sent';
+          session.sleepAckSentAt = Date.now();
+          console.log(`[SESSION] ${normalizedMac} state: draining_pending -> sleep_ack_sent (circuit breaker after drain)`);
+          setTimeout(() => cleanupSession(normalizedMac), 60000);
+        } else {
+          await supabase
+            .from('device_commands')
+            .update({ status: 'superseded', delivered_at: new Date().toISOString() })
+            .eq('device_id', buffer?.imageRecord?.device_id || buffer?.device?.device_id)
+            .eq('command_type', 'capture_image')
+            .eq('status', 'pending');
 
-        const captureCmd = {
-          capture_image: true,
-        };
-        client.publish(cmdTopic, JSON.stringify(captureCmd));
-        await logMqttMessage(supabase, normalizedMac, 'outbound', cmdTopic, captureCmd, 'cmd_capture_image');
-        session.state = 'capture_sent';
-        session.lastCaptureSentAt = Date.now();
-        console.log(`[DRAIN] All pending images drained - immediately sent capture_image to ${normalizedMac}`);
+          const captureCmd = {
+            capture_image: true,
+          };
+          client.publish(cmdTopic, JSON.stringify(captureCmd));
+          await logMqttMessage(supabase, normalizedMac, 'outbound', cmdTopic, captureCmd, 'cmd_capture_image');
+          session.state = 'capture_sent';
+          session.lastCaptureSentAt = Date.now();
+          console.log(`[SESSION] ${normalizedMac} state: draining_pending -> capture_sent (drain complete)`);
+          console.log(`[DRAIN] All pending images drained - immediately sent capture_image to ${normalizedMac}`);
+        }
       } else {
         const simpleAck = {
           ACK_OK: true,
@@ -1349,8 +1412,12 @@ async function finalizeAndUploadImage(normalizedMac, imageName, buffer, client) 
 
       if (session) {
         session.captureCompletedCount = (session.captureCompletedCount || 0) + 1;
+        const prevState = session.state;
         session.state = 'sleep_ack_sent';
         session.sleepAckSentAt = Date.now();
+        const duration = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
+        console.log(`[SESSION] ${normalizedMac} state: ${prevState} -> sleep_ack_sent`);
+        console.log(`[SESSION] Complete for ${normalizedMac}: ${session.pendingDrained} pending drained, ${session.captureCompletedCount} captures, duration: ${duration}s`);
         setTimeout(() => cleanupSession(normalizedMac), 60000);
       } else {
         cleanupSession(normalizedMac);

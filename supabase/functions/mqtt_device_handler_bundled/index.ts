@@ -703,7 +703,7 @@ async function handleHelloStatus(
   payload: DeviceStatusMessage
 ): Promise<void> {
   const macAddress = payload.device_mac || payload.device_id;
-  const pendingCount = payload.pendingImg || payload.pending_count || 0;
+  const pendingCount = payload.pendingImg ?? payload.pending_count ?? 0;
 
   console.log('[Ingest] HELLO from device:', payload.device_id, 'MAC:', macAddress, 'pending:', pendingCount);
 
@@ -836,6 +836,27 @@ async function handleHelloStatus(
       .update(updateData)
       .eq('device_id', existingDevice.device_id);
 
+    // Check for active (non-complete) wake payload to prevent duplicates from mid-session status messages
+    const { data: activePayload } = await supabase
+      .from('device_wake_payloads')
+      .select('payload_id, protocol_state')
+      .eq('device_id', existingDevice.device_id)
+      .eq('is_complete', false)
+      .in('protocol_state', ['hello_received', 'capture_sent', 'draining_pending', 'send_image_sent'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (activePayload) {
+      console.log('[Ingest] Active wake payload exists:', activePayload.payload_id, 'state:', activePayload.protocol_state, '-- deferring to existing session');
+      await supabase
+        .from('device_wake_payloads')
+        .update({ protocol_state: 'deferred_to_existing' })
+        .eq('payload_id', activePayload.payload_id)
+        .neq('protocol_state', activePayload.protocol_state);
+      return;
+    }
+
     // Create wake payload record with protocol state tracking
     let sessionId = null;
     if (lineageData?.site_id) {
@@ -888,7 +909,7 @@ async function handleHelloStatus(
       console.log('[Ingest] Wake payload created:', wakePayload?.payload_id, 'state: hello_received');
 
       // Log pending image count for diagnostics (firmware handles resume automatically)
-      const pendingCount = payload.pendingImg || payload.pending_count || 0;
+      const pendingCount = payload.pendingImg ?? payload.pending_count ?? 0;
       if (pendingCount > 0) {
         console.log('[Ingest] Device reports', pendingCount, 'pending images - firmware will auto-resume on next transfer');
       }
@@ -1477,10 +1498,10 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'MQTT Device Handler V3 (HTTP Webhook Mode) - BUNDLED WITH FIRMWARE PROTOCOL FIXES',
+        message: 'MQTT Device Handler V3 (HTTP Webhook Mode) - BUNDLED WITH RECURSION FIX',
         mode: 'HTTP POST webhook (no persistent MQTT connection)',
-        version: '3.6.0-bundled-protocol-fixes',
-        phase: 'Phase 3 - Firmware Protocol Compliance',
+        version: '3.7.0-bundled-recursion-fix',
+        phase: 'Phase 3 - Recursion Storm Prevention',
         features: [
           'Firmware field normalization (timestamp → capture_timestamp)',
           'Nested sensor_data extraction to flat structure',
@@ -1489,6 +1510,8 @@ Deno.serve(async (req: Request) => {
           'JPEG header validation',
           'Pending image list processing',
           'Database-backed chunk recovery',
+          'Active session dedup (prevents mid-session status recursion)',
+          'Nullish coalescing for pendingImg=0 handling',
         ],
         usage: 'POST with {topic: string, payload: object}',
       }),

@@ -220,13 +220,17 @@ export async function publishAckOk(
 }
 
 /**
- * Publish SNAP command to device
- * Tells device to capture an image with the specified name
+ * Publish CAPTURE_IMAGE command to device
+ * Tells device to take a new picture. The device generates its own image name
+ * and responds with metadata containing that name.
+ *
+ * Per protocol: Server sends {capture_image: true} on CMD topic.
+ * The server_image_name is tracked in the DB for reference but NOT sent to the device.
  */
-export async function publishSnapCommand(
+export async function publishCaptureCommand(
   client: MqttClient | null,
   deviceMac: string,
-  imageName: string,
+  serverImageName: string,
   supabase: SupabaseClient,
   payloadId?: string
 ): Promise<void> {
@@ -238,42 +242,45 @@ export async function publishSnapCommand(
 
   const message = {
     [PROTOCOL_FIELDS.DEVICE_ID]: normalizedMac,
-    [PROTOCOL_FIELDS.SEND_IMAGE]: imageName,
+    [PROTOCOL_FIELDS.CAPTURE_IMAGE]: true,
   };
 
   const topic = PROTOCOL_TOPICS.CMD(normalizedMac);
 
-  console.log('[CMD] Sending SNAP command:', {
+  console.log('[CMD] Sending capture_image command:', {
     device: normalizedMac,
-    image: imageName,
+    serverImageName,
     topic,
   });
 
-  // Update wake payload state
   if (payloadId) {
     await supabase
       .from('device_wake_payloads')
       .update({
-        protocol_state: 'snap_sent',
+        protocol_state: 'capture_sent',
         snap_sent_at: new Date().toISOString(),
-        server_image_name: imageName,
+        server_image_name: serverImageName,
       })
       .eq('payload_id', payloadId);
   }
 
-  // In HTTP mode, there's no MQTT client - we just track state
   if (!client) {
-    console.log('[CMD] HTTP mode - SNAP command tracked in database only');
+    console.log('[CMD] HTTP mode - capture_image command tracked in database only');
     return;
   }
 
   try {
     client.publish(topic, JSON.stringify(message));
-    console.log('[CMD] SNAP command published successfully');
+    console.log('[CMD] capture_image command published successfully');
   } catch (err) {
-    console.error('[CMD] Failed to publish SNAP command:', err);
+    console.error('[CMD] Failed to publish capture_image command:', err);
   }
 }
+
+/**
+ * @deprecated Use publishCaptureCommand instead. This alias exists for backward compatibility.
+ */
+export const publishSnapCommand = publishCaptureCommand;
 
 /**
  * Publish SLEEP command to device with next wake time
