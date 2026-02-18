@@ -308,7 +308,7 @@ const ImageLightbox = ({ isOpen, onClose, observation, observations, initialInde
               </Button>
             </div>
 
-            <div className="h-[400px] flex items-center justify-center overflow-auto">
+            <div className="h-[380px] flex items-center justify-center overflow-auto">
               <img
                 src={activeObservation.data.image_url}
                 alt={activeObservation.type === 'petri'

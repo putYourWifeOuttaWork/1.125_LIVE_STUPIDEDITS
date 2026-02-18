@@ -242,7 +242,7 @@ const DeviceImageLightbox = ({
             </div>
 
             {/* Image Display */}
-            <div className="h-[500px] flex items-center justify-center overflow-auto">
+            <div className="h-[420px] flex items-center justify-center overflow-auto">
               <img
                 src={currentImage.image_url}
                 alt={`${deviceInfo.device_code} - Image ${localIndex + 1}`}

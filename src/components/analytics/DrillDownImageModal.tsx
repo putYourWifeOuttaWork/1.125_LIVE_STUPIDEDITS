@@ -62,12 +62,15 @@ export default function DrillDownImageModal({
   }, [autoPlay.isTransitioning, currentIndex]);
 
   useEffect(() => {
-    if (thumbnailContainerRef.current) {
-      const activeThumb = thumbnailContainerRef.current.querySelector(`[data-index="${currentIndex}"]`);
-      if (activeThumb) {
-        activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-      }
-    }
+    const container = thumbnailContainerRef.current;
+    if (!container) return;
+    const activeThumb = container.querySelector(`[data-index="${currentIndex}"]`) as HTMLElement | null;
+    if (!activeThumb) return;
+    const thumbLeft = activeThumb.offsetLeft;
+    const thumbWidth = activeThumb.offsetWidth;
+    const containerWidth = container.offsetWidth;
+    const targetScroll = thumbLeft - containerWidth / 2 + thumbWidth / 2;
+    container.scrollTo({ left: targetScroll, behavior: 'smooth' });
   }, [currentIndex]);
 
   const handleNext = () => {
@@ -129,8 +132,40 @@ export default function DrillDownImageModal({
           </button>
         </div>
 
+        {/* Thumbnail Strip - above main image */}
+        {records.length > 1 && (
+          <div className="px-6 py-2 bg-white border-b border-gray-200">
+            <div ref={thumbnailContainerRef} className="flex gap-2 overflow-x-auto pb-1">
+              {records.map((record, index) => (
+                <button
+                  key={record.image_id}
+                  data-index={index}
+                  onClick={() => autoPlay.stopAndNavigate(index)}
+                  className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
+                    index === currentIndex
+                      ? 'border-blue-500 ring-2 ring-blue-200'
+                      : 'border-gray-200 hover:border-gray-400'
+                  }`}
+                >
+                  {record.image_url ? (
+                    <img
+                      src={record.image_url}
+                      alt={`Thumbnail ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                      <span className="text-xs text-gray-400">N/A</span>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Image Viewer */}
-        <div className="relative bg-gray-900" style={{ height: '500px' }}>
+        <div className="relative bg-gray-900" style={{ height: '480px' }}>
           {currentRecord.image_url ? (
             <>
               {imageLoading && (
@@ -303,37 +338,6 @@ export default function DrillDownImageModal({
           )}
         </div>
 
-        {/* Thumbnail Strip */}
-        {records.length > 1 && (
-          <div className="px-6 py-3 bg-white border-t border-gray-200">
-            <div ref={thumbnailContainerRef} className="flex gap-2 overflow-x-auto pb-2">
-              {records.map((record, index) => (
-                <button
-                  key={record.image_id}
-                  data-index={index}
-                  onClick={() => autoPlay.stopAndNavigate(index)}
-                  className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
-                    index === currentIndex
-                      ? 'border-blue-500 ring-2 ring-blue-200'
-                      : 'border-gray-200 hover:border-gray-400'
-                  }`}
-                >
-                  {record.image_url ? (
-                    <img
-                      src={record.image_url}
-                      alt={`Thumbnail ${index + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                      <span className="text-xs text-gray-400">N/A</span>
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </Modal>
   );
