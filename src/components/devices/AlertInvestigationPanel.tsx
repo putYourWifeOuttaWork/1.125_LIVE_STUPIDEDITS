@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   X,
@@ -6,6 +6,8 @@ import {
   TrendingUp,
   ExternalLink,
   Clock,
+  RefreshCw,
+  WifiOff,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import Card, { CardHeader, CardContent } from '../common/Card';
@@ -26,7 +28,21 @@ import {
   METRIC_LABELS,
   METRIC_UNITS,
 } from '../../types/analytics';
-import type { MetricType } from '../../types/analytics';
+import type { MetricType, ReportConfiguration } from '../../types/analytics';
+
+const LOADING_TIMEOUT_MS = 15_000;
+
+const DISABLED_CONFIG: ReportConfiguration = {
+  reportType: 'line',
+  name: '',
+  timeRange: 'last_30d',
+  timeGranularity: 'day',
+  programIds: [],
+  siteIds: [],
+  deviceIds: [],
+  metrics: [],
+  enableComparison: false,
+};
 
 interface AlertInvestigationPanelProps {
   alert: DeviceAlert;
@@ -41,6 +57,8 @@ export default function AlertInvestigationPanel({
   const { activeCompanyId } = useActiveCompany();
   const [brushRange, setBrushRange] = useState<[Date, Date] | null>(null);
   const [drillOffset, setDrillOffset] = useState(0);
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const investigationConfig = useMemo(
     () => buildAlertInvestigationConfig(alert),
@@ -55,17 +73,35 @@ export default function AlertInvestigationPanel({
     isLoading,
     isFetching,
     error,
-  } = useReportData(reportConfig || {
-    reportType: 'line',
-    name: '',
-    timeRange: 'last_30d',
-    timeGranularity: 'day',
-    programIds: [],
-    siteIds: [],
-    deviceIds: [],
-    metrics: [],
-    enableComparison: false,
-  }, !!reportConfig);
+    refresh,
+  } = useReportData(reportConfig || DISABLED_CONFIG, !!reportConfig);
+
+  const chartLoading = isLoading || isFetching;
+
+  useEffect(() => {
+    if (chartLoading && !loadingTimedOut) {
+      timeoutRef.current = setTimeout(() => {
+        setLoadingTimedOut(true);
+      }, LOADING_TIMEOUT_MS);
+    } else if (!chartLoading) {
+      setLoadingTimedOut(false);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    }
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [chartLoading, loadingTimedOut]);
+
+  const handleRetry = () => {
+    setLoadingTimedOut(false);
+    refresh();
+  };
 
   const drillDown = useDrillDown(
     activeCompanyId,
@@ -215,14 +251,38 @@ export default function AlertInvestigationPanel({
       </CardHeader>
 
       <CardContent className="pt-0">
-        {error && (
+        {error && !chartLoading && (
           <div className="text-center py-8 text-red-600">
             <p className="font-medium">Failed to load chart data</p>
             <p className="text-sm mt-1">{(error as Error).message}</p>
+            <button
+              onClick={handleRetry}
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
           </div>
         )}
 
-        {!error && (
+        {loadingTimedOut && (
+          <div className="text-center py-8">
+            <WifiOff className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+            <p className="text-gray-700 font-medium">Chart data is taking longer than expected</p>
+            <p className="text-sm text-gray-500 mt-1">
+              This may be due to a connectivity issue. You can retry or dismiss this alert.
+            </p>
+            <button
+              onClick={handleRetry}
+              className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!error && !loadingTimedOut && (
           <div className="space-y-4">
             <LineChartWithBrush
               data={lineChartData || { timestamps: [], series: [] }}
@@ -233,7 +293,7 @@ export default function AlertInvestigationPanel({
               metricInfo={metricInfo}
               annotations={annotations}
               onBrushEnd={handleBrush}
-              loading={isLoading || isFetching}
+              loading={chartLoading}
             />
 
             {brushRange && (

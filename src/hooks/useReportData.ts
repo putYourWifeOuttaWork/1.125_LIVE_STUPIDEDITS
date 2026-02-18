@@ -94,14 +94,16 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
   }, [queryClient]);
 
   const metrics = config.metrics || [];
-  const programIds = config.programIds || [];
-  const siteIds = config.siteIds || [];
-  const deviceIds = config.deviceIds || [];
 
   const metricNames = useMemo(
     () => metrics.map((m) => m.type),
-    [metrics]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(metrics.map((m) => m.type))]
   );
+
+  const programIds = useMemo(() => config.programIds || [], [config.programIds]);
+  const siteIds = useMemo(() => config.siteIds || [], [config.siteIds]);
+  const deviceIds = useMemo(() => config.deviceIds || [], [config.deviceIds]);
 
   const interval = granularityToInterval(config.timeGranularity);
 
