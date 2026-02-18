@@ -17,8 +17,10 @@ import ActiveAlertsPanel from '../components/devices/ActiveAlertsPanel';
 import ActiveSessionsGrid, { ActiveSession } from '../components/devices/ActiveSessionsGrid';
 import SessionDetailsPanel from '../components/devices/SessionDetailsPanel';
 import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
+import AlertInvestigationPanel from '../components/devices/AlertInvestigationPanel';
 import { useActiveCompany } from '../hooks/useActiveCompany';
 import { createLogger } from '../utils/logger';
+import type { DeviceAlert } from '../types/alerts';
 
 const log = createLogger('HomePage');
 
@@ -32,16 +34,51 @@ const HomePage = () => {
   const [sessionSiteData, setSessionSiteData] = useState<Site | null>(null);
   const [sessionDevices, setSessionDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState<DeviceAlert | null>(null);
+  const [lastAction, setLastAction] = useState<'alert' | 'session' | null>(null);
 
   const sessionDetailsRef = useRef<HTMLDivElement>(null);
+  const investigationRef = useRef<HTMLDivElement>(null);
 
   const {
     setIsSessionsDrawerOpen,
   } = useSessionStore();
 
+  const handleAlertSelect = async (alert: DeviceAlert) => {
+    setSelectedAlert(alert);
+    setLastAction('alert');
+
+    if (alert.session_id && alert.site_id) {
+      setSelectedSessionId(alert.session_id);
+      setSelectedSessionData({
+        session_id: alert.session_id,
+        site_name: alert.site_name || 'Unknown',
+        site_id: alert.site_id,
+        program_name: alert.program_name || 'Unknown',
+        program_id: alert.program_id || '',
+        company_name: alert.company_name || '',
+        company_id: alert.company_id || '',
+        session_date: new Date(alert.triggered_at).toISOString().split('T')[0],
+        expected_wake_count: 0,
+        completed_wake_count: 0,
+        status: 'in_progress',
+        alert_count: 1,
+        critical_alert_count: alert.severity === 'critical' ? 1 : 0,
+        warning_alert_count: alert.severity === 'warning' ? 1 : 0,
+        latest_alert_severity: alert.severity,
+      });
+      await loadSessionSiteData(alert.site_id);
+    }
+
+    setTimeout(() => {
+      investigationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
   const handleSessionSelect = async (session: ActiveSession) => {
     setSelectedSessionId(session.session_id);
     setSelectedSessionData(session);
+    setLastAction('session');
 
     await loadSessionSiteData(session.site_id);
 
@@ -190,7 +227,10 @@ const HomePage = () => {
       {/* Row 1: Active Alerts (left) + Active Sessions (right) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="max-h-[400px] overflow-y-auto">
-          <ActiveAlertsPanel />
+          <ActiveAlertsPanel
+            onAlertSelect={handleAlertSelect}
+            selectedAlertId={selectedAlert?.alert_id || null}
+          />
         </div>
 
         <div className="max-h-[400px] overflow-y-auto">
@@ -211,15 +251,25 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Row 2: Session Details (full width) - scroll target */}
+      {/* Alert Investigation (shown first when alert was the last action) */}
+      {lastAction === 'alert' && selectedAlert && (
+        <div ref={investigationRef} className="scroll-mt-4">
+          <AlertInvestigationPanel
+            alert={selectedAlert}
+            onClose={() => setSelectedAlert(null)}
+          />
+        </div>
+      )}
+
+      {/* Session Details + Site Map (full width) */}
       <div ref={sessionDetailsRef} className="scroll-mt-4">
         {!selectedSessionData ? (
           <Card className="flex items-center justify-center min-h-[200px]">
             <CardContent className="text-center py-12">
               <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Select a Session</h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Select a Session or Alert</h3>
               <p className="text-sm text-gray-500 max-w-md mx-auto">
-                Click on any session card above to view detailed metrics and the site map with live device data
+                Click on any session card or alert above to view detailed metrics, investigation charts, and the site map
               </p>
             </CardContent>
           </Card>
@@ -253,6 +303,7 @@ const HomePage = () => {
                         siteWidth={sessionSiteData.width!}
                         siteName={sessionSiteData.name}
                         devices={sessionDevices}
+                        highlightDeviceId={selectedAlert?.device_id || null}
                         onDeviceClick={(deviceId) => {
                           navigate(`/devices/${deviceId}`);
                         }}
@@ -277,6 +328,16 @@ const HomePage = () => {
           </div>
         )}
       </div>
+
+      {/* Alert Investigation (shown after session when session was the last action) */}
+      {lastAction !== 'alert' && selectedAlert && (
+        <div ref={investigationRef} className="scroll-mt-4">
+          <AlertInvestigationPanel
+            alert={selectedAlert}
+            onClose={() => setSelectedAlert(null)}
+          />
+        </div>
+      )}
     </div>
   );
 };

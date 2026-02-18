@@ -31,6 +31,7 @@ interface SiteMapAnalyticsViewerProps {
   siteName: string;
   devices: DevicePosition[];
   onDeviceClick?: (deviceId: string) => void;
+  highlightDeviceId?: string | null;
   className?: string;
   showControls?: boolean;
   height?: number;
@@ -44,6 +45,7 @@ export default function SiteMapAnalyticsViewer({
   siteName,
   devices,
   onDeviceClick,
+  highlightDeviceId,
   className = '',
   showControls = true,
   height,
@@ -209,6 +211,24 @@ export default function SiteMapAnalyticsViewer({
         ctx.fillText('📷', pixelX, pixelY);
       }
 
+      // Alert highlight ring for investigated device
+      if (highlightDeviceId === device.device_id) {
+        ctx.strokeStyle = '#dc2626';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(pixelX, pixelY, baseRadius + 6, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const alertPulseProgress = (pulseFrame % 60) / 60;
+        const alertPulseRadius = baseRadius + 6 + (12 * alertPulseProgress);
+        const alertPulseAlpha = 1 - alertPulseProgress;
+        ctx.strokeStyle = `rgba(220, 38, 38, ${alertPulseAlpha * 0.5})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(pixelX, pixelY, alertPulseRadius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
       // Device code label (always visible)
       ctx.fillStyle = isHovered ? '#1f2937' : '#6b7280';
       ctx.font = isHovered ? 'bold 11px sans-serif' : '10px sans-serif';
@@ -216,7 +236,7 @@ export default function SiteMapAnalyticsViewer({
       ctx.fillText(device.device_code, pixelX, pixelY + baseRadius + 14);
     });
 
-  }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode, pulseFrame]);
+  }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode, pulseFrame, highlightDeviceId]);
 
   const drawVoronoiZones = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, mode: ZoneMode) => {
     if (devices.length < 1) return;

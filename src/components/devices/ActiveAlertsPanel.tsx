@@ -9,6 +9,9 @@ import { useNavigate } from 'react-router-dom';
 import useCompanies from '../../hooks/useCompanies';
 import CompanyAlertThresholdsModal from '../companies/CompanyAlertThresholdsModal';
 import { createLogger } from '../../utils/logger';
+import type { DeviceAlert } from '../../types/alerts';
+
+export type { DeviceAlert };
 
 const log = createLogger('ActiveAlerts');
 
@@ -44,42 +47,18 @@ function loadSavedTimeRange(): TimeRange {
   return '7d';
 }
 
-interface DeviceAlert {
-  alert_id: string;
-  device_id: string;
-  alert_type: string;
-  alert_category: 'absolute' | 'shift' | 'velocity' | 'speed' | 'combination' | 'system';
-  severity: 'info' | 'warning' | 'error' | 'critical';
-  message: string;
-  actual_value: number | null;
-  threshold_value: number | null;
-  threshold_context: any;
-  measurement_timestamp: string;
-  triggered_at: string;
-  resolved_at: string | null;
-
-  device_coords: string | null;
-  zone_label: string | null;
-  site_id: string | null;
-  site_name: string | null;
-  program_id: string | null;
-  program_name: string | null;
-  company_id: string | null;
-  company_name: string | null;
-  metadata: any;
-
-  session_id: string | null;
-  snapshot_id: string | null;
-  wake_number: number | null;
-}
-
 interface AlertStats {
   critical: number;
   warning: number;
   total: number;
 }
 
-const ActiveAlertsPanel = () => {
+interface ActiveAlertsPanelProps {
+  onAlertSelect?: (alert: DeviceAlert) => void;
+  selectedAlertId?: string | null;
+}
+
+const ActiveAlertsPanel = ({ onAlertSelect, selectedAlertId }: ActiveAlertsPanelProps = {}) => {
   const navigate = useNavigate();
   const { userCompany, isAdmin } = useCompanies();
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
@@ -375,12 +354,21 @@ const ActiveAlertsPanel = () => {
           </div>
         ) : (
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {alerts.map((alert) => (
+            {alerts.map((alert) => {
+              const isSelected = selectedAlertId === alert.alert_id;
+              return (
               <div
                 key={alert.alert_id}
                 className={`border rounded-lg ${getSeverityColor(alert.severity)} ${
                   alert.resolved_at ? 'opacity-60' : ''
+                } ${isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''} ${
+                  onAlertSelect && !alert.resolved_at ? 'cursor-pointer hover:shadow-md transition-shadow' : ''
                 }`}
+                onClick={() => {
+                  if (onAlertSelect && !alert.resolved_at) {
+                    onAlertSelect(alert);
+                  }
+                }}
               >
                 {/* Compact Header */}
                 <div className="flex items-center justify-between gap-2 p-2.5">
@@ -482,7 +470,8 @@ const ActiveAlertsPanel = () => {
                   </div>
                 </details>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

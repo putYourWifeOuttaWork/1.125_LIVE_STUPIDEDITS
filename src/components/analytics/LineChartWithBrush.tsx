@@ -21,6 +21,17 @@ export interface MetricAxisInfo {
   axis: 'primary' | 'secondary';
 }
 
+export interface ChartAnnotation {
+  type: 'threshold_line' | 'highlight_point' | 'vertical_marker' | 'shaded_region';
+  value?: number;
+  timestamp?: Date;
+  y1?: number;
+  y2?: number;
+  label?: string;
+  color?: string;
+  metricName?: string;
+}
+
 interface LineChartWithBrushProps {
   data: LineChartData;
   width?: number;
@@ -29,6 +40,7 @@ interface LineChartWithBrushProps {
   yAxisLabel?: string;
   secondaryYAxisLabel?: string;
   metricInfo?: MetricAxisInfo[];
+  annotations?: ChartAnnotation[];
   onBrushEnd?: (timeRange: [Date, Date]) => void;
   loading?: boolean;
 }
@@ -43,6 +55,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
   yAxisLabel = 'Value',
   secondaryYAxisLabel,
   metricInfo,
+  annotations,
   onBrushEnd,
   loading = false,
 }) => {
@@ -431,7 +444,136 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
         .duration(200)
         .attr('opacity', 0.7);
     });
-  }, [data, width, height, yAxisLabel, secondaryYAxisLabel, metricInfo, onBrushEnd, selectedSeries, loading, hasSecondaryAxis]);
+
+    if (annotations && annotations.length > 0) {
+      const annotationGroup = g.append('g').attr('class', 'annotations');
+
+      const getAnnotationScale = (ann: ChartAnnotation) => {
+        if (hasSecondaryAxis && ann.metricName && secondaryMetrics.has(ann.metricName) && yScaleSecondary) {
+          return yScaleSecondary;
+        }
+        return yScalePrimary;
+      };
+
+      annotations.forEach((ann) => {
+        const annColor = ann.color || '#dc2626';
+
+        if (ann.type === 'threshold_line' && ann.value !== undefined) {
+          const yScale = getAnnotationScale(ann);
+          const yPos = yScale(ann.value);
+
+          if (yPos >= 0 && yPos <= innerHeight) {
+            annotationGroup.append('line')
+              .attr('x1', 0)
+              .attr('x2', innerWidth)
+              .attr('y1', yPos)
+              .attr('y2', yPos)
+              .attr('stroke', annColor)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-dasharray', '6,4')
+              .attr('opacity', 0.8);
+
+            if (ann.label) {
+              annotationGroup.append('rect')
+                .attr('x', innerWidth - ann.label.length * 6.5 - 12)
+                .attr('y', yPos - 18)
+                .attr('width', ann.label.length * 6.5 + 10)
+                .attr('height', 16)
+                .attr('fill', 'white')
+                .attr('rx', 3)
+                .attr('opacity', 0.9);
+
+              annotationGroup.append('text')
+                .attr('x', innerWidth - 6)
+                .attr('y', yPos - 7)
+                .attr('text-anchor', 'end')
+                .attr('font-size', 10)
+                .attr('font-weight', 600)
+                .attr('fill', annColor)
+                .text(ann.label);
+            }
+          }
+        }
+
+        if (ann.type === 'vertical_marker' && ann.timestamp) {
+          const xPos = xScale(ann.timestamp);
+          if (xPos >= 0 && xPos <= innerWidth) {
+            annotationGroup.append('line')
+              .attr('x1', xPos)
+              .attr('x2', xPos)
+              .attr('y1', 0)
+              .attr('y2', innerHeight)
+              .attr('stroke', annColor)
+              .attr('stroke-width', 1)
+              .attr('stroke-dasharray', '4,3')
+              .attr('opacity', 0.6);
+
+            if (ann.label) {
+              annotationGroup.append('text')
+                .attr('x', xPos + 4)
+                .attr('y', 12)
+                .attr('font-size', 9)
+                .attr('fill', annColor)
+                .attr('opacity', 0.8)
+                .text(ann.label);
+            }
+          }
+        }
+
+        if (ann.type === 'shaded_region' && ann.y1 !== undefined && ann.y2 !== undefined) {
+          const yScale = getAnnotationScale(ann);
+          const yTop = yScale(Math.max(ann.y1, ann.y2));
+          const yBottom = yScale(Math.min(ann.y1, ann.y2));
+          const regionHeight = Math.max(0, yBottom - yTop);
+
+          if (regionHeight > 0) {
+            annotationGroup.append('rect')
+              .attr('x', 0)
+              .attr('y', yTop)
+              .attr('width', innerWidth)
+              .attr('height', regionHeight)
+              .attr('fill', annColor)
+              .attr('opacity', 0.08);
+          }
+        }
+
+        if (ann.type === 'highlight_point' && ann.timestamp && ann.value !== undefined) {
+          const yScale = getAnnotationScale(ann);
+          const cx = xScale(ann.timestamp);
+          const cy = yScale(ann.value);
+
+          if (cx >= 0 && cx <= innerWidth && cy >= 0 && cy <= innerHeight) {
+            annotationGroup.append('circle')
+              .attr('cx', cx)
+              .attr('cy', cy)
+              .attr('r', 10)
+              .attr('fill', annColor)
+              .attr('opacity', 0.15);
+
+            annotationGroup.append('circle')
+              .attr('cx', cx)
+              .attr('cy', cy)
+              .attr('r', 6)
+              .attr('fill', annColor)
+              .attr('stroke', 'white')
+              .attr('stroke-width', 2)
+              .attr('opacity', 0.9);
+
+            if (ann.label) {
+              annotationGroup.append('text')
+                .attr('x', cx)
+                .attr('y', cy - 14)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', 10)
+                .attr('font-weight', 600)
+                .attr('fill', annColor)
+                .text(ann.label);
+            }
+          }
+        }
+      });
+    }
+  }, [data, width, height, yAxisLabel, secondaryYAxisLabel, metricInfo, annotations, onBrushEnd, selectedSeries, loading, hasSecondaryAxis]);
 
   if (loading) {
     return (
