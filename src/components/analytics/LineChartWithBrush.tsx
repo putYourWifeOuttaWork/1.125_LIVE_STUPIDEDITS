@@ -22,9 +22,11 @@ export interface MetricAxisInfo {
 }
 
 export interface ChartAnnotation {
-  type: 'threshold_line' | 'highlight_point' | 'vertical_marker' | 'shaded_region';
+  type: 'threshold_line' | 'highlight_point' | 'vertical_marker' | 'shaded_region' | 'time_range_highlight';
   value?: number;
   timestamp?: Date;
+  startTimestamp?: Date;
+  endTimestamp?: Date;
   y1?: number;
   y2?: number;
   label?: string;
@@ -558,6 +560,61 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
               .attr('height', regionHeight)
               .attr('fill', annColor)
               .attr('opacity', 0.08);
+          }
+        }
+
+        if (ann.type === 'time_range_highlight' && ann.startTimestamp && ann.endTimestamp) {
+          const x1 = Math.max(0, xScale(ann.startTimestamp));
+          const x2 = Math.min(innerWidth, xScale(ann.endTimestamp));
+          const bandWidth = Math.max(0, x2 - x1);
+
+          if (bandWidth > 0) {
+            annotationGroup.append('rect')
+              .attr('x', x1)
+              .attr('y', 0)
+              .attr('width', bandWidth)
+              .attr('height', innerHeight)
+              .attr('fill', annColor)
+              .attr('opacity', 0.10);
+
+            annotationGroup.append('line')
+              .attr('x1', x1).attr('x2', x1)
+              .attr('y1', 0).attr('y2', innerHeight)
+              .attr('stroke', annColor)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-dasharray', '5,3')
+              .attr('opacity', 0.5);
+
+            annotationGroup.append('line')
+              .attr('x1', x2).attr('x2', x2)
+              .attr('y1', 0).attr('y2', innerHeight)
+              .attr('stroke', annColor)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-dasharray', '5,3')
+              .attr('opacity', 0.5);
+
+            if (ann.label) {
+              const midX = x1 + bandWidth / 2;
+              const labelText = ann.label;
+              const estimatedWidth = labelText.length * 6 + 16;
+              annotationGroup.append('rect')
+                .attr('x', midX - estimatedWidth / 2)
+                .attr('y', 4)
+                .attr('width', estimatedWidth)
+                .attr('height', 18)
+                .attr('fill', annColor)
+                .attr('rx', 3)
+                .attr('opacity', 0.85);
+
+              annotationGroup.append('text')
+                .attr('x', midX)
+                .attr('y', 16)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', 10)
+                .attr('font-weight', 600)
+                .attr('fill', 'white')
+                .text(labelText);
+            }
           }
         }
 

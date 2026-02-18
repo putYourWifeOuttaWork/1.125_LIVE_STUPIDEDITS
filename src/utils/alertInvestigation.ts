@@ -116,42 +116,36 @@ function buildAbsoluteConfig(alert: DeviceAlert): AlertInvestigationConfig {
 
 function buildShiftConfig(alert: DeviceAlert): AlertInvestigationConfig {
   const primaryMetric = getAlertMetricType(alert) || 'temperature';
+  const sevColor = alert.severity === 'critical' ? '#dc2626' : '#d97706';
 
   const annotations: ChartAnnotation[] = [];
+  const ctx = alert.threshold_context || {};
 
-  if (alert.threshold_context) {
-    const ctx = alert.threshold_context;
-    const sessionMin = ctx.session_min ?? ctx.min_value;
-    const sessionMax = ctx.session_max ?? ctx.max_value;
-    if (sessionMin !== undefined && sessionMax !== undefined) {
-      annotations.push({
-        type: 'shaded_region',
-        y1: scaleValue(primaryMetric, sessionMin),
-        y2: scaleValue(primaryMetric, sessionMax),
-        color: '#d97706',
-        metricName: primaryMetric,
-      });
-    }
-  }
+  const isTemp = alert.alert_type?.startsWith('temp_');
+  const minAt = isTemp ? ctx.min_temp_at : ctx.min_humidity_at;
+  const maxAt = isTemp ? ctx.max_temp_at : ctx.max_humidity_at;
 
-  if (alert.threshold_value !== null) {
+  if (minAt && maxAt) {
+    const t1 = new Date(minAt);
+    const t2 = new Date(maxAt);
     annotations.push({
-      type: 'threshold_line',
-      value: scaleValue(primaryMetric, alert.threshold_value),
-      label: `Max Shift: ${scaleValue(primaryMetric, alert.threshold_value).toFixed(1)}${METRIC_UNITS[primaryMetric]}`,
-      color: '#d97706',
-      metricName: primaryMetric,
+      type: 'time_range_highlight',
+      startTimestamp: t1 < t2 ? t1 : t2,
+      endTimestamp: t1 < t2 ? t2 : t1,
+      label: 'Shift Window',
+      color: sevColor,
+    });
+  } else if (ctx.session_start && alert.measurement_timestamp) {
+    annotations.push({
+      type: 'time_range_highlight',
+      startTimestamp: new Date(ctx.session_start),
+      endTimestamp: new Date(alert.measurement_timestamp),
+      label: 'Shift Window',
+      color: sevColor,
     });
   }
 
-  if (alert.measurement_timestamp && alert.actual_value !== null) {
-    annotations.push({
-      type: 'highlight_point',
-      timestamp: new Date(alert.measurement_timestamp),
-      value: scaleValue(primaryMetric, alert.actual_value),
-      color: '#dc2626',
-      metricName: primaryMetric,
-    });
+  if (alert.measurement_timestamp) {
     annotations.push({
       type: 'vertical_marker',
       timestamp: new Date(alert.measurement_timestamp),
@@ -159,6 +153,14 @@ function buildShiftConfig(alert: DeviceAlert): AlertInvestigationConfig {
       color: '#dc2626',
     });
   }
+
+  const shiftMag = alert.actual_value !== null
+    ? Math.abs(scaleValue(primaryMetric, alert.actual_value)).toFixed(1)
+    : null;
+  const shiftDir = alert.actual_value !== null && alert.actual_value < 0 ? 'Drop' : 'Rise';
+  const shiftSuffix = shiftMag
+    ? ` (${shiftDir}: ${shiftMag}${METRIC_UNITS[primaryMetric]})`
+    : '';
 
   return {
     reportConfig: {
@@ -175,7 +177,7 @@ function buildShiftConfig(alert: DeviceAlert): AlertInvestigationConfig {
       enableComparison: false,
     },
     annotations,
-    chartTitle: `Intra-Session ${METRIC_LABELS[primaryMetric]} Shift - ${alert.metadata?.device_code || 'Device'}`,
+    chartTitle: `Intra-Session ${METRIC_LABELS[primaryMetric]} Shift - ${alert.metadata?.device_code || 'Device'}${shiftSuffix}`,
     yAxisLabel: `${METRIC_LABELS[primaryMetric]} (${METRIC_UNITS[primaryMetric]})`,
   };
 }
