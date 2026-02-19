@@ -517,14 +517,14 @@ export async function updateReport(
  */
 export async function deleteReport(reportId: string, companyId?: string): Promise<void> {
   try {
+    let snapshotQuery = supabase.from('report_snapshots').delete().eq('report_id', reportId);
+    if (companyId) snapshotQuery = snapshotQuery.eq('company_id', companyId);
+    const { error: snapError } = await snapshotQuery;
+    if (snapError) throw snapError;
+
     let query = supabase.from('custom_reports').delete().eq('report_id', reportId);
-
-    if (companyId) {
-      query = query.eq('company_id', companyId);
-    }
-
+    if (companyId) query = query.eq('company_id', companyId);
     const { error } = await query;
-
     if (error) throw error;
   } catch (error) {
     console.error('Error deleting report:', error);
