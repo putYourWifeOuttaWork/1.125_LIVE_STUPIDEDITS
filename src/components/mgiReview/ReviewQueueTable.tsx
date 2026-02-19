@@ -21,13 +21,14 @@ function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, reviewNotes }: { status: string; reviewNotes?: string | null }) {
+  const isTrendConfirmed = status === 'auto_resolved' && reviewNotes?.includes('trend confirmation');
   const config: Record<string, { bg: string; label: string }> = {
     pending: { bg: 'bg-amber-100 text-amber-800', label: 'Pending' },
     confirmed: { bg: 'bg-green-100 text-green-800', label: 'Confirmed' },
     overridden: { bg: 'bg-blue-100 text-blue-800', label: 'Overridden' },
     dismissed: { bg: 'bg-gray-100 text-gray-600', label: 'Dismissed' },
-    auto_resolved: { bg: 'bg-teal-100 text-teal-700', label: 'Auto-resolved' },
+    auto_resolved: { bg: 'bg-teal-100 text-teal-700', label: isTrendConfirmed ? 'Trend Confirmed' : 'Auto-resolved' },
   };
   const c = config[status] || config.pending;
   return (
@@ -97,7 +98,7 @@ export default function ReviewQueueTable({ reviews, selectedId, onSelect }: Prop
                   <span className="text-xs text-gray-500 font-mono">{review.qa_method}</span>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <StatusBadge status={review.status} />
+                  <StatusBadge status={review.status} reviewNotes={review.review_notes} />
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <span className="text-xs text-gray-500 flex items-center gap-1">

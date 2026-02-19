@@ -44,6 +44,7 @@ export interface MgiQaThreshold {
   level2_median_offset: number;
   level2_modified_z_threshold: number;
   level2_max_growth_rate_per_hour: number;
+  trend_confirmation_threshold: number;
   created_at: string;
   updated_at: string;
 }
@@ -266,6 +267,7 @@ export function useSaveThreshold() {
             level2_median_offset: threshold.level2_median_offset,
             level2_modified_z_threshold: threshold.level2_modified_z_threshold,
             level2_max_growth_rate_per_hour: threshold.level2_max_growth_rate_per_hour,
+            trend_confirmation_threshold: threshold.trend_confirmation_threshold,
             updated_at: new Date().toISOString(),
           })
           .eq('threshold_config_id', threshold.threshold_config_id);
@@ -284,6 +286,7 @@ export function useSaveThreshold() {
             level2_median_offset: threshold.level2_median_offset ?? 0.25,
             level2_modified_z_threshold: threshold.level2_modified_z_threshold ?? 3.5,
             level2_max_growth_rate_per_hour: threshold.level2_max_growth_rate_per_hour ?? 0.01,
+            trend_confirmation_threshold: threshold.trend_confirmation_threshold ?? 2,
           });
         if (error) throw error;
       }

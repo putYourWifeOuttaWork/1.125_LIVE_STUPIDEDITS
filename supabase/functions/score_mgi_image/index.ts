@@ -206,8 +206,31 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // --- TREND CONFIRMATION: check if this accepted score resolves pending reviews ---
+      let trendResolved: Record<string, unknown> | null = null;
+      try {
+        const { data: trendData, error: trendErr } = await supabaseClient.rpc(
+          'fn_check_trend_confirmation',
+          { p_device_id: imageRecord.device_id }
+        );
+        if (trendErr) {
+          console.error('[MGI Scoring] Trend confirmation error:', trendErr.message);
+        } else if (trendData && (trendData as Record<string, unknown>).resolved) {
+          trendResolved = trendData as Record<string, unknown>;
+          console.log('[MGI Scoring] Trend confirmation resolved', trendResolved.resolved, 'pending review(s)');
+        }
+      } catch (e) {
+        console.error('[MGI Scoring] Trend confirmation exception:', e);
+      }
+
       return new Response(
-        JSON.stringify({ success: true, image_id, mgi_score: mgiScore, qa_status: 'accepted' }),
+        JSON.stringify({
+          success: true,
+          image_id,
+          mgi_score: mgiScore,
+          qa_status: 'accepted',
+          trend_confirmation: trendResolved,
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

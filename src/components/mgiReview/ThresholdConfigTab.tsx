@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, RotateCcw, Save, Info } from 'lucide-react';
+import { Settings, RotateCcw, Save, Info, TrendingUp } from 'lucide-react';
 import { useMgiQaThresholds, useSaveThreshold } from '../../hooks/useMgiReview';
 import type { MgiQaThreshold } from '../../hooks/useMgiReview';
 import { toast } from 'react-toastify';
@@ -17,6 +17,7 @@ const DEFAULTS: Omit<MgiQaThreshold, 'threshold_config_id' | 'company_id' | 'sit
   level2_median_offset: 0.25,
   level2_modified_z_threshold: 3.5,
   level2_max_growth_rate_per_hour: 0.01,
+  trend_confirmation_threshold: 2,
 };
 
 interface FieldDef {
@@ -26,7 +27,7 @@ interface FieldDef {
   step: number;
   min: number;
   max: number;
-  level: 1 | 2;
+  level: 1 | 2 | 3;
 }
 
 const FIELDS: FieldDef[] = [
@@ -37,6 +38,7 @@ const FIELDS: FieldDef[] = [
   { key: 'level2_median_offset', label: 'Median Offset', help: 'Flag if score exceeds context median by more than this', step: 0.01, min: 0, max: 1, level: 2 },
   { key: 'level2_modified_z_threshold', label: 'Modified Z Threshold', help: 'Flag if modified z-score exceeds this (3.5 = very conservative)', step: 0.1, min: 1, max: 10, level: 2 },
   { key: 'level2_max_growth_rate_per_hour', label: 'Max Growth Rate / Hour', help: 'Biological ceiling: max plausible MGI change per hour (0.01 = 1%/hr = 24%/day)', step: 0.001, min: 0, max: 0.1, level: 2 },
+  { key: 'trend_confirmation_threshold', label: 'Consecutive Scores Required', help: 'Number of consecutive consistent Roboflow scores needed to auto-accept a flagged level shift (0 = disabled)', step: 1, min: 0, max: 10, level: 3 },
 ];
 
 export default function ThresholdConfigTab({ companies, sites }: Props) {
@@ -66,6 +68,7 @@ export default function ThresholdConfigTab({ companies, sites }: Props) {
         level2_median_offset: match.level2_median_offset,
         level2_modified_z_threshold: match.level2_modified_z_threshold,
         level2_max_growth_rate_per_hour: match.level2_max_growth_rate_per_hour,
+        trend_confirmation_threshold: match.trend_confirmation_threshold,
       });
     } else {
       setEditingId(null);
@@ -191,6 +194,46 @@ export default function ThresholdConfigTab({ companies, sites }: Props) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Trend Confirmation */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              Trend Confirmation -- Auto-Accept Level Shifts
+            </h4>
+            <p className="text-xs text-gray-500 mb-3">
+              When a score is flagged as an outlier, subsequent consistent Roboflow scores can automatically confirm the shift was real.
+              Set to 0 to disable trend confirmation (all flagged scores require manual review).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {FIELDS.filter(f => f.level === 3).map(field => (
+                <div key={field.key}>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{field.label}</label>
+                  <input
+                    type="number"
+                    step={field.step}
+                    min={field.min}
+                    max={field.max}
+                    value={formValues[field.key] ?? DEFAULTS[field.key]}
+                    onChange={(e) => setFormValues(prev => ({ ...prev, [field.key]: parseFloat(e.target.value) }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-[10px] text-gray-400">{field.help}</p>
+                </div>
+              ))}
+            </div>
+            {(formValues.trend_confirmation_threshold ?? DEFAULTS.trend_confirmation_threshold) > 0 && (
+              <div className="mt-3 flex items-start gap-2 px-3 py-2 bg-teal-50 border border-teal-200 rounded-lg text-xs text-teal-700">
+                <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                  Flagged scores will be auto-accepted if the next{' '}
+                  <strong>{formValues.trend_confirmation_threshold ?? DEFAULTS.trend_confirmation_threshold}</strong>{' '}
+                  consecutive Roboflow score{(formValues.trend_confirmation_threshold ?? DEFAULTS.trend_confirmation_threshold) !== 1 ? 's' : ''}{' '}
+                  confirm the level shift. Critical-priority flags always require manual review.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Actions */}

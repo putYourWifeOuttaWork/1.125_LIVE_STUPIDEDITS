@@ -297,8 +297,19 @@ export default function ReviewDetailPanel({ review, onClose }: Props) {
         {!isPending && review.reviewed_at && (
           <div className="border-t border-gray-200 pt-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-2">Review Decision</h4>
-            <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1 border border-gray-200">
-              <p><span className="text-gray-500">Status:</span> <span className="font-medium capitalize">{review.status}</span></p>
+            <div className={`rounded-lg p-3 text-sm space-y-1 border ${
+              review.status === 'auto_resolved' && review.review_notes?.includes('trend confirmation')
+                ? 'bg-teal-50 border-teal-200'
+                : 'bg-gray-50 border-gray-200'
+            }`}>
+              <p>
+                <span className="text-gray-500">Status:</span>{' '}
+                <span className="font-medium capitalize">
+                  {review.status === 'auto_resolved' && review.review_notes?.includes('trend confirmation')
+                    ? 'Trend Confirmed'
+                    : review.status?.replace('_', ' ')}
+                </span>
+              </p>
               <p><span className="text-gray-500">Reviewed:</span> {format(new Date(review.reviewed_at), 'MMM d, yyyy HH:mm')}</p>
               {review.admin_score !== null && (
                 <p><span className="text-gray-500">Admin Score:</span> <span className="font-medium">{(review.admin_score * 100).toFixed(1)}%</span></p>
@@ -308,6 +319,16 @@ export default function ReviewDetailPanel({ review, onClose }: Props) {
               )}
               <p><span className="text-gray-500">Alerts Released:</span> {review.alerts_released ? 'Yes' : 'No'}</p>
             </div>
+            {review.status === 'auto_resolved' && review.review_notes?.includes('trend confirmation') && (
+              <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-teal-50 border border-teal-200 rounded-lg">
+                <TrendingUp className="w-4 h-4 text-teal-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-teal-700">
+                  This outlier was automatically resolved because subsequent Roboflow scores confirmed
+                  the level shift was real. The original score of{' '}
+                  <strong>{(review.original_score * 100).toFixed(1)}%</strong> has been restored.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
