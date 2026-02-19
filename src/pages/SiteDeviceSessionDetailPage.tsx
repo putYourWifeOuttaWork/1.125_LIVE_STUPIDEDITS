@@ -46,6 +46,7 @@ import DeviceImageLightbox from '../components/devices/DeviceImageLightbox';
 import ManualWakeModal from '../components/devices/ManualWakeModal';
 import { createLogger } from '../utils/logger';
 import { formatMGI } from '../utils/mgiUtils';
+import DownloadAllImagesButton from '../components/common/DownloadAllImagesButton';
 
 const log = createLogger('SessionDetail');
 
@@ -2735,11 +2736,25 @@ const SiteDeviceSessionDetailPage = () => {
                     {totalImages} images captured across {devices.length} devices
                   </p>
                 </div>
-                {isSuperAdmin && (
-                  <span className="px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded">
-                    Super Admin: Edit Mode Available
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  <DownloadAllImagesButton
+                    images={devices.flatMap(d =>
+                      (d.images || [])
+                        .filter((img: any) => img.image_url)
+                        .map((img: any) => ({
+                          url: img.image_url,
+                          filename: `${d.device_code}_${img.captured_at ? format(new Date(img.captured_at), 'yyyy-MM-dd_HHmmss') : img.image_id}.jpg`,
+                        }))
+                    )}
+                    zipFilename={`session_${sessionId?.slice(0, 8) || 'images'}_all.zip`}
+                    variant="compact"
+                  />
+                  {isSuperAdmin && (
+                    <span className="px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded">
+                      Super Admin: Edit Mode Available
+                    </span>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -2805,6 +2820,16 @@ const SiteDeviceSessionDetailPage = () => {
                             </span>
                             <span className="text-gray-500">with MGI</span>
                           </div>
+                          <DownloadAllImagesButton
+                            images={device.images
+                              .filter((img: any) => img.image_url)
+                              .map((img: any) => ({
+                                url: img.image_url,
+                                filename: `${device.device_code}_${img.captured_at ? format(new Date(img.captured_at), 'yyyy-MM-dd_HHmmss') : img.image_id}.jpg`,
+                              }))}
+                            zipFilename={`${device.device_code}_session_images.zip`}
+                            variant="compact"
+                          />
                         </div>
                       </div>
 

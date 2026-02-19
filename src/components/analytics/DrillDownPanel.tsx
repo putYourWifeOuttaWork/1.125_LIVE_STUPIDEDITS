@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { formatMGI } from '../../utils/mgiUtils';
 import MgiOverlayBadge from '../common/MgiOverlayBadge';
 import DrillDownImageModal from './DrillDownImageModal';
+import DownloadAllImagesButton from '../common/DownloadAllImagesButton';
 
 interface DrillDownPanelProps {
   records: DrillDownRecord[];
@@ -148,6 +149,16 @@ export default function DrillDownPanel({
     setModalOpen(true);
   };
 
+  const downloadableImages = useMemo(() =>
+    records
+      .filter((r) => r.image_url)
+      .map((r) => ({
+        url: r.image_url!,
+        filename: `${r.device_code}_${format(new Date(r.captured_at), 'yyyy-MM-dd_HHmmss')}.jpg`,
+      })),
+    [records]
+  );
+
   console.log('[DrillDownPanel] Rendering with:', {
     recordCount: records.length,
     loading,
@@ -202,6 +213,11 @@ export default function DrillDownPanel({
                 Gallery
               </button>
             </div>
+            <DownloadAllImagesButton
+              images={downloadableImages}
+              zipFilename={`drilldown_images_${format(new Date(), 'yyyy-MM-dd')}.zip`}
+              variant="icon"
+            />
             <button
               type="button"
               onClick={() => exportDataToCSV(records, 'drill_down_export')}

@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Camera, AlertCircle, CheckCircle, Clock, RefreshCw, Download, XCircle, AlertTriangle } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, subDays, isAfter, isBefore, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { toast } from 'react-toastify';
 import Button from '../common/Button';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import LoadingScreen from '../common/LoadingScreen';
 import { useDeviceImages } from '../../hooks/useDevice';
+import DateRangePicker from '../common/DateRangePicker';
+import DownloadAllImagesButton from '../common/DownloadAllImagesButton';
 
 interface DeviceImagesPanelProps {
   deviceId: string;
@@ -15,6 +17,8 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
   const { images, isLoading, retryFailedImages, retryImage, clearStaleImages, isClearingStale } = useDeviceImages(deviceId);
   const [selectedImage, setSelectedImage] = useState<any | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [filterStartDate, setFilterStartDate] = useState(() => subDays(new Date(), 30).toISOString().split('T')[0]);
+  const [filterEndDate, setFilterEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const handleRetryAll = async () => {
     setRetrying(true);
@@ -54,6 +58,25 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
   const failedImages = images.filter(img => img.status === 'failed' && img.can_retry);
   const pendingImages = images.filter(img => img.status === 'pending' || img.status === 'receiving');
   const completeImages = images.filter(img => img.status === 'complete');
+
+  const filteredCompleteImages = useMemo(() => {
+    const rangeStart = startOfDay(parseISO(filterStartDate));
+    const rangeEnd = endOfDay(parseISO(filterEndDate));
+    return completeImages.filter(img => {
+      const captured = new Date(img.captured_at || img.received_at);
+      return !isBefore(captured, rangeStart) && !isAfter(captured, rangeEnd);
+    });
+  }, [completeImages, filterStartDate, filterEndDate]);
+
+  const downloadableImages = useMemo(() =>
+    filteredCompleteImages
+      .filter(img => img.image_url)
+      .map(img => ({
+        url: img.image_url,
+        filename: `${img.image_name || img.image_id}.jpg`,
+      })),
+    [filteredCompleteImages]
+  );
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -306,21 +329,40 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
       {/* Completed Images */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <CheckCircle className="text-success-500" size={20} />
-            <h3 className="text-lg font-semibold">Completed Images</h3>
-            <span className="text-sm text-gray-600">({completeImages.length})</span>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="text-success-500" size={20} />
+                <h3 className="text-lg font-semibold">Completed Images</h3>
+                <span className="text-sm text-gray-600">
+                  ({filteredCompleteImages.length}{filteredCompleteImages.length !== completeImages.length ? ` of ${completeImages.length}` : ''})
+                </span>
+              </div>
+              <DownloadAllImagesButton
+                images={downloadableImages}
+                zipFilename={`device_images_${filterStartDate}_to_${filterEndDate}.zip`}
+                variant="compact"
+              />
+            </div>
+            <DateRangePicker
+              startDate={filterStartDate}
+              endDate={filterEndDate}
+              onDateRangeChange={(start, end) => {
+                setFilterStartDate(start);
+                setFilterEndDate(end);
+              }}
+            />
           </div>
         </CardHeader>
         <CardContent>
-          {completeImages.length === 0 ? (
+          {filteredCompleteImages.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Camera className="mx-auto h-12 w-12 text-gray-300 mb-2" />
-              <p>No completed images yet</p>
+              <p>{completeImages.length === 0 ? 'No completed images yet' : 'No images in selected date range'}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {completeImages.map((image) => (
+              {filteredCompleteImages.map((image) => (
                 <div
                   key={image.image_id}
                   className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
