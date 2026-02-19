@@ -15,6 +15,7 @@ import { DrillDownRecord } from '../../types/analytics';
 import { exportDataToCSV } from '../../services/analyticsService';
 import { format } from 'date-fns';
 import { formatMGI } from '../../utils/mgiUtils';
+import MgiOverlayBadge from '../common/MgiOverlayBadge';
 import DrillDownImageModal from './DrillDownImageModal';
 
 interface DrillDownPanelProps {
@@ -319,16 +320,18 @@ export default function DrillDownPanel({
                             <td className="px-3 py-2"></td>
                             <td className="px-3 py-2" colSpan={2}>
                               <div className="flex items-center gap-3 pl-6">
-                                {/* Thumbnail */}
                                 {record.image_url ? (
-                                  <img
-                                    src={record.image_url}
-                                    alt={`Capture ${idx + 1}`}
-                                    className="w-12 h-12 object-cover rounded border border-gray-200"
-                                    loading="lazy"
-                                  />
+                                  <div className="relative w-12 h-12 flex-shrink-0">
+                                    <img
+                                      src={record.image_url}
+                                      alt={`Capture ${idx + 1}`}
+                                      className="w-full h-full object-cover rounded border border-gray-200"
+                                      loading="lazy"
+                                    />
+                                    <MgiOverlayBadge mgiScore={record.mgi_score} size="thumb" />
+                                  </div>
                                 ) : (
-                                  <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
+                                  <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
                                     <Image className="w-5 h-5 text-gray-400" />
                                   </div>
                                 )}
@@ -405,13 +408,14 @@ export default function DrillDownPanel({
                       className="group relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer"
                       onClick={() => handleViewImage(record, records.filter(r => r.image_url))}
                     >
-                      <div className="aspect-square">
+                      <div className="aspect-square relative">
                         <img
                           src={record.image_url!}
                           alt={`${record.device_code} capture`}
                           className="w-full h-full object-cover"
                           loading="lazy"
                         />
+                        <MgiOverlayBadge mgiScore={record.mgi_score} size="thumb" />
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                         <div className="absolute bottom-0 left-0 right-0 p-2">

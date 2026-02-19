@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Download, Share2, Maximize, ChevronLeft, ChevronRight, Thermometer, Droplets, Battery, Activity, TrendingUp, TrendingDown, Clock, AlertTriangle } from 'lucide-react';
 import Modal from '../common/Modal';
+import MgiOverlayBadge from '../common/MgiOverlayBadge';
 import Button from '../common/Button';
 import ImageTimelineControls from '../common/ImageTimelineControls';
 import { useImageAutoPlay } from '../../hooks/useImageAutoPlay';
@@ -254,6 +255,8 @@ const DeviceImageLightbox = ({
                 className="object-contain max-w-full max-h-full"
               />
             </div>
+
+            <MgiOverlayBadge mgiScore={currentImage.mgi_score} size="main" className="top-12" />
 
             {/* Navigation Arrows */}
             <div className="absolute inset-y-0 left-0 flex items-center p-2">

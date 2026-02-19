@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { MgiReviewItem } from '../../hooks/useMgiReview';
 import { useNeighborImages, useDeviceScoreTimeline, useSubmitReview } from '../../hooks/useMgiReview';
+import MgiOverlayBadge from '../common/MgiOverlayBadge';
 import { toast } from 'react-toastify';
 
 interface Props {
@@ -126,13 +127,14 @@ export default function ReviewDetailPanel({ review, onClose }: Props) {
               <ImageIcon className="w-4 h-4" />
               Flagged Image
             </h4>
-            <div className="rounded-lg overflow-hidden border border-gray-200">
+            <div className="rounded-lg overflow-hidden border border-gray-200 relative">
               <img
                 src={review.image_url}
                 alt="Flagged MGI"
                 className="w-full h-48 object-cover"
                 loading="lazy"
               />
+              <MgiOverlayBadge mgiScore={review.adjusted_score ?? review.original_score} size="main" />
               {review.captured_at && (
                 <div className="px-3 py-2 bg-gray-50 text-xs text-gray-500">
                   Captured: {format(new Date(review.captured_at), 'MMM d, yyyy HH:mm')}
@@ -149,13 +151,16 @@ export default function ReviewDetailPanel({ review, onClose }: Props) {
             <div className="grid grid-cols-3 gap-2">
               {neighborImages.map((img) => (
                 <div key={img.image_id} className="rounded border border-gray-200 overflow-hidden">
-                  {img.image_url ? (
-                    <img src={img.image_url} alt="Context" className="w-full h-20 object-cover" loading="lazy" />
-                  ) : (
-                    <div className="w-full h-20 bg-gray-100 flex items-center justify-center">
-                      <ImageIcon className="w-6 h-6 text-gray-300" />
-                    </div>
-                  )}
+                  <div className="relative">
+                    {img.image_url ? (
+                      <img src={img.image_url} alt="Context" className="w-full h-20 object-cover" loading="lazy" />
+                    ) : (
+                      <div className="w-full h-20 bg-gray-100 flex items-center justify-center">
+                        <ImageIcon className="w-6 h-6 text-gray-300" />
+                      </div>
+                    )}
+                    <MgiOverlayBadge mgiScore={img.mgi_score} size="thumb" />
+                  </div>
                   <div className="px-2 py-1 text-[10px] text-gray-500 bg-gray-50">
                     {img.mgi_score != null ? `${(img.mgi_score * 100).toFixed(1)}%` : '--'}
                     {img.captured_at && ` | ${format(new Date(img.captured_at), 'MMM d HH:mm')}`}

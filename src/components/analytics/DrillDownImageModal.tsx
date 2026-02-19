@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { DrillDownRecord } from '../../types/analytics';
 import { formatMGI, getMGIColor } from '../../utils/mgiUtils';
 import Modal from '../common/Modal';
+import MgiOverlayBadge from '../common/MgiOverlayBadge';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import Button from '../common/Button';
 import ImageTimelineControls from '../common/ImageTimelineControls';
@@ -141,7 +142,7 @@ export default function DrillDownImageModal({
                   key={record.image_id}
                   data-index={index}
                   onClick={() => autoPlay.stopAndNavigate(index)}
-                  className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
+                  className={`relative flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
                     index === currentIndex
                       ? 'border-blue-500 ring-2 ring-blue-200'
                       : 'border-gray-200 hover:border-gray-400'
@@ -158,6 +159,7 @@ export default function DrillDownImageModal({
                       <span className="text-xs text-gray-400">N/A</span>
                     </div>
                   )}
+                  <MgiOverlayBadge mgiScore={record.mgi_score} size="thumb" />
                 </button>
               ))}
             </div>
@@ -193,6 +195,8 @@ export default function DrillDownImageModal({
               </div>
             </div>
           )}
+
+          <MgiOverlayBadge mgiScore={currentRecord.mgi_score} size="main" />
 
           {/* Navigation Arrows */}
           {hasPrev && (
