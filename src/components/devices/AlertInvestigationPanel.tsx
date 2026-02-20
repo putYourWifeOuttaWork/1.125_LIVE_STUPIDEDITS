@@ -8,14 +8,17 @@ import {
   Clock,
   RefreshCw,
   WifiOff,
+  Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'react-toastify';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import { LineChartWithBrush } from '../analytics/LineChartWithBrush';
-import type { MetricAxisInfo } from '../analytics/LineChartWithBrush';
+import type { MetricAxisInfo, ChartAnnotation } from '../analytics/LineChartWithBrush';
 import DrillDownPanel from '../analytics/DrillDownPanel';
 import { useReportData, useDrillDown } from '../../hooks/useReportData';
 import { useActiveCompany } from '../../hooks/useActiveCompany';
+import { createDraftReportFromAlert } from '../../services/analyticsService';
 import {
   buildAlertInvestigationConfig,
   getCategoryLabel,
@@ -28,7 +31,7 @@ import {
   METRIC_LABELS,
   METRIC_UNITS,
 } from '../../types/analytics';
-import type { MetricType, ReportConfiguration } from '../../types/analytics';
+import type { MetricType, ReportConfiguration, SerializedChartAnnotation } from '../../types/analytics';
 
 const LOADING_TIMEOUT_MS = 15_000;
 
@@ -138,10 +141,41 @@ export default function AlertInvestigationPanel({
     setDrillOffset(prev => prev + 50);
   };
 
-  const handleOpenFullReport = () => {
-    navigate('/analytics/new', {
-      state: { prefillConfig: reportConfig },
-    });
+  const [creatingReport, setCreatingReport] = useState(false);
+
+  function serializeAnnotations(anns: ChartAnnotation[]): SerializedChartAnnotation[] {
+    return anns.map(a => ({
+      ...a,
+      timestamp: a.timestamp instanceof Date ? a.timestamp.toISOString() : a.timestamp,
+      startTimestamp: a.startTimestamp instanceof Date ? a.startTimestamp.toISOString() : a.startTimestamp,
+      endTimestamp: a.endTimestamp instanceof Date ? a.endTimestamp.toISOString() : a.endTimestamp,
+    }));
+  }
+
+  const handleOpenFullReport = async () => {
+    if (!activeCompanyId || !reportConfig) return;
+    setCreatingReport(true);
+    try {
+      const draftReport = await createDraftReportFromAlert(
+        activeCompanyId,
+        {
+          alert_id: alert.alert_id,
+          message: alert.message,
+          severity: alert.severity,
+          alert_category: alert.alert_category,
+          device_code: alert.metadata?.device_code,
+          site_name: alert.site_name || undefined,
+        },
+        reportConfig,
+        serializeAnnotations(annotations)
+      );
+      navigate(`/analytics/${draftReport.report_id}`);
+    } catch (err: any) {
+      console.error('Failed to create draft report:', err);
+      toast.error('Failed to generate report');
+    } finally {
+      setCreatingReport(false);
+    }
   };
 
   if (!investigationConfig) {
@@ -234,10 +268,15 @@ export default function AlertInvestigationPanel({
           <div className="flex items-center gap-2">
             <button
               onClick={handleOpenFullReport}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+              disabled={creatingReport}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Open Full Report
+              {creatingReport ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ExternalLink className="w-3.5 h-3.5" />
+              )}
+              {creatingReport ? 'Generating...' : 'Open Full Report'}
             </button>
             <button
               onClick={onClose}

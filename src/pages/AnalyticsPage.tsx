@@ -12,8 +12,10 @@ import {
   Copy,
   Edit,
   Eye,
+  FileWarning,
+  Clock,
 } from 'lucide-react';
-import { fetchReports, deleteReport } from '../services/analyticsService';
+import { fetchReports, fetchDraftReports, discardDraftReport, deleteReport } from '../services/analyticsService';
 import { useActiveCompany } from '../hooks/useActiveCompany';
 import { useUserRole } from '../hooks/useUserRole';
 import useCompanies from '../hooks/useCompanies';
@@ -51,6 +53,15 @@ const AnalyticsPage: React.FC = () => {
     enabled: !!activeCompanyId,
   });
 
+  const {
+    data: draftReports = [],
+    refetch: refetchDrafts,
+  } = useQuery({
+    queryKey: ['analytics-draft-reports', activeCompanyId],
+    queryFn: () => fetchDraftReports(activeCompanyId!),
+    enabled: !!activeCompanyId,
+  });
+
   const filteredReports = reports.filter(
     (report) =>
       report.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -77,6 +88,17 @@ const AnalyticsPage: React.FC = () => {
     }
   };
 
+  const handleDiscardDraft = async (reportId: string) => {
+    try {
+      await discardDraftReport(reportId);
+      toast.success('Draft discarded');
+      refetchDrafts();
+    } catch (error) {
+      console.error('Error discarding draft:', error);
+      toast.error('Failed to discard draft');
+    }
+  };
+
   const handleClone = (reportId: string) => {
     navigate(`/analytics/builder?clone=${reportId}`);
   };
@@ -91,7 +113,6 @@ const AnalyticsPage: React.FC = () => {
 
   return (
     <div className="animate-fade-in space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
@@ -107,7 +128,6 @@ const AnalyticsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
         <input
@@ -119,7 +139,52 @@ const AnalyticsPage: React.FC = () => {
         />
       </div>
 
-      {/* Reports Grid */}
+      {draftReports.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <FileWarning className="w-4 h-4 text-amber-500" />
+            <h2 className="text-sm font-semibold text-gray-700">
+              Draft Reports ({draftReports.length})
+            </h2>
+            <span className="text-xs text-gray-400">Auto-generated from alert investigations</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {draftReports.map((draft) => (
+              <div
+                key={draft.report_id}
+                className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer group"
+                onClick={() => navigate(`/analytics/${draft.report_id}`)}
+              >
+                <div className="p-2 bg-amber-100 rounded-lg text-amber-600 shrink-0">
+                  {reportTypeIcons[draft.configuration.reportType] || <BarChart3 className="w-4 h-4" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{draft.name}</p>
+                  <div className="flex items-center gap-1 mt-0.5 text-xs text-amber-600">
+                    <Clock className="w-3 h-3" />
+                    <span>
+                      Expires {draft.draft_expires_at
+                        ? new Date(draft.draft_expires_at).toLocaleDateString()
+                        : 'in 7 days'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDiscardDraft(draft.report_id);
+                  }}
+                  className="p-1.5 text-amber-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                  title="Discard draft"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {filteredReports.length === 0 ? (
         <Card>
           <CardContent className="text-center py-8">
@@ -222,7 +287,6 @@ const AnalyticsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {reportToDelete && (
         <DeleteConfirmModal
           isOpen={deleteModalOpen}

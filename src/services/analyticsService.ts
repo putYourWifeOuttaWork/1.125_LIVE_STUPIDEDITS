@@ -3,6 +3,7 @@ import {
   CustomReport,
   ReportSnapshot,
   ReportSnapshotSchedule,
+  SerializedChartAnnotation,
   SnapshotCadence,
   DeviceMetricData,
   AlertStatisticsData,
@@ -380,9 +381,9 @@ export async function fetchDaysSinceLastCriticalAlert(
 /**
  * Get all reports for a company
  */
-export async function fetchReports(companyId: string): Promise<CustomReport[]> {
+export async function fetchReports(companyId: string, includeDrafts = false): Promise<CustomReport[]> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('custom_reports')
       .select(`
         *,
@@ -394,6 +395,12 @@ export async function fetchReports(companyId: string): Promise<CustomReport[]> {
       `)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
+
+    if (!includeDrafts) {
+      query = query.eq('is_draft', false);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -1179,4 +1186,114 @@ export function exportDataToCSV(data: any[], filename: string): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+const DRAFT_EXPIRY_DAYS = 7;
+
+export async function createDraftReportFromAlert(
+  companyId: string,
+  alertData: {
+    alert_id: string;
+    message: string;
+    severity: string;
+    alert_category: string;
+    device_code?: string;
+    site_name?: string;
+  },
+  configuration: ReportConfiguration,
+  annotations: SerializedChartAnnotation[],
+  description?: string
+): Promise<CustomReport> {
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) throw new Error('User not authenticated');
+
+  const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const deviceLabel = alertData.device_code || 'Device';
+  const siteLabel = alertData.site_name || '';
+  const name = `Alert: ${alertData.message.slice(0, 60)} - ${deviceLabel}${siteLabel ? ` at ${siteLabel}` : ''} - ${dateStr}`;
+
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + DRAFT_EXPIRY_DAYS);
+
+  const { data, error } = await supabase
+    .from('custom_reports')
+    .insert({
+      name,
+      description: description || `Auto-generated from ${alertData.severity} ${alertData.alert_category} alert investigation`,
+      company_id: companyId,
+      configuration,
+      created_by_user_id: userData.user.id,
+      is_draft: true,
+      source_alert_id: alertData.alert_id,
+      annotations,
+      draft_expires_at: expiresAt.toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function promoteDraftReport(
+  reportId: string,
+  newName?: string
+): Promise<CustomReport> {
+  const updates: Record<string, unknown> = {
+    is_draft: false,
+    draft_expires_at: null,
+  };
+  if (newName) updates.name = newName;
+
+  const { data, error } = await supabase
+    .from('custom_reports')
+    .update(updates)
+    .eq('report_id', reportId)
+    .select()
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error('Report not found');
+  return data;
+}
+
+export async function discardDraftReport(reportId: string): Promise<void> {
+  const { error: snapError } = await supabase
+    .from('report_snapshots')
+    .delete()
+    .eq('report_id', reportId);
+  if (snapError) throw snapError;
+
+  const { error } = await supabase
+    .from('custom_reports')
+    .delete()
+    .eq('report_id', reportId)
+    .eq('is_draft', true);
+  if (error) throw error;
+}
+
+export async function fetchDraftReports(companyId: string): Promise<CustomReport[]> {
+  const { data, error } = await supabase
+    .from('custom_reports')
+    .select(`
+      *,
+      created_by:created_by_user_id(
+        id,
+        email,
+        full_name
+      )
+    `)
+    .eq('company_id', companyId)
+    .eq('is_draft', true)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map((report) => ({
+    ...report,
+    created_by_name: report.created_by
+      ? report.created_by.full_name || report.created_by.email
+      : 'Unknown',
+    created_by_email: report.created_by?.email,
+  }));
 }

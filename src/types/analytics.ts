@@ -83,8 +83,25 @@ export interface CustomReport {
   configuration: ReportConfiguration;
   created_at: string;
   updated_at: string;
-  created_by_name?: string; // Joined from users table
+  created_by_name?: string;
   created_by_email?: string;
+  is_draft?: boolean;
+  source_alert_id?: string | null;
+  annotations?: SerializedChartAnnotation[] | null;
+  draft_expires_at?: string | null;
+}
+
+export interface SerializedChartAnnotation {
+  type: 'threshold_line' | 'highlight_point' | 'vertical_marker' | 'shaded_region' | 'time_range_highlight';
+  value?: number;
+  timestamp?: string;
+  startTimestamp?: string;
+  endTimestamp?: string;
+  y1?: number;
+  y2?: number;
+  label?: string;
+  color?: string;
+  metricName?: string;
 }
 
 export interface ReportSnapshot {

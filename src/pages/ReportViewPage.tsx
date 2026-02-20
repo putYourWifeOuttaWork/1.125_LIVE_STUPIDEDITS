@@ -18,6 +18,9 @@ import {
   ChevronRight,
   CalendarClock,
   Play,
+  BookmarkPlus,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -40,6 +43,7 @@ import {
   ReportConfiguration,
   ReportSnapshot,
   ReportSnapshotSchedule,
+  SerializedChartAnnotation,
   SnapshotCadence,
   METRIC_LABELS,
   METRIC_UNITS,
@@ -50,7 +54,7 @@ import {
   DEFAULT_REPORT_CONFIG,
   groupMetricsByScale,
 } from '../types/analytics';
-import type { MetricAxisInfo } from '../components/analytics/LineChartWithBrush';
+import type { MetricAxisInfo, ChartAnnotation } from '../components/analytics/LineChartWithBrush';
 import {
   fetchReportById,
   fetchSnapshotsForReport,
@@ -61,6 +65,8 @@ import {
   deleteSnapshotSchedule,
   toggleSnapshotSchedule,
   transformTimeSeriesForD3,
+  promoteDraftReport,
+  discardDraftReport,
 } from '../services/analyticsService';
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
@@ -118,6 +124,50 @@ export default function ReportViewPage() {
   });
 
   const snapshotCount = snapshots?.length || 0;
+  const isDraft = report?.is_draft === true;
+  const [draftDismissed, setDraftDismissed] = useState(false);
+  const [promotingDraft, setPromotingDraft] = useState(false);
+  const [discardingDraft, setDiscardingDraft] = useState(false);
+
+  const reportAnnotations: ChartAnnotation[] = useMemo(() => {
+    if (!report?.annotations || !Array.isArray(report.annotations)) return [];
+    return report.annotations.map((a: SerializedChartAnnotation) => ({
+      ...a,
+      timestamp: a.timestamp ? new Date(a.timestamp) : undefined,
+      startTimestamp: a.startTimestamp ? new Date(a.startTimestamp) : undefined,
+      endTimestamp: a.endTimestamp ? new Date(a.endTimestamp) : undefined,
+    }));
+  }, [report?.annotations]);
+
+  const handlePromoteDraft = async () => {
+    if (!reportId) return;
+    setPromotingDraft(true);
+    try {
+      await promoteDraftReport(reportId);
+      queryClient.invalidateQueries({ queryKey: ['report-detail', reportId] });
+      setDraftDismissed(true);
+      toast.success('Report saved to your library');
+    } catch (err) {
+      console.error('Failed to promote draft:', err);
+      toast.error('Failed to save report');
+    } finally {
+      setPromotingDraft(false);
+    }
+  };
+
+  const handleDiscardDraft = async () => {
+    if (!reportId) return;
+    setDiscardingDraft(true);
+    try {
+      await discardDraftReport(reportId);
+      toast.success('Draft report discarded');
+      navigate(-1);
+    } catch (err) {
+      console.error('Failed to discard draft:', err);
+      toast.error('Failed to discard report');
+      setDiscardingDraft(false);
+    }
+  };
 
   const sortedSnapshots = useMemo(() => {
     if (!snapshots) return [];
@@ -542,6 +592,48 @@ export default function ReportViewPage() {
         </button>
       </div>
 
+      {isDraft && !draftDismissed && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+            <AlertTriangle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">
+                Draft Report -- Auto-generated from alert investigation
+              </p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                This report will be automatically removed in 7 days unless you keep it.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handlePromoteDraft}
+              disabled={promotingDraft}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors disabled:opacity-50"
+            >
+              {promotingDraft ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <BookmarkPlus className="w-3.5 h-3.5" />
+              )}
+              Keep in Library
+            </button>
+            <button
+              onClick={handleDiscardDraft}
+              disabled={discardingDraft}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-md transition-colors disabled:opacity-50"
+            >
+              {discardingDraft ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
       {schedule?.enabled && (
         <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700">
           <CalendarClock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -616,6 +708,7 @@ export default function ReportViewPage() {
                   yAxisLabel={primaryMetricLabel}
                   secondaryYAxisLabel={secondaryMetricLabel}
                   metricInfo={metricAxisInfo}
+                  annotations={reportAnnotations.length > 0 ? reportAnnotations : undefined}
                   onBrushEnd={handleBrush}
                   loading={dataLoading && !lineChartData}
                 />
