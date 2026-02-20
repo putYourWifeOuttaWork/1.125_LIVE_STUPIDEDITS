@@ -23,14 +23,14 @@ interface PlausibilityResult {
   confidence: number;
   adjusted_score: number | null;
   flag_reasons: string[];
-  qa_method: string;
+  method: string;
   context_scores: number[];
   median: number | null;
   mad: number | null;
   modified_z_score: number | null;
   growth_rate_per_hour: number | null;
   thresholds_used: Record<string, unknown>;
-  neighbor_image_ids: string[];
+  context_image_ids: string[];
 }
 
 function determinePriority(result: PlausibilityResult): string {
@@ -252,7 +252,7 @@ Deno.serve(async (req: Request) => {
         roboflow_response: roboflowData,
         mgi_qa_status: 'pending_review',
         mgi_confidence: qaResult!.confidence,
-        mgi_qa_method: qaResult!.qa_method,
+        mgi_qa_method: qaResult!.method,
         mgi_qa_details: qaResult as unknown as Record<string, unknown>,
       })
       .eq('image_id', image_id);
@@ -271,9 +271,9 @@ Deno.serve(async (req: Request) => {
         session_id: imageRecord.site_device_session_id,
         original_score: mgiScore,
         adjusted_score: adjustedScore,
-        qa_method: qaResult!.qa_method,
+        qa_method: qaResult!.method,
         qa_details: qaResult as unknown as Record<string, unknown>,
-        neighbor_image_ids: qaResult!.neighbor_image_ids || [],
+        neighbor_image_ids: qaResult!.context_image_ids || [],
         thresholds_used: qaResult!.thresholds_used,
         status: 'pending',
         priority,
@@ -303,7 +303,7 @@ Deno.serve(async (req: Request) => {
           reference_id: reviewRecord.review_id,
           reference_type: 'mgi_review_queue',
           title: `MGI Outlier: Device ${deviceCode} scored ${(mgiScore * 100).toFixed(1)}% (context median: ${medianStr})`,
-          body: `Auto-corrected to ${(adjustedScore * 100).toFixed(1)}%. Detection: ${qaResult!.qa_method}. Flagged reasons: ${qaResult!.flag_reasons?.join(', ') || 'unknown'}.`,
+          body: `Auto-corrected to ${(adjustedScore * 100).toFixed(1)}%. Detection: ${qaResult!.method}. Flagged reasons: ${qaResult!.flag_reasons?.join(', ') || 'unknown'}.`,
           severity: priority === 'critical' ? 'critical' : priority === 'high' ? 'warning' : 'info',
           company_id: imageRecord.company_id,
           site_id: imageRecord.site_id,
