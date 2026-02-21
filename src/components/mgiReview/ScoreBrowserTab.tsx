@@ -1,14 +1,18 @@
-import { useState, useCallback } from 'react';
-import { Filter, SortAsc, Search } from 'lucide-react';
+import { useState, useCallback, useMemo } from 'react';
+import { Filter, SortAsc, Search, X, Pencil, Download } from 'lucide-react';
+import { toast } from 'react-toastify';
 import {
   useScoredImages, useScoreDistribution,
   useProgramsForBrowser, useDevicesForBrowser,
+  useBulkScoreBrowserAction, useBulkExportLog,
   type ScoredImage, type ScoreBrowserFilters,
 } from '../../hooks/useScoreBrowser';
 import ScoreDistributionSummary from './ScoreDistributionSummary';
 import ScoreBrowserTable from './ScoreBrowserTable';
 import ScoreBrowserDetailPanel from './ScoreBrowserDetailPanel';
+import BulkScoreBrowserModal from './BulkScoreBrowserModal';
 import DateRangePicker from '../common/DateRangePicker';
+import { exportScoredImagesCsv } from '../../utils/csvExport';
 
 interface Props {
   companies: { company_id: string; name: string }[];
@@ -34,6 +38,8 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
   const [selectedImage, setSelectedImage] = useState<ScoredImage | null>(null);
   const [minScoreInput, setMinScoreInput] = useState('');
   const [maxScoreInput, setMaxScoreInput] = useState('');
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
 
   const { data: programs } = useProgramsForBrowser(filters.companyId);
   const { data: devices } = useDevicesForBrowser(filters.siteId);
@@ -47,16 +53,26 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
     deviceId: filters.deviceId,
   });
 
+  const bulkAction = useBulkScoreBrowserAction();
+  const exportLog = useBulkExportLog();
+
   const filteredSites = filters.companyId
     ? sites.filter(s => s.company_id === filters.companyId)
     : sites;
 
+  const selectedImages = useMemo(() => {
+    if (checkedIds.size === 0 || !imageData?.images) return [];
+    return imageData.images.filter(i => checkedIds.has(i.image_id));
+  }, [checkedIds, imageData?.images]);
+
   const updateFilter = useCallback(<K extends keyof ScoreBrowserFilters>(key: K, value: ScoreBrowserFilters[K]) => {
     setFilters(prev => ({ ...prev, [key]: value, page: key === 'page' ? (value as number) : 0 }));
+    if (key !== 'page') setCheckedIds(new Set());
   }, []);
 
   const handleDateRangeChange = useCallback((start: string, end: string) => {
     setFilters(prev => ({ ...prev, dateFrom: start, dateTo: end, page: 0 }));
+    setCheckedIds(new Set());
   }, []);
 
   const handleCompanyChange = useCallback((companyId: string) => {
@@ -68,6 +84,7 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
       deviceId: undefined,
       page: 0,
     }));
+    setCheckedIds(new Set());
   }, []);
 
   const handleProgramChange = useCallback((programId: string) => {
@@ -76,6 +93,7 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
       programId: programId || undefined,
       page: 0,
     }));
+    setCheckedIds(new Set());
   }, []);
 
   const handleSiteChange = useCallback((siteId: string) => {
@@ -85,6 +103,7 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
       deviceId: undefined,
       page: 0,
     }));
+    setCheckedIds(new Set());
   }, []);
 
   const applyScoreRange = useCallback(() => {
@@ -94,11 +113,45 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
       maxScore: maxScoreInput ? parseFloat(maxScoreInput) / 100 : undefined,
       page: 0,
     }));
+    setCheckedIds(new Set());
   }, [minScoreInput, maxScoreInput]);
+
+  const handlePageChange = useCallback((p: number) => {
+    setFilters(prev => ({ ...prev, page: p }));
+    setCheckedIds(new Set());
+  }, []);
 
   const handleActionComplete = useCallback(() => {
     setSelectedImage(null);
   }, []);
+
+  const handleBulkSubmit = useCallback(async (params: {
+    imageIds: string[];
+    action: 'set_qa_status' | 'override_score';
+    newQaStatus?: string;
+    newScore?: number;
+    notes?: string;
+  }) => {
+    const result = await bulkAction.mutateAsync(params);
+    if (result.succeeded > 0) {
+      setCheckedIds(new Set());
+    }
+    return result;
+  }, [bulkAction]);
+
+  const handleExport = useCallback(async () => {
+    if (selectedImages.length === 0) return;
+    try {
+      exportScoredImagesCsv(selectedImages);
+      await exportLog.mutateAsync({
+        imageIds: selectedImages.map(i => i.image_id),
+        exportFormat: 'csv',
+      });
+      toast.success(`Exported ${selectedImages.length} image${selectedImages.length !== 1 ? 's' : ''} to CSV`);
+    } catch (err) {
+      toast.error(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }, [selectedImages, exportLog]);
 
   return (
     <div className="space-y-4">
@@ -252,6 +305,39 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
       {/* Distribution summary */}
       <ScoreDistributionSummary distribution={distribution} isLoading={distLoading} />
 
+      {/* Bulk action bar */}
+      {checkedIds.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center px-2.5 py-1 text-xs font-bold text-blue-800 bg-blue-100 border border-blue-300 rounded-full">
+              {checkedIds.size} selected
+            </span>
+            <button
+              onClick={() => setBulkModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Pencil className="w-3 h-3" />
+              Bulk Edit
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={exportLog.isPending}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
+            >
+              <Download className="w-3 h-3" />
+              Export CSV
+            </button>
+          </div>
+          <button
+            onClick={() => setCheckedIds(new Set())}
+            className="p-1 rounded hover:bg-blue-100 transition-colors"
+            title="Clear selection"
+          >
+            <X className="w-4 h-4 text-blue-500" />
+          </button>
+        </div>
+      )}
+
       {/* Main content: table + detail panel */}
       <div className="flex gap-0 h-[calc(100vh-480px)] min-h-[400px]">
         <div className={`flex flex-col ${selectedImage ? 'w-3/5' : 'w-full'} transition-all duration-200 border border-gray-200 rounded-lg overflow-hidden bg-white`}>
@@ -262,8 +348,10 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
             totalCount={imageData?.totalCount || 0}
             page={filters.page}
             pageSize={filters.pageSize}
-            onPageChange={p => updateFilter('page', p)}
+            onPageChange={handlePageChange}
             isLoading={isLoading}
+            checkedIds={checkedIds}
+            onCheckedChange={setCheckedIds}
           />
         </div>
 
@@ -277,6 +365,15 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
           </div>
         )}
       </div>
+
+      {/* Bulk modal */}
+      <BulkScoreBrowserModal
+        isOpen={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        selectedImages={selectedImages}
+        onSubmit={handleBulkSubmit}
+        isSubmitting={bulkAction.isPending}
+      />
     </div>
   );
 }

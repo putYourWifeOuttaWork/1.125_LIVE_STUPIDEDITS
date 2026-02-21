@@ -1,5 +1,6 @@
+import { useRef, useCallback } from 'react';
 import { format } from 'date-fns';
-import { ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { ChevronRight, Image as ImageIcon, Minus } from 'lucide-react';
 import type { ScoredImage } from '../../hooks/useScoreBrowser';
 import { getMGILevel, formatMGI, formatVelocity } from '../../utils/mgiUtils';
 import MgiOverlayBadge from '../common/MgiOverlayBadge';
@@ -13,6 +14,8 @@ interface Props {
   pageSize: number;
   onPageChange: (page: number) => void;
   isLoading: boolean;
+  checkedIds: Set<string>;
+  onCheckedChange: (ids: Set<string>) => void;
 }
 
 const qaStatusBadge = (status: string | null) => {
@@ -44,8 +47,43 @@ const scoreLevelBg = (score: number) => {
 
 export default function ScoreBrowserTable({
   images, selectedId, onSelect, totalCount, page, pageSize, onPageChange, isLoading,
+  checkedIds, onCheckedChange,
 }: Props) {
   const totalPages = Math.ceil(totalCount / pageSize);
+  const lastCheckedIdx = useRef<number | null>(null);
+
+  const allChecked = images.length > 0 && images.every(i => checkedIds.has(i.image_id));
+  const someChecked = images.some(i => checkedIds.has(i.image_id));
+
+  const handleSelectAll = useCallback(() => {
+    if (allChecked) {
+      onCheckedChange(new Set());
+    } else {
+      onCheckedChange(new Set(images.map(i => i.image_id)));
+    }
+    lastCheckedIdx.current = null;
+  }, [allChecked, images, onCheckedChange]);
+
+  const handleRowCheck = useCallback((image: ScoredImage, idx: number, shiftKey: boolean) => {
+    const next = new Set(checkedIds);
+
+    if (shiftKey && lastCheckedIdx.current !== null) {
+      const start = Math.min(lastCheckedIdx.current, idx);
+      const end = Math.max(lastCheckedIdx.current, idx);
+      for (let i = start; i <= end; i++) {
+        next.add(images[i].image_id);
+      }
+    } else {
+      if (next.has(image.image_id)) {
+        next.delete(image.image_id);
+      } else {
+        next.add(image.image_id);
+      }
+    }
+
+    lastCheckedIdx.current = idx;
+    onCheckedChange(next);
+  }, [checkedIds, images, onCheckedChange]);
 
   if (isLoading) {
     return (
@@ -71,6 +109,26 @@ export default function ScoreBrowserTable({
         <table className="w-full text-sm">
           <thead className="bg-gray-50 sticky top-0 z-10">
             <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2.5 w-10">
+                <button
+                  onClick={handleSelectAll}
+                  className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                    allChecked
+                      ? 'bg-blue-600 border-blue-600'
+                      : someChecked
+                        ? 'bg-blue-600 border-blue-600'
+                        : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                  title={allChecked ? 'Deselect all' : 'Select all on page'}
+                >
+                  {allChecked && (
+                    <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  )}
+                  {!allChecked && someChecked && (
+                    <Minus className="w-3 h-3 text-white" />
+                  )}
+                </button>
+              </th>
               <th className="px-3 py-2.5 w-14">Image</th>
               <th className="px-3 py-2.5">Device</th>
               <th className="px-3 py-2.5">Site</th>
@@ -82,18 +140,38 @@ export default function ScoreBrowserTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {images.map(img => {
+            {images.map((img, idx) => {
               const isSelected = img.image_id === selectedId;
+              const isChecked = checkedIds.has(img.image_id);
               return (
                 <tr
                   key={img.image_id}
                   onClick={() => onSelect(img)}
                   className={`cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-blue-50 border-l-2 border-l-blue-500'
-                      : `hover:bg-gray-50 ${scoreLevelBg(img.mgi_score)}`
+                    isChecked
+                      ? 'bg-blue-50/70'
+                      : isSelected
+                        ? 'bg-blue-50 border-l-2 border-l-blue-500'
+                        : `hover:bg-gray-50 ${scoreLevelBg(img.mgi_score)}`
                   }`}
                 >
+                  <td className="px-3 py-2 w-10">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRowCheck(img, idx, e.shiftKey);
+                      }}
+                      className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                        isChecked
+                          ? 'bg-blue-600 border-blue-600'
+                          : 'border-gray-300 hover:border-blue-400'
+                      }`}
+                    >
+                      {isChecked && (
+                        <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      )}
+                    </button>
+                  </td>
                   <td className="px-3 py-2">
                     <div className="w-10 h-10 rounded overflow-hidden relative flex-shrink-0">
                       {img.image_url ? (

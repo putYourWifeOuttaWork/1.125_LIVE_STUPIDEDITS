@@ -271,6 +271,74 @@ export function useDevicesForBrowser(siteId?: string) {
   });
 }
 
+export type BulkScoreAction = 'set_qa_status' | 'override_score';
+
+export interface BulkScoreActionResult {
+  success: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  errors: { image_id: string; error: string }[];
+  error?: string;
+}
+
+export function useBulkScoreBrowserAction() {
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      imageIds: string[];
+      action: BulkScoreAction;
+      newQaStatus?: string;
+      newScore?: number;
+      notes?: string;
+    }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.rpc('fn_bulk_score_browser_action', {
+        p_image_ids: params.imageIds,
+        p_action: params.action,
+        p_new_qa_status: params.newQaStatus ?? null,
+        p_new_score: params.newScore ?? null,
+        p_admin_user_id: user.id,
+        p_notes: params.notes ?? null,
+      });
+
+      if (error) throw error;
+      const result = data as BulkScoreActionResult;
+      if (!result.success && result.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scoredImages'] });
+      queryClient.invalidateQueries({ queryKey: ['scoreDistribution'] });
+      queryClient.invalidateQueries({ queryKey: ['mgiReviewQueue'] });
+      queryClient.invalidateQueries({ queryKey: ['mgiReviewPendingCount'] });
+      queryClient.invalidateQueries({ queryKey: ['deviceScoreTimeline'] });
+    },
+  });
+}
+
+export function useBulkExportLog() {
+  const { user } = useAuthStore();
+
+  return useMutation({
+    mutationFn: async (params: { imageIds: string[]; exportFormat?: string }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.rpc('fn_log_bulk_export', {
+        p_image_ids: params.imageIds,
+        p_admin_user_id: user.id,
+        p_export_format: params.exportFormat ?? 'csv',
+      });
+
+      if (error) throw error;
+      return data as { success: boolean; images_logged: number };
+    },
+  });
+}
+
 export function useQuickFlag() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
