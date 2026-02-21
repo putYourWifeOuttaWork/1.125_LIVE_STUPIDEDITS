@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Shield, Filter, Settings, Users, ListChecks,
-  CheckSquare, X,
+  CheckSquare, X, Eye,
 } from 'lucide-react';
 import { useMgiReviewQueue, useMgiReviewPendingCount, useAllSitesForReview, useSubmitBulkReview } from '../hooks/useMgiReview';
 import type { MgiReviewItem, ReviewFilters } from '../hooks/useMgiReview';
@@ -14,8 +14,9 @@ import ThresholdConfigTab from '../components/mgiReview/ThresholdConfigTab';
 import ReviewerAssignmentTab from '../components/mgiReview/ReviewerAssignmentTab';
 import RetrospectiveScanPanel from '../components/mgiReview/RetrospectiveScanPanel';
 import BulkReviewModal from '../components/mgiReview/BulkReviewModal';
+import ScoreBrowserTab from '../components/mgiReview/ScoreBrowserTab';
 
-type TabId = 'queue' | 'thresholds' | 'reviewers';
+type TabId = 'queue' | 'browser' | 'thresholds' | 'reviewers';
 
 export default function MgiReviewPage() {
   const [searchParams] = useSearchParams();
@@ -71,6 +72,7 @@ export default function MgiReviewPage() {
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'queue', label: 'Review Queue', icon: <ListChecks className="w-4 h-4" />, badge: pendingCount || undefined },
+    { id: 'browser', label: 'All Scores', icon: <Eye className="w-4 h-4" /> },
     { id: 'thresholds', label: 'Thresholds', icon: <Settings className="w-4 h-4" /> },
     { id: 'reviewers', label: 'Reviewers', icon: <Users className="w-4 h-4" /> },
   ];
@@ -84,7 +86,7 @@ export default function MgiReviewPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">MGI Data Quality Review</h1>
-            <p className="text-sm text-gray-500">Review flagged MGI scores, configure detection thresholds, and manage reviewer assignments.</p>
+            <p className="text-sm text-gray-500">Review flagged MGI scores, browse all scored images, configure detection thresholds, and manage reviewers.</p>
           </div>
         </div>
       </div>
@@ -209,6 +211,10 @@ export default function MgiReviewPage() {
           )}
           </div>
         </div>
+      )}
+
+      {activeTab === 'browser' && (
+        <ScoreBrowserTab companies={companiesArray} sites={sitesArray || []} />
       )}
 
       {activeTab === 'thresholds' && (
