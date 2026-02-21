@@ -250,9 +250,10 @@ export function useDevicesForBrowser(siteId?: string) {
       }
 
       const { data: sdData, error: sdError } = await supabase
-        .from('site_devices')
+        .from('device_site_assignments')
         .select('device_id')
-        .eq('site_id', siteId);
+        .eq('site_id', siteId)
+        .eq('is_active', true);
       if (sdError) throw sdError;
 
       const deviceIds = (sdData || []).map(sd => sd.device_id);
