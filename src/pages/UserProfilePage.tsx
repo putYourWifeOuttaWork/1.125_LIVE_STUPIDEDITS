@@ -1,4 +1,4 @@
-import { User, Building, Users, CheckCircle, XCircle, Info, Link as LinkIcon } from 'lucide-react';
+import { User, Building, Users, Info, Link as LinkIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Card, { CardContent, CardHeader } from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -8,6 +8,7 @@ import EditProfileModal from '../components/profile/EditProfileModal';
 import { useState } from 'react';
 import { useUserProfile } from '../hooks/useUserProfile';
 import ProgramDetailsModal from '../components/pilotPrograms/ProgramDetailsModal';
+import ProgramStatusBadge from '../components/pilotPrograms/ProgramStatusBadge';
 import { PilotProgram } from '../lib/types';
 import useCompanies from '../hooks/useCompanies';
 
@@ -172,18 +173,11 @@ const UserProfilePage = () => {
                         {program.name}
                       </h3>
                       <div className="flex items-center space-x-2">
-                        <span className={`pill ${
-                          program.status === 'active' 
-                            ? 'bg-success-100 text-success-800' 
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {program.status === 'active' ? (
-                            <CheckCircle size={12} className="mr-1" />
-                          ) : (
-                            <XCircle size={12} className="mr-1" />
-                          )}
-                          {program.status.charAt(0).toUpperCase() + program.status.slice(1)}
-                        </span>
+                        <ProgramStatusBadge
+                          effectiveStatus={program.effective_status}
+                          hasActiveDevices={program.has_active_devices}
+                          size="sm"
+                        />
                         <button 
                           className="text-gray-500 hover:text-gray-700"
                           onClick={() => setSelectedProgram(program)}

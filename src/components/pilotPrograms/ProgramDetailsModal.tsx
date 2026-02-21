@@ -6,7 +6,8 @@ import { Calendar, FileText, Building, Users, Edit, Trash2, History, Clock, Copy
 import Button from '../common/Button';
 import Input from '../common/Input';
 import Modal from '../common/Modal';
-import { PilotProgram, ProgramPhase } from '../../lib/types';
+import { PilotProgram, ProgramPhase, ProgramEffectiveStatus } from '../../lib/types';
+import ProgramStatusBadge from './ProgramStatusBadge';
 import { format, differenceInDays } from 'date-fns';
 import useUserRole from '../../hooks/useUserRole';
 import { toast } from 'react-toastify';
@@ -81,7 +82,9 @@ const ProgramDetailsModal = ({
   const [programLineage, setProgramLineage] = useState<any[] | null>(null);
   const [showPhases, setShowPhases] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'active' | 'inactive'>(program.status || 'inactive');
+  const [editingEffectiveStatus, setEditingEffectiveStatus] = useState<ProgramEffectiveStatus>(
+    program.effective_status ?? (program.status === 'active' ? 'active' : 'expired')
+  );
   
   // Extract the latest phase information from the program
   const getLatestPhase = (): ProgramPhase | null => {
@@ -187,22 +190,25 @@ const ProgramDetailsModal = ({
     },
   });
   
-  // Update status display based on start/end dates
   useEffect(() => {
     if (isEditing) {
       const today = new Date();
-      const startDate = formik.values.startDate ? new Date(formik.values.startDate) : null;
-      const endDate = formik.values.endDate ? new Date(formik.values.endDate) : null;
-      
+      today.setHours(0, 0, 0, 0);
+      const startDate = formik.values.startDate ? new Date(formik.values.startDate + 'T00:00:00') : null;
+      const endDate = formik.values.endDate ? new Date(formik.values.endDate + 'T00:00:00') : null;
+
       if (startDate && endDate) {
-        const newStatus = 
-          (today >= startDate && today <= endDate) ? 'active' : 'inactive';
-        setStatus(newStatus);
+        const computed: ProgramEffectiveStatus =
+          today < startDate ? 'scheduled' :
+          today <= endDate ? 'active' : 'expired';
+        setEditingEffectiveStatus(computed);
       }
     } else {
-      setStatus(program.status || 'inactive');
+      setEditingEffectiveStatus(
+        program.effective_status ?? (program.status === 'active' ? 'active' : 'expired')
+      );
     }
-  }, [formik.values.startDate, formik.values.endDate, isEditing, program.status]);
+  }, [formik.values.startDate, formik.values.endDate, isEditing, program.effective_status, program.status]);
   
   const handleDelete = async () => {
     try {
@@ -591,13 +597,10 @@ const ProgramDetailsModal = ({
               
               <div className="flex flex-col space-y-2">
                 <div className="flex items-center">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    program.status === 'active' 
-                      ? 'bg-success-100 text-success-800' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    Status: {program.status.charAt(0).toUpperCase() + program.status.slice(1)}
-                  </span>
+                  <ProgramStatusBadge
+                    effectiveStatus={isEditing ? editingEffectiveStatus : program.effective_status}
+                    hasActiveDevices={program.has_active_devices}
+                  />
                 </div>
                 
                 {latestPhase && (

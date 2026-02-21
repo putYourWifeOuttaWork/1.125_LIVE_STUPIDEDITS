@@ -89,12 +89,15 @@ export type User = {
   };
 };
 
+export type ProgramEffectiveStatus = 'active' | 'expired' | 'scheduled';
+
 export type PilotProgram = Database['public']['Tables']['pilot_programs']['Row'] & {
   phases?: ProgramPhase[];
-  // Add new calculated fields from the view
   days_count_this_program?: number;
   day_x_of_program?: number;
   phase_progress?: number;
+  effective_status?: ProgramEffectiveStatus;
+  has_active_devices?: boolean;
 };
 
 export type ProgramPhase = {

@@ -127,26 +127,25 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
   // Create program mutation
   const createProgramMutation = useMutation({
     mutationFn: async (programData: Omit<PilotProgram, 'program_id' | 'total_submissions' | 'total_sites' | 'created_at' | 'updated_at'>) => {
-      // Calculate status based on date range
       const today = new Date();
-      const startDate = new Date(programData.start_date);
-      const endDate = new Date(programData.end_date);
-      
-      const calculatedStatus = 
+      today.setHours(0, 0, 0, 0);
+      const startDate = new Date(programData.start_date + 'T00:00:00');
+      const endDate = new Date(programData.end_date + 'T00:00:00');
+
+      const calculatedStatus =
         (today >= startDate && today <= endDate) ? 'active' : 'inactive';
-        
-      // Create initial phases array with Phase 1
+
       const initialPhase: ProgramPhase = {
         phase_number: 1,
-        phase_type: 'control', // First phase is typically control
+        phase_type: 'control',
         label: 'Phase 1 (control)',
         start_date: programData.start_date,
         end_date: programData.end_date
       };
-        
+
       const phases = [initialPhase];
-      
-      const { data, error } = await withRetry(() => 
+
+      const { data, error } = await withRetry(() =>
         supabase
           .from('pilot_programs')
           .insert({
@@ -159,7 +158,7 @@ export const usePilotPrograms = (): UsePilotProgramsResult => {
           .select()
           .single()
       , 'createProgram');
-      
+
       if (error) throw error;
       return data;
     },

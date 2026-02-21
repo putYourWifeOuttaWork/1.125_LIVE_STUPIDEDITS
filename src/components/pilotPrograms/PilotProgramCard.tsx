@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Info, Copy, Tag, Clock, BarChart } from 'lucide-react';
+import { Info, Copy, Tag, Clock, BarChart } from 'lucide-react';
 import Card, { CardHeader, CardContent, CardFooter } from '../common/Card';
 import Button from '../common/Button';
+import ProgramStatusBadge from './ProgramStatusBadge';
 import { PilotProgram } from '../../lib/types';
 import { format } from 'date-fns';
 
@@ -65,17 +66,11 @@ const PilotProgramCard = ({
             {program.name}
           </h3>
           <div className="flex items-center space-x-2">
-            <span className={`pill ${
-              program.status === 'active' 
-                ? 'bg-success-100 text-success-800' 
-                : 'bg-gray-100 text-gray-800'
-            }`} data-testid={`program-status-${program.program_id}`}>
-              {program.status === 'active' ? (
-                <CheckCircle size={12} className="mr-1" />
-              ) : (
-                <XCircle size={12} className="mr-1" />
-              )}
-              {program.status.charAt(0).toUpperCase() + program.status.slice(1)}
+            <span data-testid={`program-status-${program.program_id}`}>
+              <ProgramStatusBadge
+                effectiveStatus={program.effective_status}
+                hasActiveDevices={program.has_active_devices}
+              />
             </span>
             <button 
               className="text-gray-500 hover:text-gray-700"
