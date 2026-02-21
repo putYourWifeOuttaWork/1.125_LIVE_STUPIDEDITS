@@ -243,10 +243,10 @@ export function useDevicesForBrowser(siteId?: string) {
       if (!siteId) {
         const { data, error } = await supabase
           .from('devices')
-          .select('id, device_code')
+          .select('device_id, device_code')
           .order('device_code');
         if (error) throw error;
-        return (data || []) as { id: string; device_code: string }[];
+        return (data || []) as { device_id: string; device_code: string }[];
       }
 
       const { data: sdData, error: sdError } = await supabase
@@ -261,11 +261,11 @@ export function useDevicesForBrowser(siteId?: string) {
 
       const { data, error } = await supabase
         .from('devices')
-        .select('id, device_code')
-        .in('id', deviceIds)
+        .select('device_id, device_code')
+        .in('device_id', deviceIds)
         .order('device_code');
       if (error) throw error;
-      return (data || []) as { id: string; device_code: string }[];
+      return (data || []) as { device_id: string; device_code: string }[];
     },
     staleTime: 5 * 60_000,
   });

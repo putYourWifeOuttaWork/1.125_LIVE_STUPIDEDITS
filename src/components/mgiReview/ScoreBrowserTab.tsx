@@ -167,7 +167,7 @@ export default function ScoreBrowserTab({ companies, sites }: Props) {
             >
               <option value="">All Devices</option>
               {(devices || []).map(d => (
-                <option key={d.id} value={d.id}>{d.device_code}</option>
+                <option key={d.device_id} value={d.device_id}>{d.device_code}</option>
               ))}
             </select>
           </div>
