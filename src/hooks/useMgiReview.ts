@@ -201,6 +201,8 @@ export function useDeviceScoreTimeline(deviceId: string | undefined, limit = 20)
   });
 }
 
+export type ReviewDecision = 'confirm_adjusted' | 'override_with_value' | 'confirm_original' | 'dismiss';
+
 export function useSubmitReview() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -208,7 +210,7 @@ export function useSubmitReview() {
   return useMutation({
     mutationFn: async (params: {
       reviewId: string;
-      decision: 'confirm_adjusted' | 'override_with_value' | 'confirm_original' | 'dismiss';
+      decision: ReviewDecision;
       adminScore?: number;
       notes?: string;
     }) => {
@@ -224,6 +226,45 @@ export function useSubmitReview() {
 
       if (error) throw error;
       return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mgiReviewQueue'] });
+      queryClient.invalidateQueries({ queryKey: ['mgiReviewPendingCount'] });
+    },
+  });
+}
+
+export interface BulkReviewResult {
+  success: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: Array<{ review_id: string; success: boolean; error?: string }>;
+}
+
+export function useSubmitBulkReview() {
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      reviewIds: string[];
+      decision: ReviewDecision;
+      adminScore?: number;
+      notes?: string;
+    }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.rpc('fn_bulk_complete_mgi_reviews', {
+        p_review_ids: params.reviewIds,
+        p_admin_user_id: user.id,
+        p_decision: params.decision,
+        p_admin_score: params.adminScore ?? null,
+        p_notes: params.notes ?? null,
+      });
+
+      if (error) throw error;
+      return data as BulkReviewResult;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mgiReviewQueue'] });
