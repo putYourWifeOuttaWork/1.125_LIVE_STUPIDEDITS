@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowRight, Info } from 'lucide-react';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
@@ -42,6 +42,17 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
   const [customReason, setCustomReason] = useState('');
   const [notes, setNotes] = useState(device.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setDeviceName(device.device_name || '');
+    setSelectedProgramId(device.program_id || '');
+    setSelectedSiteId(device.site_id || '');
+    setSelectedSchedule(device.wake_schedule_cron || '0 8,16 * * *');
+    setCustomSchedule('');
+    setSelectedReason('');
+    setCustomReason('');
+    setNotes(device.notes || '');
+  }, [device.device_id]);
 
   const { programs, loading: programsLoading } = usePilotPrograms();
   const { sites, loading: sitesLoading } = useSites(selectedProgramId);
@@ -95,7 +106,7 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
             <div className="text-sm text-blue-800">
               <p className="font-medium mb-1">Device Reassignment</p>
               <p className="text-xs">
-                Move this device to a different site or program. The device will be deactivated and need to be reactivated after reassignment.
+                Move this device to a different site or program. The device will continue operating normally -- this change is for tracking and organizational purposes only.
               </p>
             </div>
           </div>
@@ -298,7 +309,7 @@ const DeviceReassignModal = ({ isOpen, onClose, device, onSubmit }: DeviceReassi
             type="submit"
             variant="primary"
             isLoading={isSubmitting}
-            disabled={!selectedSiteId || !selectedProgramId}
+            disabled={!selectedSiteId || !selectedProgramId || (!isChangingSite && !isChangingProgram)}
             className="w-full sm:w-auto order-1 sm:order-2"
           >
             Reassign Device

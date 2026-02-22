@@ -607,10 +607,6 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
 
-      const notesWithReason = mapping.reason
-        ? `Reassigned: ${mapping.reason}\n\n${mapping.notes || device?.notes || ''}`
-        : mapping.notes;
-
       // Step 1: Mark existing assignments as inactive (preserve history)
       const { error: deactivateError } = await supabase
         .from('device_site_assignments')
@@ -654,7 +650,7 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
           is_primary: true,
           is_active: true,
           assigned_by_user_id: userId,
-          notes: notesWithReason,
+          notes: mapping.notes,
           reason: mapping.reason,
         });
 
@@ -671,7 +667,7 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
           is_primary: true,
           is_active: true,
           assigned_by_user_id: userId,
-          notes: notesWithReason,
+          notes: mapping.notes,
           reason: mapping.reason,
         });
 
@@ -680,20 +676,58 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
         throw programAssignmentError;
       }
 
-      // Step 3: Update device record
+      // Step 3: Recalculate next_wake_at if schedule is changing (server-side bookkeeping only)
+      let nextWakeAt: string | null | undefined = undefined;
+      const isScheduleChange = mapping.wakeScheduleCron !== undefined &&
+                               mapping.wakeScheduleCron !== device?.wake_schedule_cron;
+
+      if (isScheduleChange && mapping.wakeScheduleCron) {
+        try {
+          const { data: siteData } = await supabase
+            .from('sites')
+            .select('timezone')
+            .eq('site_id', mapping.siteId)
+            .maybeSingle();
+
+          const timezone = siteData?.timezone || 'America/New_York';
+          const { data: nextWake } = await supabase.rpc(
+            'fn_calculate_next_wake_time',
+            {
+              p_last_wake_at: new Date().toISOString(),
+              p_cron_expression: mapping.wakeScheduleCron,
+              p_timezone: timezone
+            }
+          );
+
+          if (nextWake) {
+            nextWakeAt = nextWake;
+          }
+        } catch (err) {
+          logger.warn('Could not calculate next wake time:', err);
+        }
+      }
+
+      // Step 4: Update device record (site_id/program_id set by sync triggers from Step 2)
+      const deviceUpdate: Record<string, any> = {
+        device_name: mapping.deviceName,
+        provisioning_status: 'mapped',
+        mapped_at: new Date().toISOString(),
+        mapped_by_user_id: userId,
+        notes: mapping.notes,
+        is_active: true,
+      };
+
+      if (mapping.wakeScheduleCron !== undefined) {
+        deviceUpdate.wake_schedule_cron = mapping.wakeScheduleCron;
+      }
+
+      if (nextWakeAt !== undefined) {
+        deviceUpdate.next_wake_at = nextWakeAt;
+      }
+
       const { data, error } = await supabase
         .from('devices')
-        .update({
-          site_id: mapping.siteId,
-          program_id: mapping.programId,
-          device_name: mapping.deviceName,
-          wake_schedule_cron: mapping.wakeScheduleCron,
-          provisioning_status: 'mapped',
-          mapped_at: new Date().toISOString(),
-          mapped_by_user_id: userId,
-          notes: notesWithReason,
-          is_active: true,
-        })
+        .update(deviceUpdate)
         .eq('device_id', deviceId)
         .select()
         .single();
