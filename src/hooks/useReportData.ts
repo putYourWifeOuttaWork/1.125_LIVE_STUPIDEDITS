@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ReportConfiguration,
@@ -19,11 +19,13 @@ import {
   TimeSeriesDataPoint as TSPoint,
   AggregatedDataPoint,
 } from '../services/analyticsService';
+import { supabase } from '../lib/supabaseClient';
 
 function resolveDateRange(
   timeRange: TimeRange,
   customStart?: string,
-  customEnd?: string
+  customEnd?: string,
+  programDates?: { start: string; end: string } | null
 ): { start: string; end: string } {
   const now = new Date();
   let start: Date;
@@ -39,6 +41,13 @@ function resolveDateRange(
       start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       break;
     case 'this_program':
+      if (programDates) {
+        const endDate = new Date(programDates.end + 'T23:59:59');
+        return {
+          start: new Date(programDates.start + 'T00:00:00').toISOString(),
+          end: (endDate < now ? endDate : now).toISOString(),
+        };
+      }
       start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
       break;
     case 'custom':
@@ -74,16 +83,47 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
   const { activeCompanyId } = useActiveCompany();
   const queryClient = useQueryClient();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [programDates, setProgramDates] = useState<{ start: string; end: string } | null>(null);
+
+  const programIds = useMemo(() => config.programIds || [], [config.programIds]);
+
+  useEffect(() => {
+    if (config.timeRange !== 'this_program' || programIds.length === 0) {
+      setProgramDates(null);
+      return;
+    }
+
+    const fetchDates = async () => {
+      const { data } = await supabase
+        .from('pilot_programs')
+        .select('start_date, end_date')
+        .in('program_id', programIds);
+
+      if (data && data.length > 0) {
+        const starts = data.map((p) => p.start_date).filter(Boolean).sort();
+        const ends = data.map((p) => p.end_date).filter(Boolean).sort();
+        if (starts.length > 0) {
+          setProgramDates({
+            start: starts[0],
+            end: ends.length > 0 ? ends[ends.length - 1] : starts[0],
+          });
+        }
+      }
+    };
+
+    fetchDates();
+  }, [config.timeRange, programIds]);
 
   const dateRange = useMemo(
     () =>
       resolveDateRange(
         config.timeRange,
         config.customStartDate,
-        config.customEndDate
+        config.customEndDate,
+        programDates
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [config.timeRange, config.customStartDate, config.customEndDate, refreshKey]
+    [config.timeRange, config.customStartDate, config.customEndDate, refreshKey, programDates]
   );
 
   const refresh = useCallback(() => {
@@ -101,7 +141,6 @@ export function useReportData(config: ReportConfiguration, enabled = true) {
     [JSON.stringify(metrics.map((m) => m.type))]
   );
 
-  const programIds = useMemo(() => config.programIds || [], [config.programIds]);
   const siteIds = useMemo(() => config.siteIds || [], [config.siteIds]);
   const deviceIds = useMemo(() => config.deviceIds || [], [config.deviceIds]);
 
