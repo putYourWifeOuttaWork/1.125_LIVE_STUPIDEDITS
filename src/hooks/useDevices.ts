@@ -65,6 +65,8 @@ export const useDevices = (options: UseDevicesOptions = {}) => {
         query = query.eq('provisioning_status', provisioningStatus);
       }
 
+      query = query.is('archived_at', null);
+
       const { data, error } = await query;
 
       if (error) {
@@ -217,6 +219,7 @@ export const useUnmappedDevices = () => {
           )
         `)
         .is('company_id', null)
+        .is('archived_at', null)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -258,5 +261,128 @@ export const useUnmappedDevices = () => {
     isLoading,
     error,
     refetch
+  };
+};
+
+export const useArchivedPoolDevices = () => {
+  const {
+    data: devices = [],
+    isLoading,
+    error,
+    refetch
+  } = useQuery({
+    queryKey: ['archivedPoolDevices'],
+    queryFn: async () => {
+      logger.debug('Fetching archived pool devices');
+
+      const { data, error } = await supabase
+        .from('devices')
+        .select(`
+          *,
+          sites:site_id (
+            site_id,
+            name,
+            type
+          ),
+          pilot_programs:program_id (
+            program_id,
+            name
+          )
+        `)
+        .not('archived_at', 'is', null)
+        .order('archived_at', { ascending: false });
+
+      if (error) {
+        logger.error('Error fetching archived pool devices:', error);
+        throw error;
+      }
+
+      return (data || []) as DeviceWithStats[];
+    },
+    refetchInterval: 30000,
+    staleTime: 15000,
+  });
+
+  return { devices, isLoading, error, refetch };
+};
+
+export const useArchiveDevice = () => {
+  const queryClient = useQueryClient();
+
+  const archiveMutation = useMutation({
+    mutationFn: async ({
+      deviceId,
+      reason,
+      userId,
+    }: {
+      deviceId: string;
+      reason: string;
+      userId: string;
+    }) => {
+      const { data, error } = await supabase
+        .from('devices')
+        .update({
+          archived_at: new Date().toISOString(),
+          archived_by_user_id: userId,
+          archive_reason: reason,
+        })
+        .eq('device_id', deviceId)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('Error archiving device:', error);
+        throw error;
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      queryClient.invalidateQueries({ queryKey: ['unmappedDevices'] });
+      queryClient.invalidateQueries({ queryKey: ['archivedPoolDevices'] });
+      toast.success('Device archived successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to archive device: ${error.message}`);
+    },
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: async (deviceId: string) => {
+      const { data, error } = await supabase
+        .from('devices')
+        .update({
+          archived_at: null,
+          archived_by_user_id: null,
+          archive_reason: null,
+        })
+        .eq('device_id', deviceId)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('Error unarchiving device:', error);
+        throw error;
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      queryClient.invalidateQueries({ queryKey: ['unmappedDevices'] });
+      queryClient.invalidateQueries({ queryKey: ['archivedPoolDevices'] });
+      toast.success('Device restored to pool');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to restore device: ${error.message}`);
+    },
+  });
+
+  return {
+    archiveDevice: archiveMutation.mutateAsync,
+    unarchiveDevice: unarchiveMutation.mutateAsync,
+    isArchiving: archiveMutation.isPending,
+    isUnarchiving: unarchiveMutation.isPending,
   };
 };

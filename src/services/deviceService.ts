@@ -82,12 +82,31 @@ export class DeviceService {
     logger.debug('Registering new device', { mac: data.deviceMac });
 
     try {
-      // Check if device with this MAC already exists
       const { data: existingDevice } = await supabase
         .from('devices')
-        .select('device_id, device_mac')
+        .select('device_id, device_mac, archived_at')
         .eq('device_mac', data.deviceMac)
         .maybeSingle();
+
+      if (existingDevice && existingDevice.archived_at) {
+        const { data: restored, error: restoreError } = await supabase
+          .from('devices')
+          .update({
+            archived_at: null,
+            archived_by_user_id: null,
+            archive_reason: null,
+            provisioning_status: 'pending_mapping',
+          })
+          .eq('device_id', existingDevice.device_id)
+          .select()
+          .single();
+
+        if (restoreError) {
+          return { device: null, error: restoreError.message };
+        }
+
+        return { device: restored as Device, error: null };
+      }
 
       if (existingDevice) {
         return {

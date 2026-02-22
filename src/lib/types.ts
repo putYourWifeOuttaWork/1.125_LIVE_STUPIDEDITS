@@ -346,6 +346,9 @@ export type Device = {
   device_reported_site_id: string | null;
   device_reported_location: string | null;
   notes: string | null;
+  archived_at: string | null;
+  archived_by_user_id: string | null;
+  archive_reason: string | null;
   created_at: string;
   updated_at: string;
   sites?: {

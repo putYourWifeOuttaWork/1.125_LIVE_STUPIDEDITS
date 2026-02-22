@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cpu, Search, AlertCircle, MapPin, Plus, Zap } from 'lucide-react';
+import { Cpu, Search, AlertCircle, MapPin, Plus, Zap, Archive, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import LoadingScreen from '../components/common/LoadingScreen';
@@ -8,13 +8,16 @@ import DeviceCard from '../components/devices/DeviceCard';
 import DeviceMappingModal from '../components/devices/DeviceMappingModal';
 import DeviceSetupWizard from '../components/devices/DeviceSetupWizard';
 import DeviceRegistrationModal from '../components/devices/DeviceRegistrationModal';
+import DeviceArchiveModal from '../components/devices/DeviceArchiveModal';
 import { computeDeviceStatus } from '../components/devices/DeviceStatusBadge';
-import { useDevices, usePendingDevices, useUnmappedDevices } from '../hooks/useDevices';
+import { useDevices, usePendingDevices, useUnmappedDevices, useArchivedPoolDevices, useArchiveDevice } from '../hooks/useDevices';
 import { useDevice } from '../hooks/useDevice';
 import { DeviceWithStats } from '../lib/types';
 import { debounce } from '../utils/helpers';
 import useCompanies from '../hooks/useCompanies';
+import { useAuthStore } from '../stores/authStore';
 import { toast } from 'react-toastify';
+import { formatDistanceToNow } from 'date-fns';
 
 const DevicesPage = () => {
   const navigate = useNavigate();
@@ -27,9 +30,15 @@ const DevicesPage = () => {
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [selectedDeviceForMapping, setSelectedDeviceForMapping] = useState<DeviceWithStats | null>(null);
   const [useWizardMode, setUseWizardMode] = useState(true);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [deviceToArchive, setDeviceToArchive] = useState<DeviceWithStats | null>(null);
+  const [showArchivedDevices, setShowArchivedDevices] = useState(false);
 
+  const user = useAuthStore((state) => state.user);
   const { devices: pendingDevices, isLoading: pendingLoading } = usePendingDevices();
   const { devices: unmappedDevices, isLoading: unmappedLoading } = useUnmappedDevices();
+  const { devices: archivedDevices } = useArchivedPoolDevices();
+  const { archiveDevice, unarchiveDevice, isArchiving, isUnarchiving } = useArchiveDevice();
   const { devices: allDevices, isLoading: devicesLoading } = useDevices({
     refetchInterval: 30000,
   });
@@ -73,6 +82,22 @@ const DevicesPage = () => {
 
   const handleRegistrationSuccess = () => {
     // Refresh devices list
+  };
+
+  const handleArchiveClick = (device: DeviceWithStats) => {
+    setDeviceToArchive(device);
+    setShowArchiveModal(true);
+  };
+
+  const handleArchiveConfirm = async (reason: string) => {
+    if (!deviceToArchive || !user?.id) return;
+    await archiveDevice({ deviceId: deviceToArchive.device_id, reason, userId: user.id });
+    setShowArchiveModal(false);
+    setDeviceToArchive(null);
+  };
+
+  const handleUnarchive = async (deviceId: string) => {
+    await unarchiveDevice(deviceId);
   };
 
   if (!isAdmin) {
@@ -153,7 +178,7 @@ const DevicesPage = () => {
         </div>
       </div>
 
-      {isSuperAdmin && unmappedDevices.length > 0 && (
+      {isSuperAdmin && (unmappedDevices.length > 0 || archivedDevices.length > 0) && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-start">
             <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
@@ -164,38 +189,98 @@ const DevicesPage = () => {
               <p className="text-sm text-blue-700 mt-1">
                 These devices are not assigned to any company. Click to assign them to a site and company.
               </p>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {unmappedDevices.map((device) => (
-                  <div key={device.device_id} className="bg-white rounded-md border border-blue-300 p-3">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {device.device_name || device.device_mac}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-1">
-                          MAC: {device.device_mac}
-                        </p>
-                        {device.device_type === 'virtual' && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 mt-1">
-                            Virtual Device
-                          </span>
-                        )}
-                        <p className="text-xs text-gray-600 mt-1">
-                          Status: {device.provisioning_status}
-                        </p>
+              {unmappedDevices.length > 0 && (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {unmappedDevices.map((device) => (
+                    <div key={device.device_id} className="bg-white rounded-md border border-blue-300 p-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {device.device_name || device.device_mac}
+                          </p>
+                          <p className="text-xs text-gray-600 mt-1">
+                            MAC: {device.device_mac}
+                          </p>
+                          {device.device_type === 'virtual' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 mt-1">
+                              Virtual Device
+                            </span>
+                          )}
+                          <p className="text-xs text-gray-600 mt-1">
+                            Status: {device.provisioning_status}
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => handleArchiveClick(device)}
+                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                            title="Archive device"
+                          >
+                            <Archive size={14} />
+                          </button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            icon={<MapPin size={14} />}
+                            onClick={() => handleMapDevice(device)}
+                          >
+                            Setup
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        icon={<MapPin size={14} />}
-                        onClick={() => handleMapDevice(device)}
-                      >
-                        Setup
-                      </Button>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
+
+              {archivedDevices.length > 0 && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => setShowArchivedDevices(!showArchivedDevices)}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    {showArchivedDevices ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    <Archive size={12} />
+                    {archivedDevices.length} archived {archivedDevices.length === 1 ? 'device' : 'devices'}
+                  </button>
+
+                  {showArchivedDevices && (
+                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {archivedDevices.map((device) => (
+                        <div key={device.device_id} className="bg-gray-50 rounded-md border border-gray-300 p-3 opacity-70">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-500 truncate">
+                                {device.device_code || device.device_name || device.device_mac}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                MAC: {device.device_mac}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {device.archive_reason}
+                              </p>
+                              {device.archived_at && (
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  Archived {formatDistanceToNow(new Date(device.archived_at), { addSuffix: true })}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleUnarchive(device.device_id)}
+                              disabled={isUnarchiving}
+                              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors disabled:opacity-50"
+                              title="Restore to pool"
+                            >
+                              <RotateCcw size={12} />
+                              Restore
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -231,14 +316,25 @@ const DevicesPage = () => {
                           </p>
                         )}
                       </div>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        icon={<MapPin size={14} />}
-                        onClick={() => handleMapDevice(device)}
-                      >
-                        Map
-                      </Button>
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        {isSuperAdmin && (
+                          <button
+                            onClick={() => handleArchiveClick(device)}
+                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                            title="Archive device"
+                          >
+                            <Archive size={14} />
+                          </button>
+                        )}
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={<MapPin size={14} />}
+                          onClick={() => handleMapDevice(device)}
+                        >
+                          Map
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -360,6 +456,17 @@ const DevicesPage = () => {
           onSuccess={handleRegistrationSuccess}
         />
       )}
+
+      <DeviceArchiveModal
+        isOpen={showArchiveModal}
+        onClose={() => {
+          setShowArchiveModal(false);
+          setDeviceToArchive(null);
+        }}
+        device={deviceToArchive}
+        onConfirm={handleArchiveConfirm}
+        isArchiving={isArchiving}
+      />
     </div>
   );
 };

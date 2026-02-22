@@ -103,7 +103,7 @@ export async function handleHelloStatus(
     // Check if device exists
     const { data: existingDevice, error: queryError } = await supabase
       .from('devices')
-      .select('device_id, device_mac, wake_schedule_cron, company_id, manual_wake_override')
+      .select('device_id, device_mac, wake_schedule_cron, company_id, manual_wake_override, archived_at')
       .eq('device_mac', normalizedMac)
       .maybeSingle();
 
@@ -162,6 +162,14 @@ export async function handleHelloStatus(
         mqtt_client_id: payload.device_id, // Store/update firmware ID
         last_updated_by_user_id: SYSTEM_USER_UUID, // System update
       };
+
+      if (existingDevice.archived_at) {
+        console.log('[Ingest] Device was archived -- auto-restoring on HELLO');
+        updateData.archived_at = null;
+        updateData.archived_by_user_id = null;
+        updateData.archive_reason = null;
+        updateData.provisioning_status = 'pending_mapping';
+      }
 
       // Check if this was a manual wake override
       const wasManualWake = existingDevice.manual_wake_override === true;
