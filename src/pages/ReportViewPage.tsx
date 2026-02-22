@@ -539,7 +539,7 @@ export default function ReportViewPage() {
               className="!rounded-l-none !px-2"
               title="Schedule auto-snapshots"
             >
-              <CalendarClock className={`w-4 h-4 ${schedule?.enabled ? 'text-emerald-600' : ''}`} />
+              <CalendarClock className={`w-4 h-4 ${schedule?.enabled ? 'text-emerald-600' : schedule?.paused_reason ? 'text-amber-500' : ''}`} />
             </Button>
           </div>
           {isSuperAdmin && (
@@ -588,6 +588,9 @@ export default function ReportViewPage() {
           )}
           {schedule?.enabled && (
             <span className="ml-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Auto-snapshot active" />
+          )}
+          {!schedule?.enabled && schedule?.paused_reason && (
+            <span className="ml-1 w-2 h-2 rounded-full bg-amber-500" title="Auto-snapshot auto-paused" />
           )}
         </button>
       </div>
@@ -646,6 +649,19 @@ export default function ReportViewPage() {
           <button
             onClick={() => setShowScheduleModal(true)}
             className="ml-auto text-emerald-600 hover:text-emerald-800 font-medium underline underline-offset-2"
+          >
+            Manage
+          </button>
+        </div>
+      )}
+
+      {!schedule?.enabled && schedule?.paused_reason && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <span className="flex-1">{schedule.paused_reason}</span>
+          <button
+            onClick={() => setShowScheduleModal(true)}
+            className="shrink-0 text-amber-600 hover:text-amber-800 font-medium underline underline-offset-2"
           >
             Manage
           </button>

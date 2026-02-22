@@ -559,6 +559,31 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
 
       logger.debug('Unassigning device', { deviceId, reason });
 
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+
+      await supabase
+        .from('device_site_assignments')
+        .update({
+          is_active: false,
+          unassigned_at: new Date().toISOString(),
+          unassigned_by_user_id: userId,
+          reason: reason || null,
+        })
+        .eq('device_id', deviceId)
+        .eq('is_active', true);
+
+      await supabase
+        .from('device_program_assignments')
+        .update({
+          is_active: false,
+          unassigned_at: new Date().toISOString(),
+          unassigned_by_user_id: userId,
+          reason: reason || null,
+        })
+        .eq('device_id', deviceId)
+        .eq('is_active', true);
+
       const { data, error } = await supabase
         .from('devices')
         .update({
@@ -568,7 +593,7 @@ export const useDevice = (deviceId: string | undefined, refetchInterval: number 
           is_active: false,
           mapped_at: null,
           mapped_by_user_id: null,
-          notes: reason ? `Unassigned: ${reason}\n\n${device?.notes || ''}` : device?.notes,
+          notes: device?.notes || null,
         })
         .eq('device_id', deviceId)
         .select()

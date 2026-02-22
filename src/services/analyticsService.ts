@@ -761,9 +761,17 @@ export async function deleteSnapshotSchedule(scheduleId: string): Promise<void> 
 }
 
 export async function toggleSnapshotSchedule(scheduleId: string, enabled: boolean): Promise<void> {
+  const updatePayload: Record<string, unknown> = {
+    enabled,
+    updated_at: new Date().toISOString(),
+  };
+  if (enabled) {
+    updatePayload.paused_reason = null;
+    updatePayload.paused_at = null;
+  }
   const { error } = await supabase
     .from('report_snapshot_schedules')
-    .update({ enabled, updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq('schedule_id', scheduleId);
 
   if (error) throw error;

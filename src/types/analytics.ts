@@ -414,6 +414,8 @@ export interface ReportSnapshotSchedule {
   snapshot_time: string;
   timezone: string;
   last_run_at: string | null;
+  paused_reason: string | null;
+  paused_at: string | null;
   created_by_user_id: string;
   created_at: string;
   updated_at: string;

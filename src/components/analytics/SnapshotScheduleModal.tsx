@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Clock, CalendarClock, Trash2, Power, PowerOff } from 'lucide-react';
+import { Clock, CalendarClock, Trash2, Power, PowerOff, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
@@ -144,17 +144,21 @@ export default function SnapshotScheduleModal({
           <div className={`rounded-lg border px-3 py-2.5 text-sm ${
             schedule.enabled
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-gray-50 border-gray-200 text-gray-600'
+              : schedule.paused_reason
+                ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : 'bg-gray-50 border-gray-200 text-gray-600'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {schedule.enabled ? (
                   <Power className="w-4 h-4 text-emerald-600" />
+                ) : schedule.paused_reason ? (
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
                 ) : (
                   <PowerOff className="w-4 h-4 text-gray-400" />
                 )}
                 <span className="font-medium">
-                  {schedule.enabled ? 'Active' : 'Paused'}
+                  {schedule.enabled ? 'Active' : schedule.paused_reason ? 'Auto-Paused' : 'Paused'}
                 </span>
               </div>
               <button
@@ -170,6 +174,11 @@ export default function SnapshotScheduleModal({
                 {toggling ? '...' : schedule.enabled ? 'Pause' : 'Resume'}
               </button>
             </div>
+            {schedule.paused_reason && !schedule.enabled && (
+              <p className="text-xs mt-1.5 text-amber-700 leading-relaxed">
+                {schedule.paused_reason}
+              </p>
+            )}
             <p className="text-xs mt-1 opacity-75">
               Last run: {formatLastRun(schedule.last_run_at)}
             </p>
