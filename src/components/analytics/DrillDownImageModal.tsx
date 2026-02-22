@@ -279,7 +279,7 @@ export default function DrillDownImageModal({
                   </div>
                   <p className="text-sm font-medium text-gray-900">
                     {currentRecord.temperature !== null
-                      ? `${currentRecord.temperature.toFixed(1)}°C`
+                      ? `${currentRecord.temperature.toFixed(1)}°F`
                       : 'N/A'}
                   </p>
                 </div>

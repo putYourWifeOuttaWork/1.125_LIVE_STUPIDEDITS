@@ -1155,6 +1155,10 @@ export function transformAggregatedForD3(
 /**
  * Export data to CSV
  */
+const CSV_HEADER_RENAMES: Record<string, string> = {
+  temperature: 'temperature_f',
+};
+
 export function exportDataToCSV(data: any[], filename: string): void {
   if (!data || data.length === 0) {
     console.warn('No data to export');
@@ -1162,8 +1166,9 @@ export function exportDataToCSV(data: any[], filename: string): void {
   }
 
   const headers = Object.keys(data[0]);
+  const displayHeaders = headers.map(h => CSV_HEADER_RENAMES[h] ?? h);
   const csvContent = [
-    headers.join(','),
+    displayHeaders.join(','),
     ...data.map(row =>
       headers.map(header => {
         const value = row[header];

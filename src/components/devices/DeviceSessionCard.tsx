@@ -277,7 +277,7 @@ const DeviceSessionCard = ({ device, canEdit = false, onEdit }: DeviceSessionCar
                       {wake.temperature !== null && wake.temperature !== undefined && (
                         <div className="flex items-center space-x-1">
                           <Thermometer className="h-3 w-3 text-red-500" />
-                          <span>{wake.temperature.toFixed(2)}°C</span>
+                          <span>{wake.temperature.toFixed(2)}°F</span>
                         </div>
                       )}
                       {wake.humidity !== null && wake.humidity !== undefined && (

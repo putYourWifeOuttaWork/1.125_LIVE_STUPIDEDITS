@@ -150,7 +150,7 @@ export default function ScoreBrowserDetailPanel({ image, onClose, onActionComple
               {image.temperature !== null && (
                 <div className="flex items-center gap-1.5">
                   <Thermometer className="w-3 h-3 text-red-400" />
-                  <span className="text-gray-700 font-medium">{Number(image.temperature).toFixed(1)}&deg;C</span>
+                  <span className="text-gray-700 font-medium">{Number(image.temperature).toFixed(1)}&deg;F</span>
                 </div>
               )}
               {image.humidity !== null && (

@@ -15,6 +15,11 @@ const CSV_COLUMNS = [
   'humidity',
 ] as const;
 
+const CSV_HEADER_DISPLAY: Partial<Record<typeof CSV_COLUMNS[number], string>> = {
+  temperature: 'temperature_f',
+  humidity: 'humidity_pct',
+};
+
 function escapeCsvValue(val: string | number | null | undefined): string {
   if (val === null || val === undefined) return '';
   const str = String(val);
@@ -25,7 +30,7 @@ function escapeCsvValue(val: string | number | null | undefined): string {
 }
 
 export function buildCsvContent(images: ScoredImage[]): string {
-  const header = CSV_COLUMNS.join(',');
+  const header = CSV_COLUMNS.map(c => CSV_HEADER_DISPLAY[c] ?? c).join(',');
   const rows = images.map(img =>
     CSV_COLUMNS.map(col => {
       const val = img[col as keyof ScoredImage];

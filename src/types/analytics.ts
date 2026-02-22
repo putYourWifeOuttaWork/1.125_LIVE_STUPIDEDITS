@@ -307,7 +307,7 @@ export const METRIC_LABELS: Record<MetricType, string> = {
 };
 
 export const METRIC_UNITS: Record<MetricType, string> = {
-  temperature: '\u00B0C',
+  temperature: '\u00B0F',
   humidity: '%',
   pressure: 'hPa',
   gas_resistance: '\u2126',

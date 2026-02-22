@@ -292,7 +292,7 @@ function buildCombinationConfig(alert: DeviceAlert): AlertInvestigationConfig {
       annotations.push({
         type: 'threshold_line',
         value: ctx.temp_threshold,
-        label: `Temp Threshold: ${ctx.temp_threshold}°C`,
+        label: `Temp Threshold: ${ctx.temp_threshold}°F`,
         color: '#dc2626',
         metricName: 'temperature',
       });
@@ -334,7 +334,7 @@ function buildCombinationConfig(alert: DeviceAlert): AlertInvestigationConfig {
     },
     annotations,
     chartTitle: `Danger Zone (Temp + RH) - ${alert.metadata?.device_code || 'Device'}`,
-    yAxisLabel: 'Temperature (°C)',
+    yAxisLabel: 'Temperature (°F)',
     secondaryYAxisLabel: 'Humidity (%)',
   };
 }

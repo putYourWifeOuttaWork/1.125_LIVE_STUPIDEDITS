@@ -309,7 +309,7 @@ export default function DrillDownPanel({
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-center text-gray-700 text-xs">
                           {device.min_temp !== null && device.max_temp !== null
-                            ? `${device.min_temp.toFixed(1)} - ${device.max_temp.toFixed(1)}°C`
+                            ? `${device.min_temp.toFixed(1)} - ${device.max_temp.toFixed(1)}°F`
                             : 'N/A'}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-gray-700 text-xs">
@@ -374,7 +374,7 @@ export default function DrillDownPanel({
                             </td>
                             <td className="px-3 py-2 text-center text-xs text-gray-700">
                               {record.temperature !== null
-                                ? `${record.temperature.toFixed(1)}°C`
+                                ? `${record.temperature.toFixed(1)}°F`
                                 : 'N/A'}
                             </td>
                             <td className="px-3 py-2 text-center text-xs text-gray-700">
