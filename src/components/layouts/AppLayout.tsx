@@ -26,8 +26,6 @@ import { toast } from 'react-toastify';
 import useUserRole from '../../hooks/useUserRole';
 import ActiveSessionsDrawer from '../submissions/ActiveSessionsDrawer';
 import { useSessionStore } from '../../stores/sessionStore';
-import sessionManager from '../../lib/sessionManager';
-import Button from '../common/Button';
 import ReloadLink from '../common/ReloadLink';
 import { NotificationCenter } from '../notifications/NotificationCenter';
 import { useMgiReviewPendingCount } from '../../hooks/useMgiReview';
@@ -43,10 +41,7 @@ const AppLayout = () => {
   const { programId } = useParams<{ programId: string }>();
   const { canViewAuditLog } = useUserRole({ programId });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { 
-    activeSessions, 
-    setActiveSessions, 
-    setIsLoading,
+  const {
     isSessionsDrawerOpen,
     setIsSessionsDrawerOpen
   } = useSessionStore();
@@ -118,41 +113,37 @@ const AppLayout = () => {
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
   
-  // Load active sessions periodically
   useEffect(() => {
-    const loadActiveSessions = async () => {
+    const checkActiveDeviceSessions = async () => {
       try {
-        setIsLoading(true);
-        const sessions = await sessionManager.getActiveSessions();
-        // Filter out cancelled and expired sessions
-        const filteredSessions = sessions.filter(
-          session => session.session_status !== 'Cancelled' && session.session_status !== 'Expired'
-        );
-        setActiveSessions(filteredSessions);
-        setHasActiveSessions(filteredSessions.length > 0);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { count, error } = await supabase
+          .from('site_device_sessions')
+          .select('session_id', { count: 'exact', head: true })
+          .in('status', ['in_progress'])
+          .gte('session_date', todayStr);
+
+        if (!error) {
+          setHasActiveSessions((count ?? 0) > 0);
+        }
       } catch (error) {
-        console.error('Error loading active sessions:', error);
-      } finally {
-        setIsLoading(false);
+        console.error('Error checking active sessions:', error);
       }
     };
-    
-    // Load initially
-    loadActiveSessions();
-    
-    // Set up interval (every 5 minutes)
-    const interval = setInterval(loadActiveSessions, 5 * 60 * 1000);
-    
-    // Show session indicator after a delay
+
+    checkActiveDeviceSessions();
+
+    const interval = setInterval(checkActiveDeviceSessions, 5 * 60 * 1000);
+
     const indicatorTimer = setTimeout(() => {
       setShowSessionIndicator(true);
     }, 1000);
-    
+
     return () => {
       clearInterval(interval);
       clearTimeout(indicatorTimer);
     };
-  }, [setActiveSessions, setIsLoading]);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">

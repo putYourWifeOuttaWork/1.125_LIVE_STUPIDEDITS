@@ -1,19 +1,31 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Clock, User, BarChart4, X, ChevronRight, Users, Hash, PlusCircle, FileText, Hand, Plus } from 'lucide-react';
+import { ClipboardList, X, PlusCircle, FileText, Plus, MapPin, Eye } from 'lucide-react';
 import Button from '../common/Button';
-import Input from '../common/Input';
-import Modal from '../common/Modal';
 import { useSessionStore } from '../../stores/sessionStore';
 import { usePilotProgramStore } from '../../stores/pilotProgramStore';
-import sessionManager from '../../lib/sessionManager';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabaseClient';
-import SessionProgress from './SessionProgress';
-import { toast } from 'react-toastify';
 import usePilotPrograms from '../../hooks/usePilotPrograms';
 import { useSites } from '../../hooks/useSites';
-import SkeletonLoader, { SkeletonCard } from '../common/SkeletonLoader';
+import SkeletonLoader from '../common/SkeletonLoader';
+
+interface DeviceSession {
+  session_id: string;
+  session_date: string;
+  site_id: string;
+  site_name: string;
+  program_id: string;
+  program_name: string;
+  company_name: string;
+  status: string;
+  started_at: string;
+  expected_items: number;
+  completed_items: number;
+  progress_percent: number;
+  failed_wake_count: number;
+  extra_wake_count: number;
+}
 
 interface ActiveSessionsDrawerProps {
   isOpen: boolean;
@@ -23,36 +35,25 @@ interface ActiveSessionsDrawerProps {
 const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const { selectedProgram, selectedSite } = usePilotProgramStore();
-  const { 
-    activeSessions, 
-    setActiveSessions, 
-    setIsLoading,
-    setError,
-    currentSessionId,
-    hasUnclaimedSessions,
-    setHasUnclaimedSessions,
-    claimSession
-  } = useSessionStore();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [sharedUsersDetails, setSharedUsersDetails] = useState<Map<string, { full_name: string | null; email: string }>>(new Map());
+  const { isSessionsDrawerOpen, setIsSessionsDrawerOpen } = useSessionStore();
 
-  // Add state for in-drawer program and site selection
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [drawerProgramId, setDrawerProgramId] = useState<string | null>(null);
   const [drawerSiteId, setDrawerSiteId] = useState<string | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
 
-  // Fetch programs and sites for selection
   const { programs, isLoading: programsLoading } = usePilotPrograms();
   const { sites, loading: sitesLoading } = useSites(drawerProgramId);
 
-  // Load active sessions when the drawer is opened
   useEffect(() => {
     if (isOpen) {
-      loadActiveSessions();
+      loadDeviceSessions();
     }
   }, [isOpen]);
 
-  // Set initial selected program and site based on global state when drawer opens
   useEffect(() => {
     if (isOpen && selectedProgram) {
       setDrawerProgramId(selectedProgram.program_id);
@@ -62,11 +63,10 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
     }
   }, [isOpen, selectedProgram, selectedSite]);
 
-  const loadActiveSessions = async () => {
+  const loadDeviceSessions = async () => {
     setIsRefreshing(true);
+    setLoadError(null);
     try {
-      setIsLoading(true);
-
       const todayStr = new Date().toISOString().split('T')[0];
 
       const { data, error } = await supabase
@@ -94,19 +94,17 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
         .order('session_start_time', { ascending: false });
 
       if (error) {
-        console.error('Error getting active sessions:', error);
+        console.error('Error getting active device sessions:', error);
         throw error;
       }
 
-      const mapped = (data || []).map((s: any) => ({
+      const mapped: DeviceSession[] = (data || []).map((s: any) => ({
         session_id: s.session_id,
-        session_type: 'device',
         session_date: s.session_date,
         site_id: s.site_id,
         site_name: s.sites?.name || 'Unknown Site',
         program_id: s.program_id,
         program_name: s.pilot_programs?.name || 'Unknown Program',
-        company_id: s.company_id,
         company_name: s.companies?.name || '',
         status: s.status,
         started_at: s.session_start_time,
@@ -115,75 +113,43 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
         progress_percent: s.expected_wake_count > 0
           ? Math.round((s.completed_wake_count / s.expected_wake_count) * 1000) / 10
           : 0,
-        session_metadata: {
-          failed_wake_count: s.failed_wake_count,
-          extra_wake_count: s.extra_wake_count,
-          session_end_time: s.session_end_time,
-          locked_at: s.locked_at,
-        },
+        failed_wake_count: s.failed_wake_count || 0,
+        extra_wake_count: s.extra_wake_count || 0,
       }));
 
-      setHasUnclaimedSessions(false);
-      setActiveSessions(mapped as any);
+      setDeviceSessions(mapped);
     } catch (error) {
-      console.error('Error loading active sessions:', error);
-      setError('Failed to load active sessions');
+      console.error('Error loading device sessions:', error);
+      setLoadError('Failed to load active sessions');
     } finally {
-      setIsLoading(false);
       setIsRefreshing(false);
     }
   };
-  
-  // Handle claiming a session
-  const handleClaimSession = async (sessionId: string) => {
-    const success = await claimSession(sessionId);
-    
-    if (success) {
-      toast.success('Session claimed successfully');
-      // Navigate to the submission edit page
-      const session = activeSessions.find(s => s.session_id === sessionId);
-      if (session) {
-        navigate(`/programs/${session.program_id}/sites/${session.site_id}/submissions/${session.submission_id}/edit`);
-        onClose();
-      }
-    } else {
-      toast.error('Failed to claim session');
-    }
-  };
 
-  // Handle program selection
   const handleProgramSelect = (programId: string) => {
     setDrawerProgramId(programId);
-    setDrawerSiteId(null); // Reset site selection when program changes
+    setDrawerSiteId(null);
   };
 
-  // Handle site selection
   const handleSiteSelect = (siteId: string) => {
     setDrawerSiteId(siteId);
   };
 
-  // Function to create a new session
   const handleCreateNewSession = () => {
     const targetProgramId = drawerProgramId || selectedProgram?.program_id;
     const targetSiteId = drawerSiteId || selectedSite?.site_id;
-    
+
     if (targetProgramId && targetSiteId) {
       navigate(`/programs/${targetProgramId}/sites/${targetSiteId}/new-submission`);
       onClose();
     } else {
-      // If no program and site are selected, prompt the user to select them
       setIsSelectionMode(true);
     }
   };
 
-  // Toggle selection mode
   const toggleSelectionMode = () => {
     setIsSelectionMode(!isSelectionMode);
-    // Selection mode logic (no tabs to switch)
   };
-
-  // No filtering needed - all device sessions shown
-  const filteredSessions = activeSessions;
 
   return (
     <div className={`fixed inset-0 z-50 ${isOpen ? 'block' : 'hidden'}`}>
@@ -330,42 +296,48 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
           ) : (
             /* Sessions View */
             <>
-              {/* Tabs */}
               <div className="flex border-b border-gray-200">
                 <button
                   className="flex-1 py-2 px-4 text-center font-medium text-primary-600 border-b-2 border-primary-600"
                 >
                   <div className="flex items-center justify-center gap-1">
-                    <span>Device Sessions 🤖</span>
-                    {filteredSessions.length > 0 && (
+                    <span>Device Sessions</span>
+                    {deviceSessions.length > 0 && (
                       <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold text-primary-600 bg-primary-100 rounded-full">
-                        {filteredSessions.length}
+                        {deviceSessions.length}
                       </span>
                     )}
                   </div>
                 </button>
               </div>
-              
-              {/* Content */}
+
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="mb-4 flex justify-between items-center">
                   <p className="text-sm text-gray-600">
-                    {filteredSessions.length === 0
-                      ? 'You have no active device sessions'
-                      : `${filteredSessions.length} active device session${filteredSessions.length !== 1 ? 's' : ''}`}
+                    {isRefreshing
+                      ? 'Loading sessions...'
+                      : deviceSessions.length === 0
+                        ? 'No active device sessions'
+                        : `${deviceSessions.length} active session${deviceSessions.length !== 1 ? 's' : ''}`}
                   </p>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={loadActiveSessions}
+                    onClick={loadDeviceSessions}
                     isLoading={isRefreshing}
                     disabled={isRefreshing}
                   >
                     Refresh
                   </Button>
                 </div>
-                
-                {filteredSessions.length === 0 ? (
+
+                {loadError && (
+                  <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                    {loadError}
+                  </div>
+                )}
+
+                {!isRefreshing && deviceSessions.length === 0 && !loadError ? (
                   <div className="text-center py-12 bg-gray-50 rounded-lg">
                     <FileText size={48} className="mx-auto text-gray-300 mb-3" />
                     <p className="text-gray-600 font-medium mb-2">
@@ -376,128 +348,61 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {filteredSessions.map((session) => (
+                  <div className="space-y-3">
+                    {deviceSessions.map((session) => (
                       <div
                         key={session.session_id}
-                        className={`p-2 border rounded-md ${
-                          session.session_metadata?.is_unclaimed
-                            ? 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                            : currentSessionId === session.session_id
-                              ? 'bg-primary-50 border-primary-200'
-                              : 'hover:bg-gray-50 border-gray-200'
-                        } transition-colors`}
+                        className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2 min-w-0">
                             <div className="font-medium text-sm truncate">{session.site_name}</div>
-                            {/* Session Type Badge */}
-                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                              session.session_type === 'device'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-green-100 text-green-800'
-                            }`}>
-                              {session.session_type === 'device' ? '🤖 Device' : '👤 Human'}
-                            </span>
                           </div>
-                          <div className="flex items-center space-x-1">
-                            {session.global_submission_id && (
-                              <span className="inline-flex items-center text-xs text-primary-600 mr-1">
-                                <Hash size={10} className="mr-0.5" />
-                                {session.global_submission_id}
-                              </span>
-                            )}
-                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                              session.status === 'Active' || session.status === 'Working'
-                                ? 'bg-secondary-100 text-secondary-800'
-                                : session.status === 'Opened' || session.status === 'in_progress'
-                                ? 'bg-primary-100 text-primary-800'
-                                : session.status === 'Escalated'
-                                ? 'bg-warning-100 text-warning-800'
-                                : session.status === 'Shared'
-                                ? 'bg-accent-100 text-accent-800'
-                                : 'bg-gray-100 text-gray-600'
-                            }`}>
-                              {session.status}
-                            </span>
-                          </div>
+                          <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-primary-100 text-primary-800">
+                            {session.status === 'in_progress' ? 'In Progress' : session.status}
+                          </span>
                         </div>
-                        
-                        {/* Progress bar */}
-                        <div className="flex items-center gap-2">
+
+                        <p className="text-xs text-gray-500 mb-2 truncate">{session.program_name}</p>
+
+                        <div className="flex items-center gap-2 mb-1.5">
                           <div className="w-full bg-gray-200 rounded-full h-1.5">
                             <div
-                              className="bg-primary-600 h-1.5 rounded-full"
+                              className="bg-primary-600 h-1.5 rounded-full transition-all"
                               style={{ width: `${Math.min(session.progress_percent || 0, 100)}%` }}
-                            ></div>
+                            />
                           </div>
-                          <span className="text-xs whitespace-nowrap">
+                          <span className="text-xs text-gray-600 whitespace-nowrap font-medium">
                             {Math.min(Math.round(session.progress_percent || 0), 100)}%
                           </span>
                         </div>
 
-                        {/* Session info */}
-                        <div className="flex items-center mt-1 text-xs text-gray-500">
-                          <span>{session.completed_items || 0} / {session.expected_items || 0} items</span>
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                          <span>{session.completed_items} / {session.expected_items} wakes</span>
+                          <span>Started {formatDistanceToNow(new Date(session.started_at), { addSuffix: true })}</span>
                         </div>
-                        
-                        {/* Team Section - Always show the Users icon, but only show names if there are shared users */}
-                        {session.session_type === 'human' && session.session_metadata?.escalated_to_user_ids && session.session_metadata.escalated_to_user_ids.length > 0 && (
-                          <div className="flex items-center mt-1 text-xs text-gray-500">
-                            <Users size={12} className="flex-shrink-0 mr-1" />
-                            <span className="truncate">
-                              {session.session_metadata.escalated_to_user_ids.map((userId: string) => {
-                                  const userDetails = sharedUsersDetails.get(userId);
-                                  return userDetails?.full_name?.split(' ')[0] || userDetails?.email?.split('@')[0] || 'User';
-                                }).join(', ')}
-                            </span>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-xs text-gray-500">
-                            {session.session_metadata?.is_unclaimed
-                              ? `Created ${formatDistanceToNow(new Date(session.started_at), { addSuffix: true })}`
-                              : `Started ${formatDistanceToNow(new Date(session.started_at), { addSuffix: true })}`}
-                          </span>
-                          {session.session_type === 'human' && session.session_metadata?.is_unclaimed ? (
-                            <Button
-                              variant="accent"
-                              size="sm"
-                              onClick={() => {
-                                handleClaimSession(session.session_id);
-                              }}
-                              className="!py-1 !px-2 text-xs"
-                              icon={<Hand size={12} className="mr-1" />}
-                            >
-                              Claim
-                            </Button>
-                          ) : session.session_type === 'device' ? (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={() => {
-                                // Navigate to Site Device Session Detail page
-                                navigate(`/programs/${session.program_id}/sites/${session.site_id}/device-sessions/${session.session_id}`);
-                                onClose();
-                              }}
-                              className="!py-1 !px-2 text-xs"
-                            >
-                              View
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={() => {
-                                navigate(`/programs/${session.program_id}/sites/${session.site_id}/submissions/${session.session_metadata?.device_submission_id || 'unknown'}/edit`);
-                                onClose();
-                              }}
-                              className="!py-1 !px-2 text-xs"
-                            >
-                              Resume
-                            </Button>
-                          )}
+
+                        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                          <button
+                            onClick={() => {
+                              navigate(`/programs/${session.program_id}/sites/${session.site_id}`);
+                              onClose();
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-primary-700 hover:bg-primary-50 rounded transition-colors"
+                          >
+                            <MapPin size={12} />
+                            <span>View Site</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              navigate(`/programs/${session.program_id}/sites/${session.site_id}/device-sessions/${session.session_id}`);
+                              onClose();
+                            }}
+                            className="flex items-center gap-1 ml-auto px-3 py-1 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded transition-colors"
+                          >
+                            <Eye size={12} />
+                            <span>View Session</span>
+                          </button>
                         </div>
                       </div>
                     ))}
