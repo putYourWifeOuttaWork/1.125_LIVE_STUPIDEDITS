@@ -70,24 +70,21 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
       const todayStr = new Date().toISOString().split('T')[0];
 
       const { data, error } = await supabase
-        .from('site_device_sessions')
+        .from('vw_site_day_sessions')
         .select(`
           session_id,
           session_date,
           expected_wake_count,
           completed_wake_count,
+          failed_wake_count,
+          extra_wake_count,
           status,
           site_id,
           program_id,
-          company_id,
           session_start_time,
-          failed_wake_count,
-          extra_wake_count,
-          session_end_time,
-          locked_at,
-          sites!inner(name),
-          pilot_programs!inner(name),
-          companies!inner(name)
+          site_name,
+          program_name,
+          company_name
         `)
         .in('status', ['in_progress'])
         .gte('session_date', todayStr)
@@ -102,10 +99,10 @@ const ActiveSessionsDrawer: React.FC<ActiveSessionsDrawerProps> = ({ isOpen, onC
         session_id: s.session_id,
         session_date: s.session_date,
         site_id: s.site_id,
-        site_name: s.sites?.name || 'Unknown Site',
+        site_name: s.site_name || 'Unknown Site',
         program_id: s.program_id,
-        program_name: s.pilot_programs?.name || 'Unknown Program',
-        company_name: s.companies?.name || '',
+        program_name: s.program_name || 'Unknown Program',
+        company_name: s.company_name || '',
         status: s.status,
         started_at: s.session_start_time,
         expected_items: s.expected_wake_count || 0,
