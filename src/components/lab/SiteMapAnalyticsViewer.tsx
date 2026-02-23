@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
-import { MapPin, Camera, Battery, Clock, Thermometer, Droplets, AlertTriangle, Wind, Gauge } from 'lucide-react';
+import { MapPin, Camera, Battery, Clock, Thermometer, Droplets, AlertTriangle, Wind, Gauge, ShieldAlert } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import { formatDistanceToNow } from 'date-fns';
 import { getMGIColor, getVelocityColor, getVelocityPulseRadius, isCriticalVelocity } from '../../utils/mgiUtils';
@@ -55,6 +55,7 @@ function getDeviceValue(device: DevicePosition, mode: ZoneMode): number | null {
     case 'battery': return device.battery_level;
     case 'pressure': return device.pressure;
     case 'gas_resistance': return device.gas_resistance;
+    case 'mold_risk': return device.mgi_score;
     default: return null;
   }
 }
@@ -66,6 +67,7 @@ function getZoneModeIcon(mode: ZoneMode, size: number) {
     case 'battery': return <Battery size={size} />;
     case 'pressure': return <Gauge size={size} />;
     case 'gas_resistance': return <Wind size={size} />;
+    case 'mold_risk': return <ShieldAlert size={size} />;
     default: return null;
   }
 }
@@ -77,6 +79,7 @@ function getZoneModeLabel(mode: ZoneMode): string {
     case 'battery': return 'Battery';
     case 'pressure': return 'Air Pressure';
     case 'gas_resistance': return 'Gas Resistance';
+    case 'mold_risk': return 'Mold Risk Index';
     default: return '';
   }
 }
@@ -439,6 +442,7 @@ export default function SiteMapAnalyticsViewer({
                     <option value="battery">Battery</option>
                     <option value="pressure">Air Pressure</option>
                     <option value="gas_resistance">Gas Resistance</option>
+                    <option value="mold_risk">Mold Risk Index</option>
                   </select>
                 </div>
               )}
