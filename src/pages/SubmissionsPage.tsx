@@ -94,7 +94,7 @@ const SubmissionsPage = () => {
         ? JSON.parse(currentSnapshot.site_state)
         : currentSnapshot.site_state;
 
-      const currentDevices = currentState.devices || [];
+      const currentDevices = Array.isArray(currentState) ? currentState : (currentState?.devices || []);
 
       // Get next snapshot for interpolation
       const nextSnapshot = snapshots[currentSnapshotIndex + 1];
@@ -103,7 +103,7 @@ const SubmissionsPage = () => {
             ? JSON.parse(nextSnapshot.site_state)
             : nextSnapshot.site_state)
         : null;
-      const nextDevices = nextState?.devices || [];
+      const nextDevices = nextState ? (Array.isArray(nextState) ? nextState : (nextState?.devices || [])) : [];
 
       // Create a map of next device states by device_id
       const nextDeviceMap = new Map(

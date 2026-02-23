@@ -45,10 +45,10 @@ export function useSiteSnapshots(
 
       let processedSnapshots = (data || []) as SessionWakeSnapshot[];
 
-      // Apply aggregation if requested
+      processedSnapshots = applyLOCF(processedSnapshots);
+
       if (aggregated && processedSnapshots.length > 0) {
         processedSnapshots = aggregateSnapshotsByDay(processedSnapshots, snapshotsPerDay);
-        console.log(`[useSiteSnapshots] Aggregated ${data?.length || 0} snapshots to ${processedSnapshots.length} (${snapshotsPerDay} per day)`);
       }
 
       setSnapshots(processedSnapshots);
@@ -60,6 +60,61 @@ export function useSiteSnapshots(
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyLOCF = (allSnapshots: SessionWakeSnapshot[]): SessionWakeSnapshot[] => {
+    if (allSnapshots.length === 0) return [];
+
+    const deviceStateCache = new Map<string, any>();
+
+    const carryForward = (newVal: any, cachedVal: any) =>
+      newVal !== null && newVal !== undefined ? newVal : cachedVal;
+
+    return allSnapshots.map((snapshot) => {
+      try {
+        const raw = typeof snapshot.site_state === 'string'
+          ? JSON.parse(snapshot.site_state)
+          : snapshot.site_state;
+
+        const rawDevices: any[] = Array.isArray(raw) ? raw : (raw?.devices || []);
+
+        rawDevices.forEach((device: any) => {
+          const id = device.device_id;
+          const cached = deviceStateCache.get(id) || {};
+          const pos = device.position;
+          const hasPos = pos && pos.x != null && pos.y != null;
+
+          deviceStateCache.set(id, {
+            device_id: id,
+            device_code: carryForward(device.device_code, cached.device_code),
+            device_name: carryForward(device.device_name, cached.device_name),
+            position: cached.position || (hasPos ? pos : null),
+            status: carryForward(device.status, cached.status) || 'active',
+            last_seen_at: device.last_seen_at || cached.last_seen_at,
+            battery_health_percent: carryForward(device.battery_health_percent, cached.battery_health_percent),
+            telemetry: {
+              latest_temperature: carryForward(device.telemetry?.temperature, cached.telemetry?.latest_temperature),
+              latest_humidity: carryForward(device.telemetry?.humidity, cached.telemetry?.latest_humidity),
+              latest_pressure: carryForward(device.telemetry?.pressure, cached.telemetry?.latest_pressure),
+            },
+            mgi_state: {
+              latest_mgi_score: carryForward(device.mgi_state?.current_mgi, cached.mgi_state?.latest_mgi_score),
+              mgi_velocity: carryForward(device.mgi_state?.mgi_velocity?.per_hour ?? device.mgi_state?.mgi_velocity, cached.mgi_state?.mgi_velocity),
+            },
+          });
+        });
+
+        const completeDevices = Array.from(deviceStateCache.values())
+          .filter((d: any) => d.position && d.position.x != null && d.position.y != null);
+
+        return {
+          ...snapshot,
+          site_state: { devices: completeDevices },
+        } as SessionWakeSnapshot;
+      } catch {
+        return snapshot;
+      }
+    });
   };
 
   const aggregateSnapshotsByDay = (
