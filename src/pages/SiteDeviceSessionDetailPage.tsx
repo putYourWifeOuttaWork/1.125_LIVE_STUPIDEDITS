@@ -36,7 +36,7 @@ import { parseDateOnly } from '../utils/timeFormatters';
 import { SiteDeviceSession } from '../hooks/useSiteDeviceSessions';
 import { useUserRole } from '../hooks/useUserRole';
 import { useSessionSnapshots } from '../hooks/useSessionSnapshots';
-import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
+import SiteMapAnalyticsViewer, { ZoneMode } from '../components/lab/SiteMapAnalyticsViewer';
 import { TimelineController } from '../components/lab/TimelineController';
 import ZoneAnalytics from '../components/lab/ZoneAnalytics';
 import { SessionWakeSnapshot } from '../lib/types';
@@ -99,7 +99,7 @@ const SiteDeviceSessionDetailPage = () => {
   const [siteData, setSiteData] = useState<any>(null);
   const [currentSnapshotIndex, setCurrentSnapshotIndex] = useState(0);
   const [transitionProgress, setTransitionProgress] = useState(1);
-  const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
+  const [zoneMode, setZoneMode] = useState<ZoneMode>('temperature');
   const [sessionAlerts, setSessionAlerts] = useState<any[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -412,6 +412,7 @@ const SiteDeviceSessionDetailPage = () => {
             latest_temperature: carryForward(device.telemetry.temperature, cachedState.telemetry?.latest_temperature),
             latest_humidity: carryForward(device.telemetry.humidity, cachedState.telemetry?.latest_humidity),
             latest_pressure: carryForward(device.telemetry.pressure, cachedState.telemetry?.latest_pressure),
+            latest_gas_resistance: carryForward(device.telemetry.gas_resistance, cachedState.telemetry?.latest_gas_resistance),
           } : cachedState.telemetry || {};
           const newMGI = hasValidMGI(device.mgi_state) ? {
             latest_mgi_score: carryForward(device.mgi_state.current_mgi, cachedState.mgi_state?.latest_mgi_score),
@@ -517,6 +518,14 @@ const SiteDeviceSessionDetailPage = () => {
           ? lerp(d.mgi_state?.latest_mgi_score, nextDevice.mgi_state?.latest_mgi_score, transitionProgress)
           : d.mgi_state?.latest_mgi_score ?? null;
 
+        const pressure = transitionProgress < 1 && nextDevice
+          ? lerp(d.telemetry?.latest_pressure, nextDevice.telemetry?.latest_pressure, transitionProgress)
+          : d.telemetry?.latest_pressure ?? null;
+
+        const gas_resistance = transitionProgress < 1 && nextDevice
+          ? lerp(d.telemetry?.latest_gas_resistance, nextDevice.telemetry?.latest_gas_resistance, transitionProgress)
+          : d.telemetry?.latest_gas_resistance ?? null;
+
         const battery_level = transitionProgress < 1 && nextDevice
           ? lerp(d.battery_health_percent, nextDevice.battery_health_percent, transitionProgress)
           : d.battery_health_percent ?? null;
@@ -532,6 +541,8 @@ const SiteDeviceSessionDetailPage = () => {
           last_seen: d.last_seen_at || null,
           temperature,
           humidity,
+          pressure,
+          gas_resistance,
           mgi_score,
           mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
         };

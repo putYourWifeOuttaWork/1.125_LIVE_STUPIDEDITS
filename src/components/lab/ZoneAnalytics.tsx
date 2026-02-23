@@ -1,28 +1,21 @@
-import { Thermometer, Droplets, Battery, TrendingUp, TrendingDown } from 'lucide-react';
-
-interface DevicePosition {
-  device_id: string;
-  device_code: string;
-  device_name: string;
-  x: number;
-  y: number;
-  battery_level: number | null;
-  status: string;
-  last_seen: string | null;
-  temperature: number | null;
-  humidity: number | null;
-}
+import { Thermometer, Droplets, Battery, TrendingUp, TrendingDown, Wind, Gauge } from 'lucide-react';
+import type { ZoneMode } from './SiteMapAnalyticsViewer';
+import type { DevicePosition } from './SiteMapAnalyticsViewer';
 
 interface ZoneAnalyticsProps {
   devices: DevicePosition[];
-  zoneMode: 'temperature' | 'humidity' | 'battery';
+  zoneMode: ZoneMode;
 }
 
 export default function ZoneAnalytics({ devices, zoneMode }: ZoneAnalyticsProps) {
+  if (zoneMode === 'none') return null;
+
   const devicesWithData = devices.filter(d => {
     if (zoneMode === 'temperature') return d.temperature !== null;
     if (zoneMode === 'humidity') return d.humidity !== null;
     if (zoneMode === 'battery') return d.battery_level !== null;
+    if (zoneMode === 'pressure') return d.pressure !== null;
+    if (zoneMode === 'gas_resistance') return d.gas_resistance !== null;
     return false;
   });
 
@@ -30,11 +23,15 @@ export default function ZoneAnalytics({ devices, zoneMode }: ZoneAnalyticsProps)
     return null;
   }
 
-  const values = devicesWithData.map(d => {
+  const getValue = (d: DevicePosition): number => {
     if (zoneMode === 'temperature') return d.temperature!;
     if (zoneMode === 'humidity') return d.humidity!;
+    if (zoneMode === 'pressure') return d.pressure!;
+    if (zoneMode === 'gas_resistance') return d.gas_resistance!;
     return d.battery_level!;
-  });
+  };
+
+  const values = devicesWithData.map(getValue);
 
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -42,35 +39,44 @@ export default function ZoneAnalytics({ devices, zoneMode }: ZoneAnalyticsProps)
   const variance = values.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / values.length;
   const stdDev = Math.sqrt(variance);
 
-  // Find hotspot and coldspot
-  const hotspot = devicesWithData.reduce((prev, curr) => {
-    const prevVal = zoneMode === 'temperature' ? prev.temperature! : zoneMode === 'humidity' ? prev.humidity! : prev.battery_level!;
-    const currVal = zoneMode === 'temperature' ? curr.temperature! : zoneMode === 'humidity' ? curr.humidity! : curr.battery_level!;
-    return currVal > prevVal ? curr : prev;
-  });
+  const hotspot = devicesWithData.reduce((prev, curr) =>
+    getValue(curr) > getValue(prev) ? curr : prev
+  );
 
-  const coldspot = devicesWithData.reduce((prev, curr) => {
-    const prevVal = zoneMode === 'temperature' ? prev.temperature! : zoneMode === 'humidity' ? prev.humidity! : prev.battery_level!;
-    const currVal = zoneMode === 'temperature' ? curr.temperature! : zoneMode === 'humidity' ? curr.humidity! : curr.battery_level!;
-    return currVal < prevVal ? curr : prev;
-  });
+  const coldspot = devicesWithData.reduce((prev, curr) =>
+    getValue(curr) < getValue(prev) ? curr : prev
+  );
 
   const getIcon = () => {
     if (zoneMode === 'temperature') return <Thermometer size={16} />;
     if (zoneMode === 'humidity') return <Droplets size={16} />;
+    if (zoneMode === 'pressure') return <Gauge size={16} />;
+    if (zoneMode === 'gas_resistance') return <Wind size={16} />;
     return <Battery size={16} />;
   };
 
   const getUnit = () => {
-    if (zoneMode === 'temperature') return '°F';
+    if (zoneMode === 'temperature') return '\u00B0F';
     if (zoneMode === 'humidity' || zoneMode === 'battery') return '%';
+    if (zoneMode === 'pressure') return ' hPa';
+    if (zoneMode === 'gas_resistance') return ' k\u2126';
     return '';
   };
 
   const getLabel = () => {
     if (zoneMode === 'temperature') return 'Temperature';
     if (zoneMode === 'humidity') return 'Humidity';
+    if (zoneMode === 'pressure') return 'Air Pressure';
+    if (zoneMode === 'gas_resistance') return 'Gas Resistance';
     return 'Battery';
+  };
+
+  const formatValue = (val: number) => {
+    if (zoneMode === 'gas_resistance') return (val / 1000).toFixed(1);
+    if (zoneMode === 'pressure') return val.toFixed(0);
+    if (zoneMode === 'temperature') return val.toFixed(1);
+    if (zoneMode === 'humidity') return val.toFixed(0);
+    return val.toFixed(0);
   };
 
   return (
@@ -84,23 +90,23 @@ export default function ZoneAnalytics({ devices, zoneMode }: ZoneAnalyticsProps)
         <div>
           <div className="text-xs text-gray-500 mb-1">Average</div>
           <div className="text-lg font-bold text-gray-900">
-            {avg.toFixed(1)}{getUnit()}
+            {formatValue(avg)}{getUnit()}
           </div>
         </div>
         <div>
           <div className="text-xs text-gray-500 mb-1">Range</div>
           <div className="text-lg font-bold text-gray-900">
-            {min.toFixed(1)} - {max.toFixed(1)}{getUnit()}
+            {formatValue(min)} - {formatValue(max)}{getUnit()}
           </div>
         </div>
         <div>
           <div className="text-xs text-gray-500 mb-1">Std Dev</div>
           <div className="text-lg font-bold text-gray-900">
-            {stdDev.toFixed(2)}{getUnit()}
+            {formatValue(stdDev)}{getUnit()}
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-500 mb-1">Zones</div>
+          <div className="text-xs text-gray-500 mb-1">Sensors</div>
           <div className="text-lg font-bold text-gray-900">
             {devicesWithData.length}
           </div>
@@ -112,15 +118,12 @@ export default function ZoneAnalytics({ devices, zoneMode }: ZoneAnalyticsProps)
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp size={14} className="text-red-600" />
             <span className="text-xs font-medium text-red-900">
-              {zoneMode === 'temperature' ? 'Hottest' : zoneMode === 'humidity' ? 'Most Humid' : 'Highest Battery'}
+              {zoneMode === 'temperature' ? 'Hottest' : zoneMode === 'humidity' ? 'Most Humid' : zoneMode === 'pressure' ? 'Highest Pressure' : zoneMode === 'gas_resistance' ? 'Highest VOC' : 'Highest Battery'}
             </span>
           </div>
           <div className="text-sm font-semibold text-gray-900">{hotspot.device_code}</div>
           <div className="text-lg font-bold text-red-600">
-            {zoneMode === 'temperature' && hotspot.temperature?.toFixed(1)}
-            {zoneMode === 'humidity' && hotspot.humidity?.toFixed(0)}
-            {zoneMode === 'battery' && hotspot.battery_level}
-            {getUnit()}
+            {formatValue(getValue(hotspot))}{getUnit()}
           </div>
         </div>
 
@@ -128,15 +131,12 @@ export default function ZoneAnalytics({ devices, zoneMode }: ZoneAnalyticsProps)
           <div className="flex items-center gap-2 mb-1">
             <TrendingDown size={14} className="text-blue-600" />
             <span className="text-xs font-medium text-blue-900">
-              {zoneMode === 'temperature' ? 'Coolest' : zoneMode === 'humidity' ? 'Least Humid' : 'Lowest Battery'}
+              {zoneMode === 'temperature' ? 'Coolest' : zoneMode === 'humidity' ? 'Least Humid' : zoneMode === 'pressure' ? 'Lowest Pressure' : zoneMode === 'gas_resistance' ? 'Lowest VOC' : 'Lowest Battery'}
             </span>
           </div>
           <div className="text-sm font-semibold text-gray-900">{coldspot.device_code}</div>
           <div className="text-lg font-bold text-blue-600">
-            {zoneMode === 'temperature' && coldspot.temperature?.toFixed(1)}
-            {zoneMode === 'humidity' && coldspot.humidity?.toFixed(0)}
-            {zoneMode === 'battery' && coldspot.battery_level}
-            {getUnit()}
+            {formatValue(getValue(coldspot))}{getUnit()}
           </div>
         </div>
       </div>

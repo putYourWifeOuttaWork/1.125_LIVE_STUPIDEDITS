@@ -23,7 +23,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import SubmissionCardSkeleton from '../components/submissions/SubmissionCardSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import { debounce } from '../utils/helpers';
-import SiteMapAnalyticsViewer from '../components/lab/SiteMapAnalyticsViewer';
+import SiteMapAnalyticsViewer, { ZoneMode } from '../components/lab/SiteMapAnalyticsViewer';
 import ZoneAnalytics from '../components/lab/ZoneAnalytics';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import { TimelineController } from '../components/lab/TimelineController';
@@ -57,7 +57,7 @@ const SubmissionsPage = () => {
   const queryClient = useQueryClient();
   const [siteDevices, setSiteDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
-  const [zoneMode, setZoneMode] = useState<'none' | 'temperature' | 'humidity' | 'battery'>('temperature');
+  const [zoneMode, setZoneMode] = useState<ZoneMode>('temperature');
   const [currentSnapshotIndex, setCurrentSnapshotIndex] = useState(0);
   const [timelineMode, setTimelineMode] = useState<'live' | 'timeline'>('live');
   const [transitionProgress, setTransitionProgress] = useState(1); // 0 = start of transition, 1 = end
@@ -131,6 +131,14 @@ const SubmissionsPage = () => {
             ? lerp(d.mgi_state?.latest_mgi_score, nextDevice.mgi_state?.latest_mgi_score, transitionProgress)
             : d.mgi_state?.latest_mgi_score ?? null;
 
+          const pressure = transitionProgress < 1 && nextDevice
+            ? lerp(d.telemetry?.latest_pressure, nextDevice.telemetry?.latest_pressure, transitionProgress)
+            : d.telemetry?.latest_pressure ?? null;
+
+          const gas_resistance = transitionProgress < 1 && nextDevice
+            ? lerp(d.telemetry?.latest_gas_resistance, nextDevice.telemetry?.latest_gas_resistance, transitionProgress)
+            : d.telemetry?.latest_gas_resistance ?? null;
+
           const battery_level = transitionProgress < 1 && nextDevice
             ? lerp(d.battery_health_percent, nextDevice.battery_health_percent, transitionProgress)
             : d.battery_health_percent ?? null;
@@ -146,6 +154,8 @@ const SubmissionsPage = () => {
             last_seen: d.last_seen_at || null,
             temperature,
             humidity,
+            pressure,
+            gas_resistance,
             mgi_score,
             mgi_velocity: d.mgi_state?.mgi_velocity ?? null,
           };
@@ -238,7 +248,7 @@ const SubmissionsPage = () => {
         const deviceIds = (data || []).map(d => d.device_id);
         const { data: telemetryData } = await supabase
           .from('device_telemetry')
-          .select('device_id, temperature, humidity, captured_at')
+          .select('device_id, temperature, humidity, pressure, gas_resistance, captured_at')
           .in('device_id', deviceIds)
           .order('captured_at', { ascending: false });
 
@@ -248,7 +258,9 @@ const SubmissionsPage = () => {
           if (!telemetryMap.has(t.device_id)) {
             telemetryMap.set(t.device_id, {
               temperature: t.temperature,
-              humidity: t.humidity
+              humidity: t.humidity,
+              pressure: t.pressure,
+              gas_resistance: t.gas_resistance,
             });
           }
         });
@@ -267,6 +279,8 @@ const SubmissionsPage = () => {
             last_seen: device.last_seen_at,
             temperature: telemetry?.temperature || null,
             humidity: telemetry?.humidity || null,
+            pressure: telemetry?.pressure || null,
+            gas_resistance: telemetry?.gas_resistance || null,
             mgi_score: device.latest_mgi_score,
             mgi_velocity: device.latest_mgi_velocity,
           };

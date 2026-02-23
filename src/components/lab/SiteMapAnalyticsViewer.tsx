@@ -1,14 +1,21 @@
-import { useRef, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { MapPin, Camera, Battery, Clock, Thermometer, Droplets, AlertTriangle } from 'lucide-react';
+import { useRef, useEffect, useState, useMemo } from 'react';
+import { MapPin, Camera, Battery, Clock, Thermometer, Droplets, AlertTriangle, Wind, Gauge } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../common/Card';
 import { formatDistanceToNow } from 'date-fns';
-import { Delaunay } from 'd3-delaunay';
-import { scaleSequential } from 'd3-scale';
-import { interpolateRdYlBu, interpolateYlGnBu, interpolateRdYlGn } from 'd3-scale-chromatic';
 import { getMGIColor, getVelocityColor, getVelocityPulseRadius, isCriticalVelocity } from '../../utils/mgiUtils';
+import {
+  type ContourZoneMode,
+  type SensorPoint,
+  buildIDWGrid,
+  buildConfidenceGrid,
+  generateContourBands,
+  renderContourToCanvas,
+  getValueLabel,
+  getModeDomain,
+  buildLegendStops,
+} from '../../utils/idwContour';
 
-interface DevicePosition {
+export interface DevicePosition {
   device_id: string;
   device_code: string;
   device_name: string;
@@ -19,11 +26,13 @@ interface DevicePosition {
   last_seen: string | null;
   temperature: number | null;
   humidity: number | null;
+  pressure: number | null;
+  gas_resistance: number | null;
   mgi_score: number | null;
   mgi_velocity: number | null;
 }
 
-type ZoneMode = 'none' | 'temperature' | 'humidity' | 'battery';
+export type ZoneMode = ContourZoneMode;
 
 interface SiteMapAnalyticsViewerProps {
   siteLength: number;
@@ -37,6 +46,39 @@ interface SiteMapAnalyticsViewerProps {
   height?: number;
   zoneMode?: ZoneMode;
   onZoneModeChange?: (mode: ZoneMode) => void;
+}
+
+function getDeviceValue(device: DevicePosition, mode: ZoneMode): number | null {
+  switch (mode) {
+    case 'temperature': return device.temperature;
+    case 'humidity': return device.humidity;
+    case 'battery': return device.battery_level;
+    case 'pressure': return device.pressure;
+    case 'gas_resistance': return device.gas_resistance;
+    default: return null;
+  }
+}
+
+function getZoneModeIcon(mode: ZoneMode, size: number) {
+  switch (mode) {
+    case 'temperature': return <Thermometer size={size} />;
+    case 'humidity': return <Droplets size={size} />;
+    case 'battery': return <Battery size={size} />;
+    case 'pressure': return <Gauge size={size} />;
+    case 'gas_resistance': return <Wind size={size} />;
+    default: return null;
+  }
+}
+
+function getZoneModeLabel(mode: ZoneMode): string {
+  switch (mode) {
+    case 'temperature': return 'Temperature';
+    case 'humidity': return 'Humidity';
+    case 'battery': return 'Battery';
+    case 'pressure': return 'Air Pressure';
+    case 'gas_resistance': return 'Gas Resistance';
+    default: return '';
+  }
 }
 
 export default function SiteMapAnalyticsViewer({
@@ -56,20 +98,17 @@ export default function SiteMapAnalyticsViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredDevice, setHoveredDevice] = useState<string | null>(null);
   const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
-  const [selectedDevice, setSelectedDevice] = useState<DevicePosition | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: height || 400 });
   const [internalZoneMode, setInternalZoneMode] = useState<ZoneMode>('temperature');
   const [pulseFrame, setPulseFrame] = useState(0);
-  const navigate = useNavigate();
 
   const zoneMode = externalZoneMode !== undefined ? externalZoneMode : internalZoneMode;
   const setZoneMode = onZoneModeChange || setInternalZoneMode;
 
-  // Animation loop for pulse effect
   useEffect(() => {
     let animationId: number;
     const animate = () => {
-      setPulseFrame(prev => (prev + 1) % 60); // 60 frames cycle
+      setPulseFrame(prev => (prev + 1) % 60);
       animationId = requestAnimationFrame(animate);
     };
     animationId = requestAnimationFrame(animate);
@@ -78,7 +117,6 @@ export default function SiteMapAnalyticsViewer({
 
   useEffect(() => {
     if (!containerRef.current) return;
-
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width } = entry.contentRect;
@@ -87,48 +125,67 @@ export default function SiteMapAnalyticsViewer({
         setCanvasSize({ width, height: calculatedHeight });
       }
     });
-
     resizeObserver.observe(containerRef.current);
     return () => resizeObserver.disconnect();
   }, [siteLength, siteWidth, height]);
 
+  const contourData = useMemo(() => {
+    if (zoneMode === 'none' || devices.length < 1) return null;
+
+    const sensors: SensorPoint[] = [];
+    for (const device of devices) {
+      const value = getDeviceValue(device, zoneMode);
+      if (value !== null) {
+        sensors.push({ x: device.x, y: device.y, value });
+      }
+    }
+    if (sensors.length === 0) return null;
+
+    const maxDiagonal = Math.sqrt(siteLength * siteLength + siteWidth * siteWidth);
+    const maxRadius = Math.min(maxDiagonal * 0.6, 80);
+
+    if (sensors.length === 1) {
+      return { sensors, maxRadius, type: 'single' as const };
+    }
+
+    const grid = buildIDWGrid(siteLength, siteWidth, sensors);
+    const confidenceGrid = buildConfidenceGrid(siteLength, siteWidth, sensors, 1, maxRadius);
+    return { sensors, grid, confidenceGrid, maxRadius, type: 'multi' as const };
+  }, [devices, zoneMode, siteLength, siteWidth]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Voronoi zones if enabled and we have enough devices
-    if (zoneMode !== 'none' && devices.length >= 2) {
-      drawVoronoiZones(ctx, canvas, zoneMode);
-    } else {
-      // Background
-      ctx.fillStyle = '#f9fafb';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#f9fafb';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (contourData && contourData.type === 'multi') {
+      const bands = generateContourBands(contourData.grid, zoneMode, canvas.width, canvas.height);
+      renderContourToCanvas(ctx, canvas, bands, contourData.confidenceGrid, contourData.grid.cols, contourData.grid.rows);
+    } else if (contourData && contourData.type === 'single') {
+      drawSingleDeviceGradient(ctx, canvas, contourData.sensors[0]);
     }
 
-    // Border
     ctx.strokeStyle = '#e5e7eb';
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, canvas.width, canvas.height);
 
-    // Grid (lighter when zones are shown)
-    ctx.strokeStyle = zoneMode !== 'none' ? 'rgba(229, 231, 235, 0.3)' : '#e5e7eb';
+    const gridOpacity = zoneMode !== 'none' && contourData ? 0.15 : 1;
+    ctx.strokeStyle = `rgba(229, 231, 235, ${gridOpacity})`;
     ctx.lineWidth = 0.5;
-    const gridSize = 1;
-    const gridSpacingX = (canvas.width / siteLength) * gridSize;
-    const gridSpacingY = (canvas.height / siteWidth) * gridSize;
-
+    const gridSpacingX = (canvas.width / siteLength);
+    const gridSpacingY = (canvas.height / siteWidth);
     for (let x = gridSpacingX; x < canvas.width; x += gridSpacingX) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, canvas.height);
       ctx.stroke();
     }
-
     for (let y = gridSpacingY; y < canvas.height; y += gridSpacingY) {
       ctx.beginPath();
       ctx.moveTo(0, y);
@@ -136,36 +193,68 @@ export default function SiteMapAnalyticsViewer({
       ctx.stroke();
     }
 
-    // Dimension labels
     ctx.font = '11px sans-serif';
     ctx.fillStyle = '#6b7280';
-    ctx.fillText(`0,0`, 10, 18);
-    ctx.fillText(`${siteLength}ft,0`, canvas.width - 55, 18);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('0,0', 10, 18);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${siteLength}ft,0`, canvas.width - 10, 18);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
     ctx.fillText(`0,${siteWidth}ft`, 10, canvas.height - 8);
-    ctx.fillText(`${siteLength}ft,${siteWidth}ft`, canvas.width - 80, canvas.height - 8);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${siteLength}ft,${siteWidth}ft`, canvas.width - 10, canvas.height - 8);
 
-    // Draw devices with MGI colors and pulse animations
+    drawDeviceNodes(ctx, canvas);
+  }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode, pulseFrame, highlightDeviceId, contourData]);
+
+  function drawSingleDeviceGradient(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, sensor: SensorPoint) {
+    const domain = getModeDomain(zoneMode);
+    const minVal = domain ? domain[0] : sensor.value - 5;
+    const maxVal = domain ? domain[1] : sensor.value + 5;
+
+    const stops = buildLegendStops(zoneMode, minVal, maxVal, 2);
+    const centerColor = stops.length > 0 ? stops[0].color : 'rgb(200,200,200)';
+
+    const match = centerColor.match(/\d+/g);
+    const r = match ? parseInt(match[0]) : 200;
+    const g = match ? parseInt(match[1]) : 200;
+    const b = match ? parseInt(match[2]) : 200;
+
+    const pixelX = (sensor.x / siteLength) * canvas.width;
+    const pixelY = (sensor.y / siteWidth) * canvas.height;
+
+    const pixelsPerFootX = canvas.width / siteLength;
+    const pixelsPerFootY = canvas.height / siteWidth;
+    const pixelsPerFoot = (pixelsPerFootX + pixelsPerFootY) / 2;
+    const radiusPixels = Math.sqrt(2000 / Math.PI) * pixelsPerFoot;
+
+    const gradient = ctx.createRadialGradient(pixelX, pixelY, 0, pixelX, pixelY, radiusPixels);
+    gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.65)`);
+    gradient.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, 0.45)`);
+    gradient.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.2)`);
+    gradient.addColorStop(0.85, `rgba(${r}, ${g}, ${b}, 0.08)`);
+    gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.01)`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function drawDeviceNodes(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
     devices.forEach(device => {
       const pixelX = (device.x / siteLength) * canvas.width;
       const pixelY = (device.y / siteWidth) * canvas.height;
-
       const isHovered = hoveredDevice === device.device_id;
-      const baseRadius = isHovered ? 18 : 14;
+      const baseRadius = isHovered ? 18 : 16;
 
-      // Get MGI color for the node circle (always shown, regardless of zone mode)
       const mgiColor = getMGIColor(device.mgi_score);
-
-      // Get velocity color for the pulse ring (separate from node)
       const velocityColor = getVelocityColor(device.mgi_velocity);
 
-      // Draw pulse animation if device has velocity data
       if (device.mgi_velocity !== null && device.mgi_velocity !== undefined) {
         const pulseRadius = getVelocityPulseRadius(device.mgi_velocity, baseRadius);
-        const pulseProgress = (pulseFrame % 60) / 60; // 0 to 1
-        const pulseAlpha = 1 - pulseProgress; // Fade out as it expands
+        const pulseProgress = (pulseFrame % 60) / 60;
+        const pulseAlpha = 1 - pulseProgress;
         const currentPulseRadius = baseRadius + (pulseRadius - baseRadius) * pulseProgress;
-
-        // Use velocity color for pulse, not MGI color
         ctx.strokeStyle = velocityColor.replace(')', `, ${pulseAlpha * 0.6})`).replace('rgb', 'rgba');
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -173,52 +262,47 @@ export default function SiteMapAnalyticsViewer({
         ctx.stroke();
       }
 
-      // Shadow
-      ctx.shadowBlur = isHovered ? 8 : 4;
-      ctx.shadowColor = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.arc(pixelX, pixelY, baseRadius + 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.fill();
 
-      // Device marker with MGI color
+      ctx.shadowBlur = isHovered ? 10 : 5;
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
       ctx.fillStyle = mgiColor;
       ctx.beginPath();
       ctx.arc(pixelX, pixelY, baseRadius, 0, Math.PI * 2);
       ctx.fill();
-
       ctx.shadowBlur = 0;
 
-      // Critical velocity warning triangle
       if (isCriticalVelocity(device.mgi_velocity)) {
         const triangleSize = baseRadius * 0.6;
-        ctx.fillStyle = '#dc2626'; // Red warning
+        ctx.fillStyle = '#dc2626';
         ctx.beginPath();
         ctx.moveTo(pixelX, pixelY - triangleSize);
         ctx.lineTo(pixelX - triangleSize * 0.866, pixelY + triangleSize * 0.5);
         ctx.lineTo(pixelX + triangleSize * 0.866, pixelY + triangleSize * 0.5);
         ctx.closePath();
         ctx.fill();
-
-        // White exclamation mark
         ctx.fillStyle = 'white';
         ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('!', pixelX, pixelY);
       } else {
-        // Camera icon (only if not showing warning)
         ctx.fillStyle = 'white';
         ctx.font = 'bold 10px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('📷', pixelX, pixelY);
+        ctx.fillText('\uD83D\uDCF7', pixelX, pixelY);
       }
 
-      // Alert highlight ring for investigated device
       if (highlightDeviceId === device.device_id) {
         ctx.strokeStyle = '#dc2626';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(pixelX, pixelY, baseRadius + 6, 0, Math.PI * 2);
         ctx.stroke();
-
         const alertPulseProgress = (pulseFrame % 60) / 60;
         const alertPulseRadius = baseRadius + 6 + (12 * alertPulseProgress);
         const alertPulseAlpha = 1 - alertPulseProgress;
@@ -229,297 +313,67 @@ export default function SiteMapAnalyticsViewer({
         ctx.stroke();
       }
 
-      // Device code label (always visible)
+      if (zoneMode !== 'none') {
+        const value = getDeviceValue(device, zoneMode);
+        if (value !== null) {
+          const label = getValueLabel(value, zoneMode);
+          ctx.font = 'bold 12px sans-serif';
+          const metrics = ctx.measureText(label);
+          const labelPadding = 4;
+          const labelY = pixelY - baseRadius - 12;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.beginPath();
+          const lw = metrics.width + labelPadding * 2;
+          const lh = 18;
+          const lx = pixelX - lw / 2;
+          const ly = labelY - lh / 2;
+          const cr = 4;
+          ctx.moveTo(lx + cr, ly);
+          ctx.lineTo(lx + lw - cr, ly);
+          ctx.quadraticCurveTo(lx + lw, ly, lx + lw, ly + cr);
+          ctx.lineTo(lx + lw, ly + lh - cr);
+          ctx.quadraticCurveTo(lx + lw, ly + lh, lx + lw - cr, ly + lh);
+          ctx.lineTo(lx + cr, ly + lh);
+          ctx.quadraticCurveTo(lx, ly + lh, lx, ly + lh - cr);
+          ctx.lineTo(lx, ly + cr);
+          ctx.quadraticCurveTo(lx, ly, lx + cr, ly);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, pixelX, labelY);
+        }
+      }
+
       ctx.fillStyle = isHovered ? '#1f2937' : '#6b7280';
       ctx.font = isHovered ? 'bold 11px sans-serif' : '10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(device.device_code, pixelX, pixelY + baseRadius + 14);
+      ctx.textBaseline = 'top';
+      ctx.fillText(device.device_code, pixelX, pixelY + baseRadius + 6);
     });
-
-  }, [devices, canvasSize, hoveredDevice, siteLength, siteWidth, zoneMode, pulseFrame, highlightDeviceId]);
-
-  const drawVoronoiZones = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, mode: ZoneMode) => {
-    if (devices.length < 1) return;
-
-    console.log(`[SiteMapAnalytics] drawVoronoiZones - Mode: ${mode}, Device count: ${devices.length}`);
-
-    // Handle single device - radial gradient heatmap
-    if (devices.length === 1) {
-      const device = devices[0];
-      let value: number | null = null;
-      if (mode === 'temperature') value = device.temperature;
-      else if (mode === 'humidity') value = device.humidity;
-      else if (mode === 'battery') value = device.battery_level;
-
-      console.log(`[SiteMapAnalytics] Single device - ID: ${device.device_id}, Code: ${device.device_code}, ${mode}: ${value}`);
-
-      if (value === null) {
-        // No data - use light gray
-        console.log(`[SiteMapAnalytics] No ${mode} data available, using gray background`);
-        ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        return;
-      }
-
-      // Use meaningful ranges for each metric type so colors are appropriate
-      let minValue: number;
-      let maxValue: number;
-
-      if (mode === 'temperature') {
-        // Temperature range: 32°F to 100°F
-        minValue = 32;
-        maxValue = 100;
-      } else if (mode === 'humidity') {
-        // Humidity range: 0% to 100%
-        minValue = 0;
-        maxValue = 100;
-      } else if (mode === 'battery') {
-        // Battery range: 0% to 100%
-        minValue = 0;
-        maxValue = 100;
-      } else {
-        // Fallback: create a small range around the value
-        minValue = value - 5;
-        maxValue = value + 5;
-      }
-
-      console.log(`[SiteMapAnalytics] Value range - Min: ${minValue}, Max: ${maxValue}, Current: ${value}`);
-
-      // Create color scale with appropriate domain
-      let colorScale;
-      if (mode === 'humidity') {
-        colorScale = scaleSequential(interpolateYlGnBu).domain([minValue, maxValue]);
-      } else {
-        // Temperature and battery: Red (hot/low) to Blue (cold/high)
-        colorScale = scaleSequential(interpolateRdYlBu).domain([maxValue, minValue]);
-      }
-
-      // Get the base color for this value
-      const color = colorScale(value);
-      console.log(`[SiteMapAnalytics] Color scale output: ${color}`);
-
-      // Calculate device position in pixels
-      const pixelX = (device.x / siteLength) * canvas.width;
-      const pixelY = (device.y / siteWidth) * canvas.height;
-
-      // Calculate radius for ~2000 sq ft coverage
-      // 2000 sq ft circle has radius ≈ 25.23 ft
-      const coverageRadiusFt = Math.sqrt(2000 / Math.PI);
-
-      // Convert to pixel radius based on site dimensions
-      const pixelsPerFootX = canvas.width / siteLength;
-      const pixelsPerFootY = canvas.height / siteWidth;
-      const pixelsPerFoot = (pixelsPerFootX + pixelsPerFootY) / 2; // Average
-      const radiusPixels = coverageRadiusFt * pixelsPerFoot;
-
-      console.log(`[SiteMapAnalytics] Radial gradient - Center: (${pixelX.toFixed(1)}, ${pixelY.toFixed(1)}), Radius: ${radiusPixels.toFixed(1)}px (${coverageRadiusFt.toFixed(1)}ft)`);
-
-      // Parse color to RGB components
-      let r = 200, g = 200, b = 200;
-      if (color && typeof color === 'string') {
-        if (color.startsWith('#')) {
-          r = parseInt(color.slice(1, 3), 16);
-          g = parseInt(color.slice(3, 5), 16);
-          b = parseInt(color.slice(5, 7), 16);
-        } else if (color.startsWith('rgb')) {
-          const match = color.match(/\d+/g);
-          if (match && match.length >= 3) {
-            r = parseInt(match[0]);
-            g = parseInt(match[1]);
-            b = parseInt(match[2]);
-          }
-        }
-      }
-
-      console.log(`[SiteMapAnalytics] RGB components - R: ${r}, G: ${g}, B: ${b}`);
-
-      // Create radial gradient centered on device
-      const gradient = ctx.createRadialGradient(
-        pixelX, pixelY, 0,           // Inner circle (at device center)
-        pixelX, pixelY, radiusPixels  // Outer circle (2000 sq ft radius)
-      );
-
-      // Add color stops - intensity decreases with distance
-      gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.7)`);     // Strong at center
-      gradient.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, 0.5)`);   // Medium-strong
-      gradient.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.25)`);  // Medium-weak
-      gradient.addColorStop(0.85, `rgba(${r}, ${g}, ${b}, 0.1)`);  // Weak
-      gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.02)`);    // Very weak at edge
-
-      // Fill canvas with gradient
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      console.log(`[SiteMapAnalytics] Radial gradient applied successfully`);
-
-      // Draw value label at device position
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      let label = '';
-      if (mode === 'temperature') label = `${value.toFixed(1)}°F`;
-      else if (mode === 'humidity') label = `${value.toFixed(0)}%`;
-      else if (mode === 'battery') label = `${value}%`;
-
-      // Draw label background
-      const metrics = ctx.measureText(label);
-      const padding = 4;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.fillRect(
-        pixelX - metrics.width / 2 - padding,
-        pixelY - 30,
-        metrics.width + padding * 2,
-        20
-      );
-
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      ctx.fillText(label, pixelX, pixelY - 20);
-
-      return; // Skip Voronoi rendering for single device
-    }
-
-    // Convert device positions to pixel coordinates
-    const points: [number, number][] = devices.map(device => [
-      (device.x / siteLength) * canvas.width,
-      (device.y / siteWidth) * canvas.height,
-    ]);
-
-    // Create Delaunay triangulation and Voronoi diagram
-    const delaunay = Delaunay.from(points);
-    const voronoi = delaunay.voronoi([0, 0, canvas.width, canvas.height]);
-
-    // Get data range for color scale
-    let minValue = Infinity;
-    let maxValue = -Infinity;
-
-    devices.forEach(device => {
-      let value: number | null = null;
-      if (mode === 'temperature') value = device.temperature;
-      else if (mode === 'humidity') value = device.humidity;
-      else if (mode === 'battery') value = device.battery_level;
-
-      if (value !== null) {
-        minValue = Math.min(minValue, value);
-        maxValue = Math.max(maxValue, value);
-      }
-    });
-
-    // Create color scale
-    let colorScale;
-    if (mode === 'humidity') {
-      colorScale = scaleSequential(interpolateYlGnBu).domain([minValue, maxValue]);
-    } else {
-      // Temperature and battery: Red (hot/low) to Blue (cold/high)
-      colorScale = scaleSequential(interpolateRdYlBu).domain([maxValue, minValue]);
-    }
-
-    // Draw Voronoi cells
-    devices.forEach((device, i) => {
-      const cell = voronoi.cellPolygon(i);
-      if (!cell) return;
-
-      let value: number | null = null;
-      if (mode === 'temperature') value = device.temperature;
-      else if (mode === 'humidity') value = device.humidity;
-      else if (mode === 'battery') value = device.battery_level;
-
-      if (value === null) {
-        ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
-      } else {
-        const color = colorScale(value);
-        // Convert hex or rgb to rgba with 40% opacity
-        if (color && typeof color === 'string') {
-          if (color.startsWith('#')) {
-            // Hex to rgba
-            const r = parseInt(color.slice(1, 3), 16);
-            const g = parseInt(color.slice(3, 5), 16);
-            const b = parseInt(color.slice(5, 7), 16);
-            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
-          } else if (color.startsWith('rgb')) {
-            // rgb to rgba
-            ctx.fillStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
-          } else {
-            // Fallback
-            ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
-          }
-        } else {
-          // Fallback if color is undefined
-          ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
-        }
-      }
-
-      ctx.beginPath();
-      ctx.moveTo(cell[0][0], cell[0][1]);
-      for (let j = 1; j < cell.length; j++) {
-        ctx.lineTo(cell[j][0], cell[j][1]);
-      }
-      ctx.closePath();
-      ctx.fill();
-
-      // Draw cell borders
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // Draw zone value label
-      if (value !== null) {
-        const pixelX = (device.x / siteLength) * canvas.width;
-        const pixelY = (device.y / siteWidth) * canvas.height;
-
-        ctx.font = 'bold 14px sans-serif';
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        let label = '';
-        if (mode === 'temperature') label = `${value.toFixed(1)}°F`;
-        else if (mode === 'humidity') label = `${value.toFixed(0)}%`;
-        else if (mode === 'battery') label = `${value}%`;
-        else if (mode === 'mgi') label = `MGI ${(value * 100).toFixed(0)}%`;
-
-        // Draw label background
-        const metrics = ctx.measureText(label);
-        const padding = 4;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.fillRect(
-          pixelX - metrics.width / 2 - padding,
-          pixelY - 30,
-          metrics.width + padding * 2,
-          20
-        );
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.fillText(label, pixelX, pixelY - 20);
-      }
-    });
-  };
+  }
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
-
     const rect = canvas.getBoundingClientRect();
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
   const findDeviceAtPosition = (pixelX: number, pixelY: number): DevicePosition | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
-
     for (const device of devices) {
       const devicePixelX = (device.x / siteLength) * canvas.width;
       const devicePixelY = (device.y / siteWidth) * canvas.height;
       const distance = Math.sqrt(
         Math.pow(pixelX - devicePixelX, 2) + Math.pow(pixelY - devicePixelY, 2)
       );
-      if (distance < 20) {
-        return device;
-      }
+      if (distance < 24) return device;
     }
     return null;
   };
@@ -528,48 +382,38 @@ export default function SiteMapAnalyticsViewer({
     const { x, y } = getCanvasCoords(e);
     const device = findDeviceAtPosition(x, y);
     setHoveredDevice(device?.device_id || null);
-
-    // Track mouse position relative to the canvas
     const rect = e.currentTarget.getBoundingClientRect();
-    setMousePosition({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
+    setMousePosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { x, y} = getCanvasCoords(e);
+    const { x, y } = getCanvasCoords(e);
     const device = findDeviceAtPosition(x, y);
-
-    if (device && onDeviceClick) {
-      onDeviceClick(device.device_id);
-    }
+    if (device && onDeviceClick) onDeviceClick(device.device_id);
   };
 
   const hoveredDeviceData = devices.find(d => d.device_id === hoveredDevice);
 
-  if (devices.length === 0) {
-    return null;
-  }
+  if (devices.length === 0) return null;
 
-  // Calculate zone statistics with safe division
   const calculateAverage = (values: (number | null)[]) => {
     const validValues = values.filter(v => v !== null) as number[];
     if (validValues.length === 0) return 0;
     return validValues.reduce((sum, v) => sum + v, 0) / validValues.length;
   };
 
-  const zoneStats = {
-    avgTemp: calculateAverage(devices.map(d => d.temperature)),
-    avgHumidity: calculateAverage(devices.map(d => d.humidity)),
-    avgBattery: calculateAverage(devices.map(d => d.battery_level)),
-    avgMGI: calculateAverage(devices.map(d => d.mgi_score)),
-    deviceCount: devices.length,
-    devicesWithTemp: devices.filter(d => d.temperature !== null).length,
-    devicesWithHumidity: devices.filter(d => d.humidity !== null).length,
-    devicesWithBattery: devices.filter(d => d.battery_level !== null).length,
-    devicesWithMGI: devices.filter(d => d.mgi_score !== null).length,
-  };
+  const devicesWithData = devices.filter(d => getDeviceValue(d, zoneMode) !== null).length;
+  const avgValue = calculateAverage(devices.map(d => getDeviceValue(d, zoneMode)));
+
+  const legendStops = useMemo(() => {
+    if (zoneMode === 'none' || !contourData) return null;
+    if (contourData.type === 'multi') {
+      return buildLegendStops(zoneMode, contourData.grid.minValue, contourData.grid.maxValue, 6);
+    }
+    const domain = getModeDomain(zoneMode);
+    if (domain) return buildLegendStops(zoneMode, domain[0], domain[1], 6);
+    return null;
+  }, [zoneMode, contourData]);
 
   return (
     <div className={`${className}`} ref={containerRef}>
@@ -581,7 +425,7 @@ export default function SiteMapAnalyticsViewer({
               <h3 className="text-lg font-semibold text-gray-900">Site Map</h3>
             </div>
             <div className="flex items-center gap-4">
-              {showControls && devices.length >= 2 && (
+              {showControls && devices.length >= 1 && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600">Zones:</span>
                   <select
@@ -589,50 +433,32 @@ export default function SiteMapAnalyticsViewer({
                     onChange={(e) => setZoneMode(e.target.value as ZoneMode)}
                     className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
                   >
+                    <option value="none">None</option>
                     <option value="temperature">Temperature</option>
                     <option value="humidity">Humidity</option>
                     <option value="battery">Battery</option>
+                    <option value="pressure">Air Pressure</option>
+                    <option value="gas_resistance">Gas Resistance</option>
                   </select>
                 </div>
               )}
               <div className="text-sm text-gray-600 flex items-center gap-2">
-                <span className="font-medium">{zoneStats.deviceCount} {zoneStats.deviceCount === 1 ? 'device' : 'devices'}</span>
-                <span className="text-gray-400">•</span>
-                <span>{siteName} • {siteLength}ft × {siteWidth}ft</span>
+                <span className="font-medium">{devices.length} {devices.length === 1 ? 'device' : 'devices'}</span>
+                <span className="text-gray-400">&bull;</span>
+                <span>{siteName} &bull; {siteLength}ft &times; {siteWidth}ft</span>
               </div>
             </div>
           </div>
-          {zoneMode !== 'none' && devices.length >= 2 && (
+          {zoneMode !== 'none' && devicesWithData > 0 && (
             <div className="mt-2 flex items-center gap-4 text-xs text-gray-600">
-              {zoneMode === 'temperature' && (
-                <div className="flex items-center gap-1">
-                  <Thermometer size={14} />
-                  <span>
-                    {zoneStats.devicesWithTemp > 0
-                      ? `Avg: ${zoneStats.avgTemp.toFixed(1)}°F (${zoneStats.devicesWithTemp}/${zoneStats.deviceCount} devices)`
-                      : 'No temperature data'}
-                  </span>
-                </div>
-              )}
-              {zoneMode === 'humidity' && (
-                <div className="flex items-center gap-1">
-                  <Droplets size={14} />
-                  <span>
-                    {zoneStats.devicesWithHumidity > 0
-                      ? `Avg: ${zoneStats.avgHumidity.toFixed(0)}% (${zoneStats.devicesWithHumidity}/${zoneStats.deviceCount} devices)`
-                      : 'No humidity data'}
-                  </span>
-                </div>
-              )}
-              {zoneMode === 'battery' && (
-                <div className="flex items-center gap-1">
-                  <Battery size={14} />
-                  <span>
-                    {zoneStats.devicesWithBattery > 0
-                      ? `Avg: ${zoneStats.avgBattery.toFixed(0)}% (${zoneStats.devicesWithBattery}/${zoneStats.deviceCount} devices)`
-                      : 'No battery data'}
-                  </span>
-                </div>
+              <div className="flex items-center gap-1">
+                {getZoneModeIcon(zoneMode, 14)}
+                <span>
+                  Avg: {getValueLabel(avgValue, zoneMode)} ({devicesWithData}/{devices.length} devices)
+                </span>
+              </div>
+              {devices.length >= 2 && (
+                <span className="text-gray-400">Interpolated from {devicesWithData} sensors</span>
               )}
             </div>
           )}
@@ -652,42 +478,24 @@ export default function SiteMapAnalyticsViewer({
               }}
             />
 
-            {/* Device Info Tooltip on Hover - Smart Positioning */}
             {hoveredDeviceData && mousePosition && (() => {
-              // Smart positioning to avoid all edges
-              const tooltipWidth = 240;
-              const tooltipHeight = 200;
+              const tooltipWidth = 260;
+              const tooltipHeight = 240;
               const offset = 20;
-
-              // Calculate if tooltip would overflow any edge
               const wouldOverflowRight = mousePosition.x + offset + tooltipWidth > canvasSize.width;
               const wouldOverflowBottom = mousePosition.y + offset + tooltipHeight > canvasSize.height;
               const wouldOverflowLeft = mousePosition.x - offset - tooltipWidth < 0;
               const wouldOverflowTop = mousePosition.y - offset - tooltipHeight < 0;
-
-              // Determine best position
               let left = mousePosition.x + offset;
               let top = mousePosition.y + offset;
-
-              // Horizontal adjustment
-              if (wouldOverflowRight && !wouldOverflowLeft) {
-                left = mousePosition.x - offset - tooltipWidth;
-              } else if (wouldOverflowRight && wouldOverflowLeft) {
-                // Center horizontally if both sides overflow
-                left = canvasSize.width / 2 - tooltipWidth / 2;
-              }
-
-              // Vertical adjustment
-              if (wouldOverflowBottom && !wouldOverflowTop) {
-                top = mousePosition.y - offset - tooltipHeight;
-              } else if (wouldOverflowBottom && wouldOverflowTop) {
-                // Center vertically if both top/bottom overflow
-                top = canvasSize.height / 2 - tooltipHeight / 2;
-              }
+              if (wouldOverflowRight && !wouldOverflowLeft) left = mousePosition.x - offset - tooltipWidth;
+              else if (wouldOverflowRight && wouldOverflowLeft) left = canvasSize.width / 2 - tooltipWidth / 2;
+              if (wouldOverflowBottom && !wouldOverflowTop) top = mousePosition.y - offset - tooltipHeight;
+              else if (wouldOverflowBottom && wouldOverflowTop) top = canvasSize.height / 2 - tooltipHeight / 2;
 
               return (
                 <div
-                  className="absolute bg-white rounded-lg shadow-lg border border-gray-200 p-3 min-w-[200px] max-w-[240px] z-10 pointer-events-none"
+                  className="absolute bg-white rounded-lg shadow-lg border border-gray-200 p-3 min-w-[220px] max-w-[260px] z-10 pointer-events-none"
                   style={{
                     left: `${Math.max(0, Math.min(left, canvasSize.width - tooltipWidth))}px`,
                     top: `${Math.max(0, Math.min(top, canvasSize.height - tooltipHeight))}px`,
@@ -703,69 +511,99 @@ export default function SiteMapAnalyticsViewer({
                       {hoveredDeviceData.status}
                     </span>
                   </div>
-
                   <div className="space-y-1 text-sm">
                     <div className="flex items-center gap-2 text-gray-600">
                       <Camera size={14} />
                       <span>{hoveredDeviceData.device_code}</span>
                     </div>
-
                     {hoveredDeviceData.battery_level !== null && (
                       <div className="flex items-center gap-2 text-gray-600">
                         <Battery size={14} />
                         <span>{hoveredDeviceData.battery_level}%</span>
                       </div>
                     )}
-
                     {hoveredDeviceData.temperature !== null && (
                       <div className="flex items-center gap-2 text-gray-600">
                         <Thermometer size={14} />
-                        <span>{hoveredDeviceData.temperature}°F</span>
+                        <span>{hoveredDeviceData.temperature.toFixed(1)}&deg;F</span>
                       </div>
                     )}
-
                     {hoveredDeviceData.humidity !== null && (
                       <div className="flex items-center gap-2 text-gray-600">
                         <Droplets size={14} />
-                        <span>{hoveredDeviceData.humidity}%</span>
+                        <span>{hoveredDeviceData.humidity.toFixed(0)}%</span>
                       </div>
                     )}
-
+                    {hoveredDeviceData.pressure !== null && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Gauge size={14} />
+                        <span>{hoveredDeviceData.pressure.toFixed(0)} hPa</span>
+                      </div>
+                    )}
+                    {hoveredDeviceData.gas_resistance !== null && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Wind size={14} />
+                        <span>{(hoveredDeviceData.gas_resistance / 1000).toFixed(1)} k&Omega;</span>
+                      </div>
+                    )}
                     {hoveredDeviceData.mgi_score !== null && hoveredDeviceData.mgi_score !== undefined && !isNaN(hoveredDeviceData.mgi_score) && (
                       <div className="flex items-center gap-2 text-gray-600">
                         <Camera size={14} />
                         <span>MGI: {(hoveredDeviceData.mgi_score * 100).toFixed(1)}%</span>
                       </div>
                     )}
-
                     {hoveredDeviceData.mgi_velocity !== null && hoveredDeviceData.mgi_velocity !== undefined && !isNaN(hoveredDeviceData.mgi_velocity) && (
                       <div className="flex items-center gap-2 text-gray-600">
                         <AlertTriangle size={14} />
                         <span>Velocity: {hoveredDeviceData.mgi_velocity >= 0 ? '+' : ''}{(hoveredDeviceData.mgi_velocity * 100).toFixed(1)}%</span>
                       </div>
                     )}
-
                     {hoveredDeviceData.last_seen && (
                       <div className="flex items-center gap-2 text-gray-600">
                         <Clock size={14} />
                         <span>{formatDistanceToNow(new Date(hoveredDeviceData.last_seen), { addSuffix: true })}</span>
                       </div>
                     )}
-
                     <div className="flex items-center gap-2 text-gray-600">
                       <MapPin size={14} />
                       <span>({hoveredDeviceData.x}, {hoveredDeviceData.y})</span>
                     </div>
                   </div>
-
                   <p className="text-xs text-gray-500 mt-2">Click to view details</p>
                 </div>
               );
             })()}
           </div>
 
-          {/* Legend */}
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          {zoneMode !== 'none' && legendStops && legendStops.length > 0 && (
+            <div className="mt-3 pt-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-medium text-gray-500">{getZoneModeLabel(zoneMode)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-gray-500 min-w-[40px] text-right">{legendStops[0].label}</span>
+                <div className="flex-1 h-3 rounded-sm overflow-hidden flex">
+                  {legendStops.map((stop, i) => {
+                    if (i === legendStops.length - 1) return null;
+                    const next = legendStops[i + 1];
+                    return (
+                      <div
+                        key={i}
+                        className="flex-1 h-full"
+                        style={{
+                          background: `linear-gradient(to right, ${stop.color}, ${next.color})`,
+                          opacity: 0.7,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+                <span className="text-[10px] text-gray-500 min-w-[40px]">{legendStops[legendStops.length - 1].label}</span>
+              </div>
+            </div>
+          )}
+
+          <div className={`${legendStops && zoneMode !== 'none' ? 'mt-2' : 'mt-3'} pt-2 border-t border-gray-100`}>
             <div className="flex items-center justify-between text-xs text-gray-600">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">

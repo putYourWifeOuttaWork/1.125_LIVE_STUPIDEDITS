@@ -125,7 +125,7 @@ const HomePage = () => {
       const { data: telemetryData } = deviceIds.length > 0
         ? await supabase
             .from('device_telemetry')
-            .select('device_id, temperature, humidity, captured_at')
+            .select('device_id, temperature, humidity, pressure, gas_resistance, captured_at')
             .in('device_id', deviceIds)
             .order('captured_at', { ascending: false })
             .limit(deviceIds.length * 2)
@@ -136,7 +136,9 @@ const HomePage = () => {
         if (!telemetryMap.has(t.device_id)) {
           telemetryMap.set(t.device_id, {
             temperature: t.temperature,
-            humidity: t.humidity
+            humidity: t.humidity,
+            pressure: t.pressure,
+            gas_resistance: t.gas_resistance,
           });
         }
       });
@@ -154,6 +156,8 @@ const HomePage = () => {
           last_seen: device.last_seen_at,
           temperature: telemetry?.temperature || null,
           humidity: telemetry?.humidity || null,
+          pressure: telemetry?.pressure || null,
+          gas_resistance: telemetry?.gas_resistance || null,
           mgi_score: device.latest_mgi_score,
           mgi_velocity: device.latest_mgi_velocity,
         };
