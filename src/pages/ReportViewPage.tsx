@@ -199,6 +199,29 @@ export default function ReportViewPage() {
   const { lineChartData, barChartData, heatmapData, isLoading: dataLoading, isFetching, rawTimeSeries, isComparisonActive, dateRange, refresh } =
     useReportData(effectiveConfig, !!report);
 
+  const drillDownFilters = useMemo(() => {
+    const cfg = effectiveConfig;
+    if (!cfg.enableComparison || !cfg.comparisonEntities?.length) {
+      return {
+        programIds: cfg.programIds,
+        siteIds: cfg.siteIds,
+        deviceIds: cfg.deviceIds,
+      };
+    }
+
+    const ct = cfg.comparisonType || 'site';
+    if (ct === 'program') {
+      const merged = Array.from(new Set([...cfg.programIds, ...cfg.comparisonEntities]));
+      return { programIds: merged, siteIds: [] as string[], deviceIds: [] as string[] };
+    }
+    if (ct === 'site') {
+      const merged = Array.from(new Set([...cfg.siteIds, ...cfg.comparisonEntities]));
+      return { programIds: cfg.programIds, siteIds: merged, deviceIds: [] as string[] };
+    }
+    const merged = Array.from(new Set([...cfg.deviceIds, ...cfg.comparisonEntities]));
+    return { programIds: cfg.programIds, siteIds: cfg.siteIds, deviceIds: merged };
+  }, [effectiveConfig]);
+
   const {
     data: drillData,
     isLoading: drillLoading,
@@ -207,9 +230,9 @@ export default function ReportViewPage() {
     brushRange?.[0] || null,
     brushRange?.[1] || null,
     {
-      programIds: effectiveConfig.programIds,
-      siteIds: effectiveConfig.siteIds,
-      deviceIds: effectiveConfig.deviceIds,
+      programIds: drillDownFilters.programIds,
+      siteIds: drillDownFilters.siteIds,
+      deviceIds: drillDownFilters.deviceIds,
       offset: drillOffset,
     }
   );

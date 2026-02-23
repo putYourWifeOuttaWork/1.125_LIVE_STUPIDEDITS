@@ -7,6 +7,12 @@ interface ScopeEntity {
   id: string;
   name: string;
   parentId?: string;
+  historical?: boolean;
+}
+
+export interface ProgramStatusInfo {
+  id: string;
+  status: string;
 }
 
 interface ScopeSelectorProps {
@@ -16,6 +22,7 @@ interface ScopeSelectorProps {
   onProgramIdsChange: (ids: string[]) => void;
   onSiteIdsChange: (ids: string[]) => void;
   onDeviceIdsChange: (ids: string[]) => void;
+  onProgramStatusChange?: (statuses: ProgramStatusInfo[]) => void;
 }
 
 function MultiSelect({
@@ -139,6 +146,11 @@ function MultiSelect({
                       <span className="ml-2 text-sm text-gray-700 truncate">
                         {option.name}
                       </span>
+                      {option.historical && (
+                        <span className="ml-auto text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                          historical
+                        </span>
+                      )}
                     </label>
                   ))}
                 </>
@@ -186,9 +198,11 @@ export default function ScopeSelector({
   onProgramIdsChange,
   onSiteIdsChange,
   onDeviceIdsChange,
+  onProgramStatusChange,
 }: ScopeSelectorProps) {
   const { activeCompanyId } = useActiveCompany();
   const [programs, setPrograms] = useState<ScopeEntity[]>([]);
+  const [programStatuses, setProgramStatuses] = useState<ProgramStatusInfo[]>([]);
   const [sites, setSites] = useState<ScopeEntity[]>([]);
   const [devices, setDevices] = useState<ScopeEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,7 +214,7 @@ export default function ScopeSelector({
       try {
         const { data, error } = await supabase
           .from('pilot_programs')
-          .select('program_id, name')
+          .select('program_id, name, status')
           .eq('company_id', activeCompanyId)
           .order('name');
 
@@ -208,9 +222,9 @@ export default function ScopeSelector({
           console.error('Error fetching programs for scope:', error);
         }
 
-        setPrograms(
-          (data || []).map((p) => ({ id: p.program_id, name: p.name }))
-        );
+        const rows = data || [];
+        setPrograms(rows.map((p) => ({ id: p.program_id, name: p.name })));
+        setProgramStatuses(rows.map((p) => ({ id: p.program_id, status: p.status })));
       } catch (err) {
         console.error('Failed to load programs:', err);
       } finally {
@@ -220,6 +234,13 @@ export default function ScopeSelector({
 
     fetchPrograms();
   }, [activeCompanyId]);
+
+  useEffect(() => {
+    const selected = programStatuses.filter((p) => programIds.includes(p.id));
+    if (selected.length > 0) {
+      onProgramStatusChange?.(selected);
+    }
+  }, [programIds, programStatuses]);
 
   useEffect(() => {
     if (programIds.length === 0) {
@@ -259,11 +280,48 @@ export default function ScopeSelector({
         .in('site_id', siteIds)
         .order('device_code');
 
+      const currentDevices: ScopeEntity[] = (data || []).map((d) => ({
+        id: d.device_id,
+        name: d.device_code || d.device_name || d.device_id.slice(0, 8),
+        parentId: d.site_id,
+      }));
+
+      if (currentDevices.length > 0) {
+        setDevices(currentDevices);
+        return;
+      }
+
+      const { data: historicalRows } = await supabase
+        .from('device_images')
+        .select('device_id, site_id')
+        .in('site_id', siteIds)
+        .eq('status', 'complete')
+        .limit(200);
+
+      if (!historicalRows || historicalRows.length === 0) {
+        setDevices([]);
+        return;
+      }
+
+      const uniqueIds = Array.from(new Set(historicalRows.map((r) => r.device_id)));
+
+      const { data: deviceInfo } = await supabase
+        .from('devices')
+        .select('device_id, device_code, device_name')
+        .in('device_id', uniqueIds)
+        .order('device_code');
+
+      const siteLookup = new Map<string, string>();
+      historicalRows.forEach((r) => {
+        if (!siteLookup.has(r.device_id)) siteLookup.set(r.device_id, r.site_id);
+      });
+
       setDevices(
-        (data || []).map((d) => ({
+        (deviceInfo || []).map((d) => ({
           id: d.device_id,
           name: d.device_code || d.device_name || d.device_id.slice(0, 8),
-          parentId: d.site_id,
+          parentId: siteLookup.get(d.device_id),
+          historical: true,
         }))
       );
     };

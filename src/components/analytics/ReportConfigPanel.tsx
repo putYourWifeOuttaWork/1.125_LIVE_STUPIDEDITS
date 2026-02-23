@@ -1,10 +1,12 @@
-import { LineChart, BarChart3, Grid3x3, TrendingUp } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { LineChart, BarChart3, Grid3x3, TrendingUp, Info } from 'lucide-react';
 import {
   ReportConfiguration,
   ReportType,
   GroupByDimension,
 } from '../../types/analytics';
 import ScopeSelector from './ScopeSelector';
+import type { ProgramStatusInfo } from './ScopeSelector';
 import MetricsSelector from './MetricsSelector';
 import TimeRangeSelector from './TimeRangeSelector';
 import ComparisonEntityPicker from './ComparisonEntityPicker';
@@ -54,14 +56,44 @@ interface ReportConfigPanelProps {
   showNameFields?: boolean;
 }
 
+const RELATIVE_RANGES = new Set(['last_24h', 'last_7d', 'last_30d']);
+
 export default function ReportConfigPanel({
   config,
   onChange,
   showNameFields = true,
 }: ReportConfigPanelProps) {
+  const [inactiveHint, setInactiveHint] = useState(false);
+  const prevProgramIdsRef = useRef<string[]>(config.programIds);
+
   const update = (partial: Partial<ReportConfiguration>) => {
     onChange({ ...config, ...partial });
   };
+
+  const handleProgramStatusChange = useCallback(
+    (statuses: ProgramStatusInfo[]) => {
+      const allInactive = statuses.length > 0 && statuses.every((s) => s.status === 'inactive');
+      const programIdsChanged =
+        JSON.stringify(config.programIds) !== JSON.stringify(prevProgramIdsRef.current);
+
+      if (allInactive && programIdsChanged && RELATIVE_RANGES.has(config.timeRange)) {
+        onChange({ ...config, timeRange: 'this_program' });
+        setInactiveHint(true);
+      } else if (!allInactive) {
+        setInactiveHint(false);
+      }
+
+      prevProgramIdsRef.current = config.programIds;
+    },
+    [config, onChange]
+  );
+
+  useEffect(() => {
+    if (inactiveHint) {
+      const timer = setTimeout(() => setInactiveHint(false), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [inactiveHint]);
 
   return (
     <div className="space-y-6">
@@ -138,6 +170,7 @@ export default function ReportConfigPanel({
           onProgramIdsChange={(ids) => update({ programIds: ids })}
           onSiteIdsChange={(ids) => update({ siteIds: ids })}
           onDeviceIdsChange={(ids) => update({ deviceIds: ids })}
+          onProgramStatusChange={handleProgramStatusChange}
         />
       </div>
 
@@ -156,6 +189,15 @@ export default function ReportConfigPanel({
             update({ timeGranularity: gran })
           }
         />
+        {inactiveHint && (
+          <div className="mt-2 flex items-start gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1.5">
+            <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span>
+              Time range switched to Program Period for inactive program data.
+              You can change it back anytime.
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="border-t border-gray-200 pt-4">
