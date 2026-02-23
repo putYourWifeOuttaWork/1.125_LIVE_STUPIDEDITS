@@ -1016,6 +1016,7 @@ export function transformTimeSeriesForD3(
   type GroupEntry = {
     id: string;
     label: string;
+    entityKey: string;
     metricName: string;
     points: Map<number, number | null>;
   };
@@ -1031,6 +1032,7 @@ export function transformTimeSeriesForD3(
       grouped.set(compoundKey, {
         id: `${point.device_id || point.site_id || point.program_id}_${point.metric_name}`,
         label: isMultiMetric ? `${entityKey} - ${metricLabel}` : entityKey,
+        entityKey,
         metricName: point.metric_name,
         points: new Map(),
       });
@@ -1043,7 +1045,7 @@ export function transformTimeSeriesForD3(
   const series: MultiMetricSeries[] = [];
 
   for (const group of grouped.values()) {
-    const deviceIdx = deviceCodes.indexOf(group.label.split(' - ')[0]);
+    const deviceIdx = Math.max(0, deviceCodes.indexOf(group.entityKey));
     const metricIdx = metrics.indexOf(group.metricName);
     const colorPair = DEVICE_BASE_COLORS[deviceIdx % DEVICE_BASE_COLORS.length];
     const isSecondary = hasScaleSplit && secondaryMetrics.has(group.metricName);
@@ -1089,6 +1091,7 @@ export function transformComparisonForD3(
   type GroupEntry = {
     id: string;
     label: string;
+    entityName: string;
     metricName: string;
     points: Map<number, number | null>;
   };
@@ -1103,6 +1106,7 @@ export function transformComparisonForD3(
       grouped.set(compoundKey, {
         id: `${point.entity_id}_${point.metric_name}`,
         label: isMultiMetric ? `${point.entity_name} - ${metricLabel}` : point.entity_name,
+        entityName: point.entity_name,
         metricName: point.metric_name,
         points: new Map(),
       });
@@ -1115,7 +1119,7 @@ export function transformComparisonForD3(
   const series: MultiMetricSeries[] = [];
 
   for (const group of grouped.values()) {
-    const entityIdx = entityNames.indexOf(group.label.split(' - ')[0]);
+    const entityIdx = Math.max(0, entityNames.indexOf(group.entityName));
     const metricIdx = metrics.indexOf(group.metricName);
     const colorPair = DEVICE_BASE_COLORS[entityIdx % DEVICE_BASE_COLORS.length];
     const isSecondary = hasScaleSplit && secondaryMetrics.has(group.metricName);
