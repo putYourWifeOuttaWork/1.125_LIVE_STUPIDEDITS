@@ -351,7 +351,7 @@ export const METRIC_BAR_PREFERRED: Set<MetricType> = new Set([
   'alert_count',
 ]);
 
-export type MetricScaleGroup = 'percent' | 'ambient' | 'pressure' | 'resistance' | 'voltage' | 'rate' | 'count' | 'score_rate' | 'deviation' | 'zscore';
+export type MetricScaleGroup = 'percent' | 'ambient' | 'pressure' | 'resistance' | 'voltage' | 'rate' | 'count' | 'score_rate' | 'deviation' | 'zscore' | 'vtt_risk';
 
 export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
   humidity: 'percent',
@@ -367,7 +367,7 @@ export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
   gas_resistance_zscore: 'zscore',
   battery_voltage: 'voltage',
   alert_count: 'count',
-  vtt_mold_index: 'percent',
+  vtt_mold_index: 'vtt_risk',
   mgi_velocity: 'score_rate',
   mgi_speed: 'score_rate',
 };

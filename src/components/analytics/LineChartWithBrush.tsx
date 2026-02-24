@@ -227,7 +227,7 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
     };
 
     const formatMetricValue = (value: number, metricName: string, unit: string) => {
-      const pctMetrics = ['mgi_score', 'mgi_velocity', 'mgi_speed', 'humidity', 'wake_reliability', 'image_success_rate'];
+      const pctMetrics = ['mgi_score', 'mgi_velocity', 'mgi_speed', 'humidity', 'wake_reliability', 'image_success_rate', 'vtt_mold_index'];
       const intMetrics = ['alert_count'];
       if (intMetrics.includes(metricName)) return `${Math.round(value)}${unit ? ' ' + unit : ''}`;
       if (pctMetrics.includes(metricName)) return `${value.toFixed(1)}${unit ? ' ' + unit : ''}`;

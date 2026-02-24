@@ -1051,8 +1051,7 @@ export function transformTimeSeriesForD3(
     const colorPair = DEVICE_BASE_COLORS[deviceIdx % DEVICE_BASE_COLORS.length];
     const isSecondary = hasScaleSplit && secondaryMetrics.has(group.metricName);
     const scale = METRIC_DISPLAY_SCALE[group.metricName as MetricType] ?? 1;
-    const hasNonBarMetric = metrics.some(m => !METRIC_BAR_PREFERRED.has(m as MetricType));
-    const useBar = isSecondary && METRIC_BAR_PREFERRED.has(group.metricName as MetricType) && hasNonBarMetric;
+    const useBar = isSecondary && METRIC_BAR_PREFERRED.has(group.metricName as MetricType);
 
     series.push({
       id: group.id,
@@ -1125,8 +1124,7 @@ export function transformComparisonForD3(
     const colorPair = DEVICE_BASE_COLORS[entityIdx % DEVICE_BASE_COLORS.length];
     const isSecondary = hasScaleSplit && secondaryMetrics.has(group.metricName);
     const scale = METRIC_DISPLAY_SCALE[group.metricName as MetricType] ?? 1;
-    const hasNonBarMetric = metrics.some(m => !METRIC_BAR_PREFERRED.has(m as MetricType));
-    const useBar = isSecondary && METRIC_BAR_PREFERRED.has(group.metricName as MetricType) && hasNonBarMetric;
+    const useBar = isSecondary && METRIC_BAR_PREFERRED.has(group.metricName as MetricType);
 
     series.push({
       id: group.id,
