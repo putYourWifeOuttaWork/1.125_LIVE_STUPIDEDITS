@@ -18,6 +18,8 @@ import DeviceSettingsModal from '../components/devices/DeviceSettingsModal';
 import DeviceAlertThresholdsModal from '../components/devices/DeviceAlertThresholdsModal';
 import ManualWakeModal from '../components/devices/ManualWakeModal';
 import { useDevice, useDeviceImages } from '../hooks/useDevice';
+import { useDeviceRisk } from '../hooks/useDeviceRisk';
+import RiskForecastCard from '../components/devices/RiskForecastCard';
 import { formatDistanceToNow } from 'date-fns';
 import useCompanies from '../hooks/useCompanies';
 import { DeviceService } from '../services/deviceService';
@@ -35,6 +37,7 @@ const DeviceDetailPage = () => {
   const { isAdmin } = useCompanies();
   const { device, isLoading, activateDevice, deactivateDevice, unassignDevice, reassignDevice, updateDevice, refetch } = useDevice(deviceId);
   const { images } = useDeviceImages(deviceId || '');
+  const { riskState, isLoading: riskLoading, recalculate: recalculateRisk } = useDeviceRisk(deviceId);
 
   // Compute image counts from actual images
   const totalImages = images?.length || 0;
@@ -697,6 +700,12 @@ const DeviceDetailPage = () => {
               </CardContent>
             </Card>
           )}
+
+          <RiskForecastCard
+            riskState={riskState}
+            isLoading={riskLoading}
+            onRecalculate={recalculateRisk}
+          />
 
           <Card>
             <CardHeader>

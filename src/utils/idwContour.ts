@@ -8,7 +8,7 @@ import {
   interpolateBlues,
 } from 'd3-scale-chromatic';
 
-export type ContourZoneMode = 'none' | 'temperature' | 'humidity' | 'battery' | 'pressure' | 'gas_resistance';
+export type ContourZoneMode = 'none' | 'temperature' | 'humidity' | 'battery' | 'pressure' | 'gas_resistance' | 'mold_risk';
 
 export interface SensorPoint {
   x: number;
@@ -118,6 +118,8 @@ function getColorScaleForMode(mode: ContourZoneMode, minVal: number, maxVal: num
       return scaleSequential(interpolateYlOrRd).domain([maxVal, minVal]);
     case 'pressure':
       return scaleSequential(interpolateBlues).domain([minVal, maxVal]);
+    case 'mold_risk':
+      return scaleSequential(interpolateYlOrRd).domain([minVal, maxVal]);
     case 'temperature':
     case 'battery':
     default:
@@ -269,6 +271,8 @@ export function getValueLabel(value: number, mode: ContourZoneMode): string {
       return `${value.toFixed(0)} hPa`;
     case 'gas_resistance':
       return `${(value / 1000).toFixed(1)} k\u2126`;
+    case 'mold_risk':
+      return `${(value * 100).toFixed(0)}%`;
     default:
       return value.toFixed(1);
   }
@@ -286,6 +290,8 @@ export function getModeDomain(mode: ContourZoneMode): [number, number] | null {
       return [950, 1050];
     case 'gas_resistance':
       return [5000, 500000];
+    case 'mold_risk':
+      return [0, 1];
     default:
       return null;
   }

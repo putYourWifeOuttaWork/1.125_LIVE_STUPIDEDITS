@@ -21,6 +21,7 @@ import AlertInvestigationPanel from '../components/devices/AlertInvestigationPan
 import { useActiveCompany } from '../hooks/useActiveCompany';
 import { createLogger } from '../utils/logger';
 import type { DeviceAlert } from '../types/alerts';
+import { vttIndexToMGINormalized } from '../utils/vttModel';
 
 const log = createLogger('HomePage');
 
@@ -143,6 +144,18 @@ const HomePage = () => {
         }
       });
 
+      const { data: vttRiskData } = deviceIds.length > 0
+        ? await supabase
+            .from('device_vtt_risk_state')
+            .select('device_id, vtt_mold_index')
+            .in('device_id', deviceIds)
+        : { data: [] };
+
+      const vttRiskMap = new Map<string, number>();
+      (vttRiskData || []).forEach(r => {
+        vttRiskMap.set(r.device_id, vttIndexToMGINormalized(r.vtt_mold_index));
+      });
+
       const formattedDevices = (devicesData || []).map((device) => {
         const telemetry = telemetryMap.get(device.device_id);
         return {
@@ -160,6 +173,7 @@ const HomePage = () => {
           gas_resistance: telemetry?.gas_resistance || null,
           mgi_score: device.latest_mgi_score,
           mgi_velocity: device.latest_mgi_velocity,
+          vtt_mold_risk: vttRiskMap.get(device.device_id) ?? null,
         };
       });
 

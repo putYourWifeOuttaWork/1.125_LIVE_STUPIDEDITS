@@ -30,6 +30,7 @@ export interface DevicePosition {
   gas_resistance: number | null;
   mgi_score: number | null;
   mgi_velocity: number | null;
+  vtt_mold_risk: number | null;
 }
 
 export type ZoneMode = ContourZoneMode;
@@ -55,7 +56,7 @@ function getDeviceValue(device: DevicePosition, mode: ZoneMode): number | null {
     case 'battery': return device.battery_level;
     case 'pressure': return device.pressure;
     case 'gas_resistance': return device.gas_resistance;
-    case 'mold_risk': return device.mgi_score;
+    case 'mold_risk': return device.vtt_mold_risk ?? device.mgi_score;
     default: return null;
   }
 }
@@ -560,6 +561,12 @@ export default function SiteMapAnalyticsViewer({
                       <div className="flex items-center gap-2 text-gray-600">
                         <AlertTriangle size={14} />
                         <span>Velocity: {hoveredDeviceData.mgi_velocity >= 0 ? '+' : ''}{(hoveredDeviceData.mgi_velocity * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
+                    {hoveredDeviceData.vtt_mold_risk !== null && hoveredDeviceData.vtt_mold_risk !== undefined && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <ShieldAlert size={14} />
+                        <span>Mold Risk: {(hoveredDeviceData.vtt_mold_risk * 100).toFixed(0)}%</span>
                       </div>
                     )}
                     {hoveredDeviceData.last_seen && (
