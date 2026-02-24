@@ -20,6 +20,7 @@ export type MetricType =
   | 'mgi_score'
   | 'mgi_velocity'
   | 'mgi_speed'
+  | 'vtt_mold_index'
   | 'battery_voltage'
   | 'alert_count'
   | 'wake_reliability'
@@ -200,6 +201,7 @@ export interface DrillDownRecord {
   mgi_velocity: number | null;
   mgi_speed: number | null;
   battery_voltage: number | null;
+  vtt_mold_index: number | null;
   image_url: string | null;
   status: string;
 }
@@ -308,6 +310,7 @@ export const METRIC_LABELS: Record<MetricType, string> = {
   mgi_score: 'MGI Score',
   mgi_velocity: 'MGI Velocity',
   mgi_speed: 'MGI Speed',
+  vtt_mold_index: 'VTT Mold Risk Index',
   battery_voltage: 'Battery Voltage',
   alert_count: 'Alert Count',
   wake_reliability: 'Wake Reliability',
@@ -326,6 +329,7 @@ export const METRIC_UNITS: Record<MetricType, string> = {
   mgi_score: '%',
   mgi_velocity: '%/session',
   mgi_speed: '%/day',
+  vtt_mold_index: '%',
   battery_voltage: 'V',
   alert_count: '',
   wake_reliability: '%',
@@ -336,12 +340,14 @@ export const METRIC_DISPLAY_SCALE: Partial<Record<MetricType, number>> = {
   mgi_score: 100,
   mgi_velocity: 100,
   mgi_speed: 100,
+  vtt_mold_index: 100 / 6,
 };
 
 export const METRIC_BAR_PREFERRED: Set<MetricType> = new Set([
   'mgi_score',
   'mgi_velocity',
   'mgi_speed',
+  'vtt_mold_index',
   'alert_count',
 ]);
 
@@ -361,6 +367,7 @@ export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
   gas_resistance_zscore: 'zscore',
   battery_voltage: 'voltage',
   alert_count: 'count',
+  vtt_mold_index: 'percent',
   mgi_velocity: 'score_rate',
   mgi_speed: 'score_rate',
 };

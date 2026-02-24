@@ -42,6 +42,7 @@ const ALL_METRICS: MetricType[] = [
   'mgi_score',
   'mgi_velocity',
   'mgi_speed',
+  'vtt_mold_index',
   'temperature',
   'humidity',
   'pressure',

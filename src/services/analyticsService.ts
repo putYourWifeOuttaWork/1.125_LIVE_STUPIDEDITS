@@ -280,6 +280,7 @@ export async function fetchDrillDownRecords(
       mgi_velocity: img.mgi_velocity ?? null,
       mgi_speed: img.mgi_speed ?? null,
       battery_voltage: img.battery_voltage ?? null,
+      vtt_mold_index: img.vtt_mold_index ?? null,
       image_url: img.image_url,
       status: 'complete',
     }));

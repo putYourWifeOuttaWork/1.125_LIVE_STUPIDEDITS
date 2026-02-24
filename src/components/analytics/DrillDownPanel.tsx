@@ -373,13 +373,13 @@ export default function DrillDownPanel({
                               )}
                             </td>
                             <td className="px-3 py-2 text-center text-xs text-gray-700">
-                              {record.temperature !== null
-                                ? `${record.temperature.toFixed(1)}°F`
+                              {record.vtt_mold_index !== null
+                                ? `${(record.vtt_mold_index * 100 / 6).toFixed(1)}%`
                                 : 'N/A'}
                             </td>
                             <td className="px-3 py-2 text-center text-xs text-gray-700">
-                              {record.humidity !== null
-                                ? `${record.humidity.toFixed(1)}%`
+                              {record.temperature !== null
+                                ? `${record.temperature.toFixed(1)}°F`
                                 : 'N/A'}
                             </td>
                             <td className="px-3 py-2" colSpan={2}>
@@ -440,6 +440,9 @@ export default function DrillDownPanel({
                           </div>
                           <div className="text-white/80 text-[10px]">
                             MGI: {formatMGI(record.mgi_score ?? null)}
+                            {record.vtt_mold_index !== null && (
+                              <span className="ml-1">VTT: {(record.vtt_mold_index * 100 / 6).toFixed(0)}%</span>
+                            )}
                           </div>
                           <div className="text-white/60 text-[10px]">
                             {format(new Date(record.captured_at), 'MMM d, HH:mm')}
