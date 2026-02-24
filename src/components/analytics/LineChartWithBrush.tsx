@@ -232,6 +232,8 @@ export const LineChartWithBrush: React.FC<LineChartWithBrushProps> = ({
       if (intMetrics.includes(metricName)) return `${Math.round(value)}${unit ? ' ' + unit : ''}`;
       if (pctMetrics.includes(metricName)) return `${value.toFixed(1)}${unit ? ' ' + unit : ''}`;
       if (metricName === 'battery_voltage') return `${value.toFixed(2)}${unit ? ' ' + unit : ''}`;
+      if (metricName === 'gas_resistance_zscore') return `${value.toFixed(2)}${unit ? ' ' + unit : ''}`;
+      if (metricName === 'gas_resistance_deviation') return `${value >= 0 ? '+' : ''}${value.toFixed(1)}${unit ? ' ' + unit : ''}`;
       return `${value.toFixed(1)}${unit ? ' ' + unit : ''}`;
     };
 

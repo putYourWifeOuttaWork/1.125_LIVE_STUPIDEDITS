@@ -13,6 +13,10 @@ export type MetricType =
   | 'humidity'
   | 'pressure'
   | 'gas_resistance'
+  | 'gas_resistance_compensated'
+  | 'gas_resistance_baseline'
+  | 'gas_resistance_deviation'
+  | 'gas_resistance_zscore'
   | 'mgi_score'
   | 'mgi_velocity'
   | 'mgi_speed'
@@ -296,7 +300,11 @@ export const METRIC_LABELS: Record<MetricType, string> = {
   temperature: 'Temperature',
   humidity: 'Humidity',
   pressure: 'Pressure',
-  gas_resistance: 'Gas Resistance',
+  gas_resistance: 'Gas Resistance (Raw)',
+  gas_resistance_compensated: 'Gas Resistance (Pressure Adj.)',
+  gas_resistance_baseline: 'Gas Resistance Baseline (24h)',
+  gas_resistance_deviation: 'Gas Resistance Deviation',
+  gas_resistance_zscore: 'Gas Resistance Z-Score',
   mgi_score: 'MGI Score',
   mgi_velocity: 'MGI Velocity',
   mgi_speed: 'MGI Speed',
@@ -310,7 +318,11 @@ export const METRIC_UNITS: Record<MetricType, string> = {
   temperature: '\u00B0F',
   humidity: '%',
   pressure: 'hPa',
-  gas_resistance: '\u2126',
+  gas_resistance: 'k\u2126',
+  gas_resistance_compensated: 'k\u2126',
+  gas_resistance_baseline: 'k\u2126',
+  gas_resistance_deviation: '%',
+  gas_resistance_zscore: '\u03C3',
   mgi_score: '%',
   mgi_velocity: '%/session',
   mgi_speed: '%/day',
@@ -333,7 +345,7 @@ export const METRIC_BAR_PREFERRED: Set<MetricType> = new Set([
   'alert_count',
 ]);
 
-export type MetricScaleGroup = 'percent' | 'ambient' | 'pressure' | 'resistance' | 'voltage' | 'rate' | 'count' | 'score_rate';
+export type MetricScaleGroup = 'percent' | 'ambient' | 'pressure' | 'resistance' | 'voltage' | 'rate' | 'count' | 'score_rate' | 'deviation' | 'zscore';
 
 export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
   humidity: 'percent',
@@ -343,6 +355,10 @@ export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
   temperature: 'ambient',
   pressure: 'pressure',
   gas_resistance: 'resistance',
+  gas_resistance_compensated: 'resistance',
+  gas_resistance_baseline: 'resistance',
+  gas_resistance_deviation: 'deviation',
+  gas_resistance_zscore: 'zscore',
   battery_voltage: 'voltage',
   alert_count: 'count',
   mgi_velocity: 'score_rate',
