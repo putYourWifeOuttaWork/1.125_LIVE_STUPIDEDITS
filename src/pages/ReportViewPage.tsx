@@ -815,6 +815,7 @@ export default function ReportViewPage() {
                 hasMore={drillData?.hasMore || false}
                 loading={drillLoading}
                 onLoadMore={() => setDrillOffset((prev) => prev + 50)}
+                activeMetrics={effectiveConfig.metrics}
               />
             </div>
           )}
