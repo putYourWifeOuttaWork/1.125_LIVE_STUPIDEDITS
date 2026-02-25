@@ -14,6 +14,10 @@ import {
   Cpu,
   Calendar,
   Copy,
+  CheckSquare,
+  Square,
+  Minus,
+  Loader2,
 } from 'lucide-react';
 import Card, { CardHeader, CardContent } from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -23,6 +27,11 @@ import { format } from 'date-fns';
 import { useActiveCompany } from '../hooks/useActiveCompany';
 import useCompanies from '../hooks/useCompanies';
 import { createLogger } from '../utils/logger';
+import {
+  acknowledgeAlert as acknowledgeAlertService,
+  batchAcknowledgeAlerts,
+  batchAcknowledgeByFilter,
+} from '../services/alertService';
 
 const log = createLogger('AlertsPage');
 
@@ -85,6 +94,11 @@ const AlertsPage = () => {
   const [pageSize, setPageSize] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
 
+  // Selection state for batch operations
+  const [selectedAlerts, setSelectedAlerts] = useState<Set<string>>(new Set());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  const [batchLoading, setBatchLoading] = useState(false);
+
   // Filter state from URL
   const [showFilters, setShowFilters] = useState(false);
   const severityFilterStr = searchParams.get('severity') || '';
@@ -98,6 +112,12 @@ const AlertsPage = () => {
   const dateRangeFilter = searchParams.get('dateRange') || 'all';
   const searchQuery = searchParams.get('search') || '';
 
+  // Clear selection whenever context changes
+  const clearSelection = useCallback(() => {
+    setSelectedAlerts(new Set());
+    setSelectAllMatching(false);
+  }, []);
+
   // Update URL when filters change
   const updateFilter = (key: string, value: string | string[]) => {
     const newParams = new URLSearchParams(searchParams);
@@ -108,6 +128,7 @@ const AlertsPage = () => {
     }
     setSearchParams(newParams);
     setCurrentPage(1);
+    clearSelection();
   };
 
   // Toggle severity filter
@@ -313,24 +334,95 @@ const AlertsPage = () => {
     };
   }, [companyFilter, loadAlerts, loadStats]);
 
-  const acknowledgeAlert = async (alertId: string) => {
-    try {
-      const { error } = await supabase
-        .from('device_alerts')
-        .update({
-          resolved_at: new Date().toISOString(),
-          resolution_notes: 'Acknowledged by user',
-        })
-        .eq('alert_id', alertId);
-
-      if (error) throw error;
-
+  const handleAcknowledgeSingle = async (alertId: string) => {
+    const result = await acknowledgeAlertService(alertId);
+    if (result.success) {
       toast.success('Alert acknowledged');
       loadAlerts();
       loadStats();
-    } catch (error: any) {
-      log.error('Error acknowledging alert:', error);
-      toast.error('Failed to acknowledge alert');
+    } else {
+      toast.error(result.error || 'Failed to acknowledge alert');
+    }
+  };
+
+  // Selection helpers
+  const unresolvedAlertIds = alerts.filter(a => !a.resolved_at).map(a => a.alert_id);
+  const allPageSelected = unresolvedAlertIds.length > 0 && unresolvedAlertIds.every(id => selectedAlerts.has(id));
+  const somePageSelected = unresolvedAlertIds.some(id => selectedAlerts.has(id));
+  const showingUnresolved = statusFilter === 'unresolved';
+
+  const toggleAlertSelection = (alertId: string) => {
+    setSelectedAlerts(prev => {
+      const next = new Set(prev);
+      if (next.has(alertId)) {
+        next.delete(alertId);
+      } else {
+        next.add(alertId);
+      }
+      return next;
+    });
+    setSelectAllMatching(false);
+  };
+
+  const toggleSelectAllPage = () => {
+    if (allPageSelected) {
+      setSelectedAlerts(prev => {
+        const next = new Set(prev);
+        unresolvedAlertIds.forEach(id => next.delete(id));
+        return next;
+      });
+      setSelectAllMatching(false);
+    } else {
+      setSelectedAlerts(prev => {
+        const next = new Set(prev);
+        unresolvedAlertIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const getDateRangeStart = (): string | undefined => {
+    const now = new Date();
+    if (dateRangeFilter === 'today') {
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    } else if (dateRangeFilter === 'last_7_days') {
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    } else if (dateRangeFilter === 'last_30_days') {
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    }
+    return undefined;
+  };
+
+  const handleBatchAcknowledge = async () => {
+    setBatchLoading(true);
+    try {
+      let result;
+      if (selectAllMatching && companyFilter) {
+        result = await batchAcknowledgeByFilter({
+          companyId: companyFilter,
+          severities: severityFilter.length > 0 ? severityFilter : undefined,
+          categories: categoryFilter.length > 0 ? categoryFilter : undefined,
+          siteId: siteFilter || undefined,
+          dateRangeStart: getDateRangeStart(),
+          searchQuery: searchQuery || undefined,
+        });
+      } else {
+        result = await batchAcknowledgeAlerts(Array.from(selectedAlerts));
+      }
+
+      if (result.success) {
+        toast.success(`${result.count} alert${result.count !== 1 ? 's' : ''} acknowledged`);
+        clearSelection();
+        loadAlerts();
+        loadStats();
+      } else {
+        toast.error(result.error || 'Failed to batch acknowledge alerts');
+      }
+    } catch (err: any) {
+      log.error('Batch acknowledge error:', err);
+      toast.error('An unexpected error occurred');
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -630,14 +722,31 @@ const AlertsPage = () => {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">
-                Alerts {totalCount > 0 && `(${totalCount})`}
-              </h2>
-              <p className="text-sm text-gray-600 mt-1">
-                Showing {Math.min((currentPage - 1) * pageSize + 1, totalCount)}-
-                {Math.min(currentPage * pageSize, totalCount)} of {totalCount} alerts
-              </p>
+            <div className="flex items-center gap-3">
+              {showingUnresolved && unresolvedAlertIds.length > 0 && (
+                <button
+                  onClick={toggleSelectAllPage}
+                  className="p-1 rounded hover:bg-gray-100 transition-colors flex-shrink-0"
+                  title={allPageSelected ? 'Deselect all on page' : 'Select all on page'}
+                >
+                  {allPageSelected ? (
+                    <CheckSquare className="w-5 h-5 text-blue-600" />
+                  ) : somePageSelected ? (
+                    <Minus className="w-5 h-5 text-blue-400" />
+                  ) : (
+                    <Square className="w-5 h-5 text-gray-400" />
+                  )}
+                </button>
+              )}
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Alerts {totalCount > 0 && `(${totalCount})`}
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Showing {Math.min((currentPage - 1) * pageSize + 1, totalCount)}-
+                  {Math.min(currentPage * pageSize, totalCount)} of {totalCount} alerts
+                </p>
+              </div>
             </div>
 
             {/* Page Size Selector */}
@@ -648,6 +757,7 @@ const AlertsPage = () => {
                 onChange={(e) => {
                   setPageSize(Number(e.target.value));
                   setCurrentPage(1);
+                  clearSelection();
                 }}
                 className="px-2 py-1 border border-gray-300 rounded text-sm"
               >
@@ -658,6 +768,34 @@ const AlertsPage = () => {
               </select>
             </div>
           </div>
+
+          {/* Select-all-matching banner */}
+          {showingUnresolved && allPageSelected && !selectAllMatching && totalCount > unresolvedAlertIds.length && (
+            <div className="mt-3 bg-blue-50 border border-blue-200 rounded-md px-4 py-2 text-sm text-blue-800 flex items-center justify-between">
+              <span>
+                All {unresolvedAlertIds.length} alerts on this page are selected.
+              </span>
+              <button
+                onClick={() => setSelectAllMatching(true)}
+                className="font-semibold text-blue-700 hover:text-blue-900 underline"
+              >
+                Select all {totalCount} alerts matching current filters
+              </button>
+            </div>
+          )}
+          {selectAllMatching && (
+            <div className="mt-3 bg-blue-100 border border-blue-300 rounded-md px-4 py-2 text-sm text-blue-900 flex items-center justify-between">
+              <span className="font-medium">
+                All {totalCount} alerts matching current filters are selected.
+              </span>
+              <button
+                onClick={clearSelection}
+                className="font-semibold text-blue-700 hover:text-blue-900 underline"
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -677,18 +815,34 @@ const AlertsPage = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {alerts.map((alert) => (
+              {alerts.map((alert) => {
+                const isSelected = selectedAlerts.has(alert.alert_id) || (selectAllMatching && !alert.resolved_at);
+                return (
                 <div
                   key={alert.alert_id}
                   className={`border-2 rounded-lg ${getSeverityColor(alert.severity)} ${
                     alert.resolved_at ? 'opacity-60' : ''
-                  } ${alert.severity === 'critical' && !alert.resolved_at ? 'animate-pulse' : ''}`}
+                  } ${alert.severity === 'critical' && !alert.resolved_at ? 'animate-pulse' : ''} ${
+                    isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                  }`}
                 >
                   {/* Alert Header */}
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-3">
-                      {/* Alert Icon and Content */}
+                      {/* Checkbox + Alert Icon and Content */}
                       <div className="flex items-start gap-3 flex-1 min-w-0">
+                        {showingUnresolved && !alert.resolved_at && (
+                          <button
+                            onClick={() => toggleAlertSelection(alert.alert_id)}
+                            className="mt-1 flex-shrink-0 p-0.5 rounded hover:bg-white/30 transition-colors"
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-5 h-5 text-blue-600" />
+                            ) : (
+                              <Square className="w-5 h-5 text-gray-500" />
+                            )}
+                          </button>
+                        )}
                         <div className="mt-1 flex-shrink-0">
                           <AlertTriangle className="w-6 h-6" />
                         </div>
@@ -765,7 +919,7 @@ const AlertsPage = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => acknowledgeAlert(alert.alert_id)}
+                            onClick={() => handleAcknowledgeSingle(alert.alert_id)}
                             leftIcon={<CheckCircle className="w-4 h-4" />}
                             className="whitespace-nowrap border-2"
                           >
@@ -845,11 +999,40 @@ const AlertsPage = () => {
                     </div>
                   </details>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Floating Batch Action Bar */}
+      {(selectedAlerts.size > 0 || selectAllMatching) && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white border border-gray-200 shadow-xl rounded-xl px-5 py-3 flex items-center gap-4 animate-fade-in">
+          <span className="text-sm font-medium text-gray-700">
+            {selectAllMatching ? `All ${totalCount} matching` : selectedAlerts.size} alert{(selectAllMatching ? totalCount : selectedAlerts.size) !== 1 ? 's' : ''} selected
+          </span>
+          <div className="w-px h-6 bg-gray-200" />
+          <Button
+            variant="contained"
+            size="sm"
+            onClick={handleBatchAcknowledge}
+            disabled={batchLoading}
+            leftIcon={batchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+          >
+            {batchLoading ? 'Acknowledging...' : 'Acknowledge Selected'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clearSelection}
+            disabled={batchLoading}
+            leftIcon={<X className="w-4 h-4" />}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -857,7 +1040,10 @@ const AlertsPage = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            onClick={() => {
+              setCurrentPage((p) => Math.max(1, p - 1));
+              clearSelection();
+            }}
             disabled={currentPage === 1}
             leftIcon={<ChevronLeft className="w-4 h-4" />}
           >
@@ -873,7 +1059,7 @@ const AlertsPage = () => {
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                   <button
                     key={page}
-                    onClick={() => setCurrentPage(page)}
+                    onClick={() => { setCurrentPage(page); clearSelection(); }}
                     className={`px-3 py-1 rounded text-sm ${
                       currentPage === page
                         ? 'bg-blue-600 text-white font-semibold'
@@ -894,6 +1080,7 @@ const AlertsPage = () => {
                   const page = Number(e.target.value);
                   if (page >= 1 && page <= totalPages) {
                     setCurrentPage(page);
+                    clearSelection();
                   }
                 }}
                 className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-center"
@@ -904,7 +1091,10 @@ const AlertsPage = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => {
+              setCurrentPage((p) => Math.min(totalPages, p + 1));
+              clearSelection();
+            }}
             disabled={currentPage === totalPages}
             rightIcon={<ChevronRight className="w-4 h-4" />}
           >

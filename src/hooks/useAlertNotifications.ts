@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useActiveCompany } from './useActiveCompany';
+import { acknowledgeAlert as acknowledgeAlertService } from '../services/alertService';
 
 export interface AlertNotification {
   alert_id: string;
@@ -80,24 +81,13 @@ export function useAlertNotifications() {
   }, [activeCompanyId]);
 
   const acknowledgeAlert = useCallback(async (alertId: string) => {
-    try {
-      const { error } = await supabase
-        .from('device_alerts')
-        .update({
-          resolved_at: new Date().toISOString(),
-          resolution_notes: 'Acknowledged via notification center',
-        })
-        .eq('alert_id', alertId);
-
-      if (error) throw error;
-
+    const result = await acknowledgeAlertService(alertId, 'Acknowledged via notification center');
+    if (result.success) {
       setAlerts(prev => prev.filter(a => a.alert_id !== alertId));
       setAlertCount(prev => Math.max(0, prev - 1));
       return true;
-    } catch (err) {
-      console.error('Error acknowledging alert:', err);
-      return false;
     }
+    return false;
   }, []);
 
   useEffect(() => {

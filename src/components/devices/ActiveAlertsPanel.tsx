@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import useCompanies from '../../hooks/useCompanies';
 import CompanyAlertThresholdsModal from '../companies/CompanyAlertThresholdsModal';
 import { createLogger } from '../../utils/logger';
+import { acknowledgeAlert as acknowledgeAlertService } from '../../services/alertService';
 import type { DeviceAlert } from '../../types/alerts';
 
 export type { DeviceAlert };
@@ -192,26 +193,12 @@ const ActiveAlertsPanel = ({ onAlertSelect, selectedAlertId }: ActiveAlertsPanel
   };
 
   const acknowledgeAlert = async (alertId: string) => {
-    try {
-      const { error } = await supabase
-        .from('device_alerts')
-        .update({
-          resolved_at: new Date().toISOString(),
-          resolution_notes: 'Acknowledged by user',
-        })
-        .eq('alert_id', alertId);
-
-      if (error) {
-        log.error('Acknowledge error:', error);
-        throw error;
-      }
-
+    const result = await acknowledgeAlertService(alertId);
+    if (result.success) {
       toast.success('Alert acknowledged');
-
       setAlerts(alerts.filter(a => a.alert_id !== alertId));
-    } catch (error: any) {
-      log.error('Error acknowledging alert:', error);
-      toast.error(error.message || 'Failed to acknowledge alert');
+    } else {
+      toast.error(result.error || 'Failed to acknowledge alert');
     }
   };
 
