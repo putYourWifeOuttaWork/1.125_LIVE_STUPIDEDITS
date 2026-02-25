@@ -5,23 +5,15 @@ import { usePilotProgramStore } from '../../stores/pilotProgramStore';
 import useCompanies from '../../hooks/useCompanies';
 import { useCompanyFilterStore } from '../../stores/companyFilterStore';
 import {
-  Home,
-  User,
-  LogOut,
-  ChevronLeft,
   Menu,
   X,
-  History,
-  Building,
-  Leaf,
-  ClipboardList,
-  Cpu,
   ChevronDown,
   Shield,
-  AlertTriangle,
-  BarChart3
+  Building,
+  Leaf,
+  MoreHorizontal,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { toast } from 'react-toastify';
 import useUserRole from '../../hooks/useUserRole';
 import ActiveSessionsDrawer from '../submissions/ActiveSessionsDrawer';
@@ -29,13 +21,17 @@ import { useSessionStore } from '../../stores/sessionStore';
 import ReloadLink from '../common/ReloadLink';
 import { NotificationCenter } from '../notifications/NotificationCenter';
 import { useMgiReviewPendingCount } from '../../hooks/useMgiReview';
+import { navItems, NavItem } from './navConfig';
+import { VoiceInputFAB } from '../voice/VoiceInputFAB';
 
 const AppLayout = () => {
   const { user } = useAuthStore();
-  const { selectedProgram, selectedSite, resetAll } = usePilotProgramStore();
+  const { selectedProgram, resetAll } = usePilotProgramStore();
   const { userCompany, isAdmin: isCompanyAdmin, isSuperAdmin, companies, fetchAllCompanies } = useCompanies();
   const { selectedCompanyId, setActiveCompanyContext, loadActiveCompanyContext, isLoading: companyContextLoading } = useCompanyFilterStore();
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const overflowRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { programId } = useParams<{ programId: string }>();
@@ -49,28 +45,33 @@ const AppLayout = () => {
   const [showSessionIndicator, setShowSessionIndicator] = useState(false);
   const { data: mgiPendingCount } = useMgiReviewPendingCount();
 
-  // Load all companies for super admins and initialize company context
   useEffect(() => {
     if (isSuperAdmin) {
       fetchAllCompanies();
     }
-    // Load active company context from database on mount
     loadActiveCompanyContext();
   }, [isSuperAdmin, fetchAllCompanies, loadActiveCompanyContext]);
 
-  // Get display name for company filter
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+        setShowOverflowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const getCompanyFilterDisplay = () => {
     if (!selectedCompanyId) return userCompany?.name || 'No Company';
     const company = companies.find(c => c.company_id === selectedCompanyId);
     return company ? company.name : 'Unknown Company';
   };
 
-  // Handle company context change for super admins
   const handleCompanyChange = async (companyId: string) => {
     if (!user) return;
 
     try {
-      // Update the user's company_id in the users table
       const { error: updateError } = await supabase
         .from('users')
         .update({ company_id: companyId })
@@ -82,22 +83,19 @@ const AppLayout = () => {
         return;
       }
 
-      // Also update the active company context table for consistency
       await setActiveCompanyContext(companyId);
-
       setShowCompanyDropdown(false);
 
       const companyName = companies.find(c => c.company_id === companyId)?.name || 'company';
       toast.success(`Switched to ${companyName}`);
 
-      // Force reload of all data with new company context
       window.location.reload();
     } catch (error) {
       console.error('Error switching company:', error);
       toast.error('Failed to switch company');
     }
   };
-  
+
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -107,12 +105,11 @@ const AppLayout = () => {
       toast.error('Error signing out');
     }
   };
-  
-  // Close mobile menu when route changes
+
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
-  
+
   useEffect(() => {
     const checkActiveDeviceSessions = async () => {
       try {
@@ -145,29 +142,172 @@ const AppLayout = () => {
     };
   }, []);
 
+  const isVisible = (item: NavItem) => {
+    if (item.requireSuperAdmin && !isSuperAdmin) return false;
+    if (item.requireAdmin && !isCompanyAdmin) return false;
+    if (item.requireCompany && !userCompany) return false;
+    return true;
+  };
+
+  const handleNavAction = (item: NavItem) => {
+    if (item.action === 'sessions') {
+      setIsSessionsDrawerOpen(!isSessionsDrawerOpen);
+    } else if (item.action === 'signout') {
+      handleSignOut();
+    }
+  };
+
+  const getBadge = (item: NavItem) => {
+    if (item.badge === 'sessions' && hasActiveSessions) {
+      return <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent-500 rounded-full" />;
+    }
+    if (item.badge === 'mgiPending' && mgiPendingCount && mgiPendingCount > 0) {
+      return (
+        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+          {mgiPendingCount > 99 ? '99+' : mgiPendingCount}
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const primaryItems = navItems.filter(i => i.group === 'primary' && isVisible(i));
+  const overflowItems = navItems.filter(i => i.group === 'overflow' && isVisible(i));
+
+  const renderDesktopNavItem = (item: NavItem) => {
+    const Icon = item.icon;
+    const baseClass = "relative flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors";
+    const activeClass = item.action === 'sessions' && isSessionsDrawerOpen ? ' bg-primary-600' : '';
+
+    if (item.action) {
+      return (
+        <button
+          key={item.key}
+          className={`${baseClass}${activeClass}`}
+          onClick={() => handleNavAction(item)}
+          data-testid={`${item.key}-button`}
+        >
+          <Icon size={18} />
+          <span className="hidden lg:inline">{item.label}</span>
+          {getBadge(item)}
+        </button>
+      );
+    }
+
+    const isReloadLink = item.key === 'devices' || item.key === 'analytics';
+
+    if (isReloadLink) {
+      return (
+        <ReloadLink
+          key={item.key}
+          to={item.to!}
+          className={baseClass}
+          data-testid={`${item.key}-link`}
+        >
+          <Icon size={18} />
+          <span className="hidden lg:inline">{item.label}</span>
+          {getBadge(item)}
+        </ReloadLink>
+      );
+    }
+
+    return (
+      <Link
+        key={item.key}
+        to={item.to!}
+        className={baseClass}
+        data-testid={`${item.key}-link`}
+      >
+        <Icon size={18} />
+        <span className="hidden lg:inline">{item.label}</span>
+        {getBadge(item)}
+      </Link>
+    );
+  };
+
+  const renderMobileNavItem = (item: NavItem) => {
+    const Icon = item.icon;
+
+    if (item.action === 'signout') {
+      return (
+        <button
+          key={item.key}
+          onClick={() => { handleSignOut(); setIsMobileMenuOpen(false); }}
+          className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 transition-colors text-error-600"
+          data-testid={`mobile-${item.key}-button`}
+        >
+          <div className="flex items-center space-x-2">
+            <Icon size={18} />
+            <span>{item.label}</span>
+          </div>
+        </button>
+      );
+    }
+
+    if (item.action === 'sessions') {
+      return (
+        <button
+          key={item.key}
+          onClick={() => { setIsSessionsDrawerOpen(!isSessionsDrawerOpen); setIsMobileMenuOpen(false); }}
+          className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+          data-testid={`mobile-${item.key}-button`}
+        >
+          <div className="flex items-center space-x-2">
+            <Icon size={18} />
+            <span>{item.label}</span>
+            {hasActiveSessions && (
+              <span className="ml-auto w-2.5 h-2.5 bg-accent-500 rounded-full" />
+            )}
+          </div>
+        </button>
+      );
+    }
+
+    return (
+      <Link
+        key={item.key}
+        to={item.to!}
+        className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+        onClick={() => setIsMobileMenuOpen(false)}
+        data-testid={`mobile-${item.key}-link`}
+      >
+        <div className="flex items-center space-x-2">
+          <Icon size={18} />
+          <span>{item.label}</span>
+          {item.badge === 'mgiPending' && !!mgiPendingCount && mgiPendingCount > 0 && (
+            <span className="ml-auto px-1.5 py-0.5 text-xs font-bold bg-amber-500 text-white rounded-full">
+              {mgiPendingCount > 99 ? '99+' : mgiPendingCount}
+            </span>
+          )}
+        </div>
+      </Link>
+    );
+  };
+
+  const operationsItems = navItems.filter(i => i.mobileSection === 'operations' && isVisible(i));
+  const intelligenceItems = navItems.filter(i => i.mobileSection === 'intelligence' && isVisible(i));
+  const settingsItems = navItems.filter(i => i.mobileSection === 'settings' && isVisible(i));
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Header */}
       <header className="bg-primary-700 text-white shadow-md" data-testid="app-header">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-2 sm:py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 sm:space-x-4">
-              {/* Mobile menu button */}
-              <button 
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="md:hidden p-1 sm:p-2 rounded-md hover:bg-primary-600 transition-colors"
                 aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
                 data-testid="mobile-menu-button"
               >
                 {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
               </button>
-              
+
               <Link to="/home" className="flex items-center" data-testid="app-logo-link">
                 <Leaf className="h-5 w-5 sm:h-6 sm:w-6 mr-1 sm:mr-2" />
                 <h1 className="text-lg sm:text-xl font-bold whitespace-nowrap overflow-hidden text-ellipsis">GasX InVivo</h1>
               </Link>
 
-              {/* Company context and super admin badge */}
               <div className="hidden md:flex items-center space-x-2 ml-4">
                 {isSuperAdmin && (
                   <span className="bg-accent-500 text-white text-xs px-2 py-0.5 rounded-full flex items-center space-x-1" title="Super Administrator">
@@ -176,7 +316,6 @@ const AppLayout = () => {
                   </span>
                 )}
 
-                {/* Company filter dropdown for super admins */}
                 {isSuperAdmin ? (
                   <div className="relative">
                     <button
@@ -201,7 +340,7 @@ const AppLayout = () => {
                             } ${companyContextLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
                             {company.name}
-                            {selectedCompanyId === company.company_id && ' ✓'}
+                            {selectedCompanyId === company.company_id && ' \u2713'}
                           </button>
                         ))}
                       </div>
@@ -216,280 +355,106 @@ const AppLayout = () => {
               </div>
             </div>
 
-            {/* User menu (desktop) */}
             <div className="hidden md:flex items-center gap-1 flex-shrink-0" data-testid="user-menu-desktop">
-              <Link
-                to="/home"
-                className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                data-testid="home-link"
-              >
-                <Home size={18} />
-                <span className="hidden lg:inline">Home</span>
-              </Link>
+              {primaryItems.map(renderDesktopNavItem)}
 
-              {isCompanyAdmin && (
-                <Link
-                  to="/alerts"
-                  className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                  data-testid="alerts-link"
-                >
-                  <AlertTriangle size={18} />
-                  <span className="hidden lg:inline">Alerts</span>
-                </Link>
-              )}
-
-              <button
-                className={`relative flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors ${
-                  isSessionsDrawerOpen ? 'bg-primary-600' : ''
-                }`}
-                onClick={() => setIsSessionsDrawerOpen(!isSessionsDrawerOpen)}
-                data-testid="sessions-button"
-              >
-                <ClipboardList size={18} />
-                <span className="hidden lg:inline">Sessions</span>
-                {hasActiveSessions && (
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent-500 rounded-full"></span>
-                )}
-              </button>
-
-              {userCompany && (
-                <Link
-                  to="/company"
-                  className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                  data-testid="company-link"
-                >
-                  <Building size={18} />
-                  <span className="hidden lg:inline">Company</span>
-                </Link>
-              )}
-              {isCompanyAdmin && (
-                <>
-                  <ReloadLink
-                    to="/devices"
+              {overflowItems.length > 0 && (
+                <div className="relative" ref={overflowRef}>
+                  <button
+                    onClick={() => setShowOverflowMenu(!showOverflowMenu)}
                     className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                    data-testid="devices-link"
+                    data-testid="overflow-menu-button"
                   >
-                    <Cpu size={18} />
-                    <span className="hidden lg:inline">Devices</span>
-                  </ReloadLink>
-                  <ReloadLink
-                    to="/analytics"
-                    className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                    data-testid="analytics-link"
-                  >
-                    <BarChart3 size={18} />
-                    <span className="hidden lg:inline">Analytics</span>
-                  </ReloadLink>
-                </>
-              )}
-              {isSuperAdmin && (
-                <Link
-                  to="/mgi-review"
-                  className="relative flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                  data-testid="mgi-review-link"
-                >
-                  <Shield size={18} />
-                  <span className="hidden lg:inline">QA Review</span>
-                  {!!mgiPendingCount && mgiPendingCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-[10px] font-bold bg-amber-500 text-white rounded-full">
-                      {mgiPendingCount > 99 ? '99+' : mgiPendingCount}
-                    </span>
+                    <MoreHorizontal size={18} />
+                    <span className="hidden lg:inline">More</span>
+                  </button>
+
+                  {showOverflowMenu && (
+                    <div className="absolute top-full mt-1 right-0 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[180px] z-50">
+                      {overflowItems.map(item => {
+                        const Icon = item.icon;
+                        if (item.action === 'signout') {
+                          return (
+                            <button
+                              key={item.key}
+                              onClick={() => { handleSignOut(); setShowOverflowMenu(false); }}
+                              className="w-full text-left px-4 py-2.5 hover:bg-gray-100 text-error-600 text-sm flex items-center space-x-2"
+                            >
+                              <Icon size={16} />
+                              <span>{item.label}</span>
+                            </button>
+                          );
+                        }
+                        return (
+                          <Link
+                            key={item.key}
+                            to={item.to!}
+                            onClick={() => setShowOverflowMenu(false)}
+                            className="block px-4 py-2.5 hover:bg-gray-100 text-gray-700 text-sm"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <Icon size={16} />
+                              <span>{item.label}</span>
+                              {item.badge === 'mgiPending' && !!mgiPendingCount && mgiPendingCount > 0 && (
+                                <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+                                  {mgiPendingCount > 99 ? '99+' : mgiPendingCount}
+                                </span>
+                              )}
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
                   )}
-                </Link>
+                </div>
               )}
-              <Link
-                to="/profile" 
-                className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                data-testid="profile-link"
-              >
-                <User size={18} />
-                <span className="hidden lg:inline">Profile</span>
-              </Link>
-              <button 
-                onClick={handleSignOut}
-                className="flex items-center space-x-1 px-2 py-1.5 lg:px-3 lg:py-2 rounded-md hover:bg-primary-600 transition-colors"
-                data-testid="signout-button"
-              >
-                <LogOut size={18} />
-                <span className="hidden lg:inline">Sign Out</span>
-              </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Mobile menu */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-white border-b border-gray-200 shadow-sm animate-fade-in" data-testid="mobile-menu">
-          <div className="container mx-auto px-4 py-2 space-y-2">
-            <Link 
-              to="/home" 
-              className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-              onClick={() => setIsMobileMenuOpen(false)}
-              data-testid="mobile-home-link"
-            >
-              <div className="flex items-center space-x-2">
-                <Home size={18} />
-                <span>Home</span>
+          <div className="container mx-auto px-4 py-2 space-y-1">
+            {operationsItems.length > 0 && (
+              <div>
+                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Operations</div>
+                {operationsItems.map(renderMobileNavItem)}
               </div>
-            </Link>
-            
-            <Link
-              to="/programs"
-              className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-              onClick={() => setIsMobileMenuOpen(false)}
-              data-testid="mobile-programs-link"
-            >
-              <div className="flex items-center space-x-2">
-                <Home size={18} />
-                <span>Programs</span>
+            )}
+            {intelligenceItems.length > 0 && (
+              <div>
+                <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Intelligence</div>
+                {intelligenceItems.map(renderMobileNavItem)}
               </div>
-            </Link>
-
-            {isCompanyAdmin && (
-              <Link
-                to="/alerts"
-                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-                data-testid="mobile-alerts-link"
-              >
-                <div className="flex items-center space-x-2">
-                  <AlertTriangle size={18} />
-                  <span>Alerts</span>
-                </div>
-              </Link>
             )}
-            {selectedProgram && (
-              <>
-                <Link 
-                  to={`/programs/${selectedProgram.program_id}/sites`} 
-                  className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  data-testid={`mobile-program-link-${selectedProgram.program_id}`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <ChevronLeft size={18} />
-                    <span className="truncate">{selectedProgram.name}</span>
-                  </div>
-                </Link>
-                {canViewAuditLog && (
-                  <Link 
-                    to={`/programs/${selectedProgram.program_id}/audit-log`} 
-                    className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    data-testid={`mobile-audit-log-link-${selectedProgram.program_id}`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <History size={18} />
-                      <span>Audit Log</span>
-                    </div>
-                  </Link>
-                )}
-              </>
-            )}
-            {userCompany && (
-              <Link
-                to="/company"
-                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-                data-testid="mobile-company-link"
-              >
-                <div className="flex items-center space-x-2">
-                  <Building size={18} />
-                  <span>Company</span>
-                </div>
-              </Link>
-            )}
-            {isCompanyAdmin && (
-              <>
-                <Link
-                  to="/devices"
-                  className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  data-testid="mobile-devices-link"
-                >
-                  <div className="flex items-center space-x-2">
-                    <Cpu size={18} />
-                    <span>Devices</span>
-                  </div>
-                </Link>
-                <Link
-                  to="/analytics"
-                  className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  data-testid="mobile-analytics-link"
-                >
-                  <div className="flex items-center space-x-2">
-                    <BarChart3 size={18} />
-                    <span>Analytics</span>
-                  </div>
-                </Link>
-              </>
-            )}
-            {isSuperAdmin && (
-              <Link
-                to="/mgi-review"
-                className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-                data-testid="mobile-mgi-review-link"
-              >
-                <div className="flex items-center space-x-2">
-                  <Shield size={18} />
-                  <span>QA Review</span>
-                  {!!mgiPendingCount && mgiPendingCount > 0 && (
-                    <span className="ml-auto px-1.5 py-0.5 text-xs font-bold bg-amber-500 text-white rounded-full">
-                      {mgiPendingCount > 99 ? '99+' : mgiPendingCount}
-                    </span>
-                  )}
-                </div>
-              </Link>
-            )}
-            <Link
-              to="/profile" 
-              className="block px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
-              onClick={() => setIsMobileMenuOpen(false)}
-              data-testid="mobile-profile-link"
-            >
-              <div className="flex items-center space-x-2">
-                <User size={18} />
-                <span>Profile</span>
+            {settingsItems.length > 0 && (
+              <div>
+                <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Settings</div>
+                {settingsItems.map(renderMobileNavItem)}
               </div>
-            </Link>
-            <button 
-              onClick={handleSignOut}
-              className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 transition-colors text-error-600"
-              data-testid="mobile-signout-button"
-            >
-              <div className="flex items-center space-x-2">
-                <LogOut size={18} />
-                <span>Sign Out</span>
-              </div>
-            </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* Main content */}
       <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6" data-testid="app-main-content">
         <Outlet />
       </main>
 
-      {/* Footer */}
       <footer className="bg-gray-100 border-t border-gray-200 py-3 sm:py-4 mt-auto" data-testid="app-footer">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-xs sm:text-sm text-gray-600">
-          <p>© {new Date().getFullYear()} GRM TEK - GasX InVivo Pilot Program Platform - Version 1.120. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} GRM TEK - GasX InVivo Pilot Program Platform - Version 1.120. All rights reserved.</p>
         </div>
       </footer>
-      
-      {/* Active Sessions Drawer */}
+
       <ActiveSessionsDrawer
         isOpen={isSessionsDrawerOpen}
         onClose={() => {
           setIsSessionsDrawerOpen(false);
         }}
       />
-      
-      {/* Enhanced Mobile Sessions Button */}
+
       {showSessionIndicator && hasActiveSessions && (
         <div
           className="fixed bottom-14 right-12 z-50 flex items-center bg-primary-600 rounded-full shadow-lg cursor-pointer animate-pulse"
@@ -497,17 +462,18 @@ const AppLayout = () => {
           data-testid="mobile-sessions-button"
         >
           <div className="flex items-center px-4 py-3">
-            <ClipboardList className="text-white" size={22} />
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>
             <span className="text-white font-medium ml-2">Sessions</span>
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent-500 rounded-full"></span>
           </div>
         </div>
       )}
 
-      {/* Floating Notification Center */}
       <div className="fixed bottom-4 right-4 z-50">
         <NotificationCenter />
       </div>
+
+      <VoiceInputFAB />
     </div>
   );
 };

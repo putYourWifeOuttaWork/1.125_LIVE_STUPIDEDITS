@@ -48,6 +48,9 @@ const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const ReportBuilderPage = lazy(() => import('./pages/ReportBuilderPage'));
 const ReportViewPage = lazy(() => import('./pages/ReportViewPage'));
 const MgiReviewPage = lazy(() => import('./pages/MgiReviewPage'));
+const ValueDashboardPage = lazy(() => import('./pages/ValueDashboardPage'));
+const VoiceActivityPage = lazy(() => import('./pages/VoiceActivityPage'));
+const ZoneDetailPage = lazy(() => import('./pages/ZoneDetailPage'));
 
 function App() {
   const navigate = useNavigate();
@@ -407,6 +410,21 @@ function App() {
                   <RequireSuperAdmin>
                     <MgiReviewPage />
                   </RequireSuperAdmin>
+                </Suspense>
+              } />
+              <Route path="/value" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <ValueDashboardPage />
+                </Suspense>
+              } />
+              <Route path="/value/activity" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <VoiceActivityPage />
+                </Suspense>
+              } />
+              <Route path="/zones/:zoneId" element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <ZoneDetailPage />
                 </Suspense>
               } />
             </Route>
