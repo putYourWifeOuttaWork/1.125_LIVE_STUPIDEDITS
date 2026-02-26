@@ -213,7 +213,7 @@ export default function ScoreBrowserTable({
                   </td>
                   <td className="px-3 py-2 text-right">
                     <span className="font-mono text-xs text-gray-700">
-                      {img.colony_count != null ? img.colony_count : '--'}
+                      {img.colony_count}
                     </span>
                   </td>
                   <td className="px-3 py-2">

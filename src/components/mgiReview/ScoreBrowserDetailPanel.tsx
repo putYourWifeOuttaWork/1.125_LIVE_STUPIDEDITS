@@ -94,7 +94,7 @@ export default function ScoreBrowserDetailPanel({ image, onClose, onActionComple
         )}
 
         {/* Score info */}
-        <div className={`grid gap-3 ${image.colony_count != null ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <div className="grid gap-3 grid-cols-3">
           <div className={`rounded-lg p-3 border ${
             level === 'critical' ? 'bg-red-50 border-red-100' :
             level === 'concerning' ? 'bg-orange-50 border-orange-100' :
@@ -110,12 +110,10 @@ export default function ScoreBrowserDetailPanel({ image, onClose, onActionComple
               {image.mgi_velocity !== null ? `${image.mgi_velocity > 0 ? '+' : ''}${(image.mgi_velocity * 100).toFixed(1)}%` : '--'}
             </p>
           </div>
-          {image.colony_count != null && (
-            <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 mb-0.5">Colonies</p>
-              <p className="text-xl font-bold text-blue-800">{image.colony_count}</p>
-            </div>
-          )}
+          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 mb-0.5">Colonies</p>
+            <p className="text-xl font-bold text-blue-800">{image.colony_count}</p>
+          </div>
         </div>
 
         {/* Original vs current */}

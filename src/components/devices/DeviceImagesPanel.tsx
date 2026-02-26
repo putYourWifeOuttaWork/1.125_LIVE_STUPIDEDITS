@@ -406,13 +406,11 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
                         QA Review Pending
                       </span>
                     )}
-                    {image.colony_count != null && (
-                      <div className="mt-1.5 flex items-center gap-1">
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                          {image.colony_count} {image.colony_count === 1 ? 'colony' : 'colonies'}
-                        </span>
-                      </div>
-                    )}
+                    <div className="mt-1.5 flex items-center gap-1">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                        {image.colony_count} {image.colony_count === 1 ? 'colony' : 'colonies'}
+                      </span>
+                    </div>
                     {(image.temperature != null || image.humidity != null) && (
                       <div className="mt-2 flex gap-3 text-xs text-gray-600">
                         {image.temperature != null && <span>{image.temperature.toFixed(1)}°F</span>}
@@ -475,25 +473,23 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
                 </div>
               </div>
 
-              {selectedImage.colony_count != null && (
-                <div className="mt-4 bg-blue-50 rounded p-4 border border-blue-100">
-                  <p className="font-medium text-sm text-blue-800 mb-2">Colony Analysis</p>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <p className="text-blue-600">Colony Count</p>
-                      <p className="text-2xl font-bold text-blue-900">{selectedImage.colony_count}</p>
-                    </div>
-                    {selectedImage.colony_count_velocity != null && (
-                      <div>
-                        <p className="text-blue-600">Growth Rate</p>
-                        <p className="text-2xl font-bold text-blue-900">
-                          {selectedImage.colony_count_velocity > 0 ? '+' : ''}{selectedImage.colony_count_velocity}/session
-                        </p>
-                      </div>
-                    )}
+              <div className="mt-4 bg-blue-50 rounded p-4 border border-blue-100">
+                <p className="font-medium text-sm text-blue-800 mb-2">Colony Analysis</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-blue-600">Colony Count</p>
+                    <p className="text-2xl font-bold text-blue-900">{selectedImage.colony_count}</p>
                   </div>
+                  {selectedImage.colony_count_velocity != null && (
+                    <div>
+                      <p className="text-blue-600">Growth Rate</p>
+                      <p className="text-2xl font-bold text-blue-900">
+                        {selectedImage.colony_count_velocity > 0 ? '+' : ''}{selectedImage.colony_count_velocity}/session
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               {(selectedImage.temperature != null || selectedImage.humidity != null || selectedImage.pressure != null || selectedImage.gas_resistance != null) && (
                 <div className="mt-4 bg-gray-50 rounded p-4">

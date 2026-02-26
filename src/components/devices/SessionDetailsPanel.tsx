@@ -32,7 +32,7 @@ interface SessionMetrics {
   avgTemperature: number | null;
   avgHumidity: number | null;
   avgMgiScore: number | null;
-  avgColonyCount: number | null;
+  avgColonyCount: number;
   deviceHealthDistribution: {
     healthy: number;
     warning: number;
@@ -106,13 +106,10 @@ export default function SessionDetailsPanel({
         ? mgiScores.reduce((sum, score) => sum + score, 0) / mgiScores.length
         : null;
 
-      // Calculate colony count average
-      const colonyCounts = (devicesData || [])
-        .map(d => d.latest_colony_count)
-        .filter((c): c is number => c !== null && c !== undefined);
+      const colonyCounts = (devicesData || []).map(d => d.latest_colony_count ?? 0);
       const avgColony = colonyCounts.length > 0
         ? colonyCounts.reduce((sum, c) => sum + c, 0) / colonyCounts.length
-        : null;
+        : 0;
 
       // Calculate device health distribution
       const healthDistribution = {
@@ -323,7 +320,7 @@ export default function SessionDetailsPanel({
         )}
 
         {/* Colony Count Card */}
-        {metrics && metrics.avgColonyCount !== null && (
+        {metrics && (
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">

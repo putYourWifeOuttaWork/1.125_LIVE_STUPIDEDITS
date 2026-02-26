@@ -203,7 +203,7 @@ export interface DrillDownRecord {
   mgi_score: number | null;
   mgi_velocity: number | null;
   mgi_speed: number | null;
-  colony_count: number | null;
+  colony_count: number;
   colony_count_velocity: number | null;
   battery_voltage: number | null;
   vtt_mold_index: number | null;

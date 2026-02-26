@@ -6,7 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
-const ROBOFLOW_API_URL = 'https://serverless.roboflow.com/invivo/workflows/custom-workflow';
+const ROBOFLOW_MGI_URL = 'https://serverless.roboflow.com/invivo/workflows/custom-workflow';
+const ROBOFLOW_SPORECOUNT_URL = 'https://serverless.roboflow.com/invivo/workflows/sporecount';
 const ROBOFLOW_API_KEY = 'VD3fJI17y2IgnbOhYmvu';
 
 interface ScoreRequest {
@@ -16,8 +17,29 @@ interface ScoreRequest {
 
 interface RoboflowResult {
   MGI: string;
-  colony_count?: number | string;
-  colony_detections?: Array<{ confidence: number; [key: string]: unknown }>;
+}
+
+function parseSporeCountResponse(raw: unknown): number {
+  try {
+    if (!Array.isArray(raw) || raw.length === 0) return 0;
+    const first = raw[0];
+    const colonyField = first?.colony_count;
+    if (colonyField === undefined || colonyField === null) return 0;
+
+    if (typeof colonyField === 'number') return Math.max(0, Math.round(colonyField));
+
+    const str = String(colonyField);
+    const fenceMatch = str.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const jsonStr = fenceMatch ? fenceMatch[1].trim() : str.trim();
+    const parsed = JSON.parse(jsonStr);
+    const count = typeof parsed === 'object' && parsed !== null
+      ? parsed.colony_count
+      : parsed;
+    const num = parseInt(String(count), 10);
+    return isNaN(num) || num < 0 ? 0 : num;
+  } catch {
+    return 0;
+  }
 }
 
 interface PlausibilityResult {
@@ -70,7 +92,7 @@ Deno.serve(async (req: Request) => {
       .update({ mgi_scoring_status: 'in_progress' })
       .eq('image_id', image_id);
 
-    const roboflowPayload = {
+    const mgiPayload = {
       api_key: ROBOFLOW_API_KEY,
       inputs: {
         image: { type: 'url', value: image_url },
@@ -78,56 +100,65 @@ Deno.serve(async (req: Request) => {
       },
     };
 
-    console.log('[MGI Scoring] Calling Roboflow API...');
+    const sporecountPayload = {
+      api_key: ROBOFLOW_API_KEY,
+      inputs: {
+        image: { type: 'url', value: image_url },
+        colony_count: 0,
+      },
+    };
 
-    const roboflowResponse = await fetch(ROBOFLOW_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(roboflowPayload),
-    });
+    console.log('[MGI Scoring] Calling Roboflow MGI + Sporecount in parallel...');
 
-    if (!roboflowResponse.ok) {
-      const errorText = await roboflowResponse.text();
-      throw new Error(`Roboflow API error: ${roboflowResponse.status} - ${errorText}`);
+    const [mgiResponse, sporecountResponse] = await Promise.all([
+      fetch(ROBOFLOW_MGI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mgiPayload),
+      }),
+      fetch(ROBOFLOW_SPORECOUNT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sporecountPayload),
+      }).catch((e: Error) => {
+        console.error('[MGI Scoring] Sporecount API fetch error:', e.message);
+        return null;
+      }),
+    ]);
+
+    if (!mgiResponse.ok) {
+      const errorText = await mgiResponse.text();
+      throw new Error(`Roboflow MGI API error: ${mgiResponse.status} - ${errorText}`);
     }
 
-    const roboflowData = await roboflowResponse.json();
-    console.log('[MGI Scoring] Roboflow response:', JSON.stringify(roboflowData));
+    const roboflowData = await mgiResponse.json();
+    console.log('[MGI Scoring] MGI response:', JSON.stringify(roboflowData));
 
     let mgiScore: number | null = null;
-    let colonyCount: number | null = null;
-    let colonyCountConfidence: number | null = null;
-    let colonyDetections: Array<{ confidence: number; [key: string]: unknown }> | null = null;
-    const outputs = roboflowData.outputs || roboflowData;
+    let colonyCount = 0;
 
+    const outputs = roboflowData.outputs || roboflowData;
     if (Array.isArray(outputs) && outputs.length > 0) {
       const firstResult = outputs[0] as RoboflowResult;
       if (firstResult.MGI !== undefined) {
         mgiScore = parseFloat(firstResult.MGI);
       }
-
-      if (firstResult.colony_count !== undefined) {
-        const parsed = typeof firstResult.colony_count === 'string'
-          ? parseInt(firstResult.colony_count, 10)
-          : Math.round(Number(firstResult.colony_count));
-        if (!isNaN(parsed) && parsed >= 0) {
-          colonyCount = parsed;
-        }
-      }
-
-      if (Array.isArray(firstResult.colony_detections) && firstResult.colony_detections.length > 0) {
-        colonyDetections = firstResult.colony_detections;
-        const confidences = colonyDetections.map(d => d.confidence).filter(c => typeof c === 'number');
-        if (confidences.length > 0) {
-          colonyCountConfidence = confidences.reduce((s, c) => s + c, 0) / confidences.length;
-        }
-        if (colonyCount === null) {
-          colonyCount = colonyDetections.length;
-        }
-      }
     }
 
-    console.log('[MGI Scoring] Colony count:', colonyCount, 'Confidence:', colonyCountConfidence);
+    if (sporecountResponse && sporecountResponse.ok) {
+      try {
+        const sporecountData = await sporecountResponse.json();
+        console.log('[MGI Scoring] Sporecount response:', JSON.stringify(sporecountData));
+        const sporecountOutputs = sporecountData.outputs || sporecountData;
+        colonyCount = parseSporeCountResponse(sporecountOutputs);
+      } catch (e) {
+        console.error('[MGI Scoring] Sporecount response parse error:', e);
+      }
+    } else if (sporecountResponse) {
+      console.error('[MGI Scoring] Sporecount API error:', sporecountResponse.status);
+    }
+
+    console.log('[MGI Scoring] Colony count:', colonyCount);
 
     if (mgiScore === null || isNaN(mgiScore) || mgiScore < 0 || mgiScore > 1) {
       console.error('[MGI Scoring] Invalid MGI score:', mgiScore);
@@ -202,10 +233,8 @@ Deno.serve(async (req: Request) => {
         roboflow_response: roboflowData,
         mgi_qa_status: 'accepted',
         mgi_confidence: qaResult?.confidence ?? 1.0,
+        colony_count: colonyCount,
       };
-      if (colonyCount !== null) updatePayload.colony_count = colonyCount;
-      if (colonyCountConfidence !== null) updatePayload.colony_count_confidence = colonyCountConfidence;
-      if (colonyDetections !== null) updatePayload.colony_detections = colonyDetections;
 
       const { error: updateError } = await supabaseClient
         .from('device_images')
@@ -285,10 +314,8 @@ Deno.serve(async (req: Request) => {
       mgi_confidence: qaResult!.confidence,
       mgi_qa_method: qaResult!.method,
       mgi_qa_details: qaResult as unknown as Record<string, unknown>,
+      colony_count: colonyCount,
     };
-    if (colonyCount !== null) flaggedPayload.colony_count = colonyCount;
-    if (colonyCountConfidence !== null) flaggedPayload.colony_count_confidence = colonyCountConfidence;
-    if (colonyDetections !== null) flaggedPayload.colony_detections = colonyDetections;
 
     const { error: updateError } = await supabaseClient
       .from('device_images')

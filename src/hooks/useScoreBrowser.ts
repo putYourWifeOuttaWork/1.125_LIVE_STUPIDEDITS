@@ -11,7 +11,7 @@ export interface ScoredImage {
   mgi_original_score: number | null;
   mgi_qa_status: string | null;
   mgi_qa_method: string | null;
-  colony_count: number | null;
+  colony_count: number;
   captured_at: string;
   temperature: number | null;
   humidity: number | null;
