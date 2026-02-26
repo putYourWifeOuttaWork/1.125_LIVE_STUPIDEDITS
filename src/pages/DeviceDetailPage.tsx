@@ -17,6 +17,7 @@ import DeviceEditModal from '../components/devices/DeviceEditModal';
 import DeviceSettingsModal from '../components/devices/DeviceSettingsModal';
 import DeviceAlertThresholdsModal from '../components/devices/DeviceAlertThresholdsModal';
 import ManualWakeModal from '../components/devices/ManualWakeModal';
+import ColonyGrowthPanel from '../components/devices/ColonyGrowthPanel';
 import { useDevice, useDeviceImages } from '../hooks/useDevice';
 import { useDeviceRisk } from '../hooks/useDeviceRisk';
 import RiskForecastCard from '../components/devices/RiskForecastCard';
@@ -840,7 +841,10 @@ const DeviceDetailPage = () => {
       )}
 
       {activeTab === 'images' && deviceId && (
-        <DeviceImagesPanel deviceId={deviceId} />
+        <div className="space-y-6">
+          <ColonyGrowthPanel deviceId={deviceId} />
+          <DeviceImagesPanel deviceId={deviceId} />
+        </div>
       )}
 
       {showUnassignModal && (

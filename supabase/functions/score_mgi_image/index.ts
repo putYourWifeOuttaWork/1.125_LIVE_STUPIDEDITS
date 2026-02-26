@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const ROBOFLOW_MGI_URL = 'https://serverless.roboflow.com/invivo/workflows/custom-workflow';
-const ROBOFLOW_SPORECOUNT_URL = 'https://serverless.roboflow.com/invivo/workflows/sporecount';
+const ROBOFLOW_FIND_MOLDS_URL = 'https://serverless.roboflow.com/invivo/workflows/find-molds';
 const ROBOFLOW_API_KEY = 'VD3fJI17y2IgnbOhYmvu';
 
 interface ScoreRequest {
@@ -19,27 +19,25 @@ interface RoboflowResult {
   MGI: string;
 }
 
-function parseSporeCountResponse(raw: unknown): number {
-  try {
-    if (!Array.isArray(raw) || raw.length === 0) return 0;
-    const first = raw[0];
-    const colonyField = first?.colony_count;
-    if (colonyField === undefined || colonyField === null) return 0;
+interface FindMoldsDetection {
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  confidence: number;
+  class_id: number;
+  class: string;
+  detection_id: string;
+  parent_id: string;
+}
 
-    if (typeof colonyField === 'number') return Math.max(0, Math.round(colonyField));
-
-    const str = String(colonyField);
-    const fenceMatch = str.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonStr = fenceMatch ? fenceMatch[1].trim() : str.trim();
-    const parsed = JSON.parse(jsonStr);
-    const count = typeof parsed === 'object' && parsed !== null
-      ? parsed.colony_count
-      : parsed;
-    const num = parseInt(String(count), 10);
-    return isNaN(num) || num < 0 ? 0 : num;
-  } catch {
-    return 0;
-  }
+interface FindMoldsResponse {
+  output_colony_count: number;
+  output_image?: { type: string; value: string };
+  predictions: {
+    image: { width: number; height: number };
+    predictions: FindMoldsDetection[];
+  };
 }
 
 interface PlausibilityResult {
@@ -62,6 +60,167 @@ function determinePriority(result: PlausibilityResult): string {
   if (zScore > 7 || (result.growth_rate_per_hour ?? 0) > 0.05) return 'critical';
   if (zScore > 5 || (result.growth_rate_per_hour ?? 0) > 0.03) return 'high';
   return 'normal';
+}
+
+function parseFindMoldsResponse(raw: unknown): {
+  colonyCount: number;
+  detections: FindMoldsDetection[];
+  imageWidth: number;
+  imageHeight: number;
+  avgConfidence: number;
+  annotatedImageBase64: string | null;
+} {
+  const result = {
+    colonyCount: 0,
+    detections: [] as FindMoldsDetection[],
+    imageWidth: 0,
+    imageHeight: 0,
+    avgConfidence: 0,
+    annotatedImageBase64: null as string | null,
+  };
+
+  try {
+    const outputs = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.outputs;
+    const data = Array.isArray(outputs) ? outputs[0] : outputs;
+    if (!data) return result;
+
+    const d = data as Record<string, unknown>;
+
+    if (typeof d.output_colony_count === 'number') {
+      result.colonyCount = Math.max(0, Math.round(d.output_colony_count));
+    }
+
+    if (d.output_image && typeof d.output_image === 'object') {
+      const img = d.output_image as Record<string, unknown>;
+      if (img.type === 'base64' && typeof img.value === 'string') {
+        result.annotatedImageBase64 = img.value;
+      } else if (typeof img.value === 'string' && img.value.startsWith('http')) {
+        result.annotatedImageBase64 = img.value;
+      }
+    }
+
+    const preds = d.predictions as Record<string, unknown> | undefined;
+    if (preds) {
+      const imgMeta = preds.image as { width: number; height: number } | undefined;
+      if (imgMeta) {
+        result.imageWidth = imgMeta.width || 0;
+        result.imageHeight = imgMeta.height || 0;
+      }
+
+      const predList = preds.predictions as FindMoldsDetection[] | undefined;
+      if (Array.isArray(predList)) {
+        result.detections = predList;
+        if (predList.length > 0) {
+          const totalConf = predList.reduce((sum, p) => sum + (p.confidence || 0), 0);
+          result.avgConfidence = totalConf / predList.length;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[FindMolds] Parse error:', e);
+  }
+
+  return result;
+}
+
+async function uploadAnnotatedImage(
+  supabase: ReturnType<typeof createClient>,
+  imageId: string,
+  base64OrUrl: string
+): Promise<string | null> {
+  try {
+    if (base64OrUrl.startsWith('http')) {
+      return base64OrUrl;
+    }
+
+    const cleanBase64 = base64OrUrl.replace(/^data:image\/\w+;base64,/, '');
+    const binaryStr = atob(cleanBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    const filePath = `annotated/${imageId}_annotated.jpg`;
+    const { error: uploadError } = await supabase.storage
+      .from('device-images')
+      .upload(filePath, bytes, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error('[FindMolds] Annotated image upload error:', uploadError.message);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('device-images')
+      .getPublicUrl(filePath);
+
+    return urlData?.publicUrl || null;
+  } catch (e) {
+    console.error('[FindMolds] Annotated image upload exception:', e);
+    return null;
+  }
+}
+
+async function storeDetectionsAndMatch(
+  supabase: ReturnType<typeof createClient>,
+  imageId: string,
+  deviceId: string,
+  companyId: string,
+  capturedAt: string,
+  detections: FindMoldsDetection[]
+): Promise<{ matched: number; new_tracks: number; lost: number } | null> {
+  if (detections.length === 0) return null;
+
+  try {
+    const rows = detections.map((d) => ({
+      detection_id: d.detection_id || null,
+      image_id: imageId,
+      device_id: deviceId,
+      company_id: companyId,
+      x: d.x,
+      y: d.y,
+      width: d.width,
+      height: d.height,
+      area: d.width * d.height,
+      confidence: d.confidence,
+      class: d.class || 'mold',
+      captured_at: capturedAt,
+    }));
+
+    const { error: insertError } = await supabase
+      .from('colony_detection_details')
+      .insert(rows);
+
+    if (insertError) {
+      console.error('[FindMolds] Detection insert error:', insertError.message);
+      return null;
+    }
+
+    console.log(`[FindMolds] Inserted ${rows.length} detections, running spatial matching...`);
+
+    const { data: matchResult, error: matchError } = await supabase.rpc(
+      'fn_match_colony_tracks',
+      {
+        p_image_id: imageId,
+        p_device_id: deviceId,
+        p_company_id: companyId,
+      }
+    );
+
+    if (matchError) {
+      console.error('[FindMolds] Track matching error:', matchError.message);
+      return null;
+    }
+
+    console.log('[FindMolds] Track matching result:', JSON.stringify(matchResult));
+    return matchResult as { matched: number; new_tracks: number; lost: number };
+  } catch (e) {
+    console.error('[FindMolds] Detection storage/matching exception:', e);
+    return null;
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -100,28 +259,27 @@ Deno.serve(async (req: Request) => {
       },
     };
 
-    const sporecountPayload = {
+    const findMoldsPayload = {
       api_key: ROBOFLOW_API_KEY,
       inputs: {
         image: { type: 'url', value: image_url },
-        colony_count: 0,
       },
     };
 
-    console.log('[MGI Scoring] Calling Roboflow MGI + Sporecount in parallel...');
+    console.log('[MGI Scoring] Calling Roboflow MGI + FindMolds in parallel...');
 
-    const [mgiResponse, sporecountResponse] = await Promise.all([
+    const [mgiResponse, findMoldsResponse] = await Promise.all([
       fetch(ROBOFLOW_MGI_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mgiPayload),
       }),
-      fetch(ROBOFLOW_SPORECOUNT_URL, {
+      fetch(ROBOFLOW_FIND_MOLDS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sporecountPayload),
+        body: JSON.stringify(findMoldsPayload),
       }).catch((e: Error) => {
-        console.error('[MGI Scoring] Sporecount API fetch error:', e.message);
+        console.error('[MGI Scoring] FindMolds API fetch error:', e.message);
         return null;
       }),
     ]);
@@ -136,6 +294,8 @@ Deno.serve(async (req: Request) => {
 
     let mgiScore: number | null = null;
     let colonyCount = 0;
+    let findMoldsRaw: unknown = null;
+    let findMoldsParsed: ReturnType<typeof parseFindMoldsResponse> | null = null;
 
     const outputs = roboflowData.outputs || roboflowData;
     if (Array.isArray(outputs) && outputs.length > 0) {
@@ -145,20 +305,20 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (sporecountResponse && sporecountResponse.ok) {
+    if (findMoldsResponse && findMoldsResponse.ok) {
       try {
-        const sporecountData = await sporecountResponse.json();
-        console.log('[MGI Scoring] Sporecount response:', JSON.stringify(sporecountData));
-        const sporecountOutputs = sporecountData.outputs || sporecountData;
-        colonyCount = parseSporeCountResponse(sporecountOutputs);
+        findMoldsRaw = await findMoldsResponse.json();
+        console.log('[MGI Scoring] FindMolds response received, parsing...');
+        const fmOutputs = (findMoldsRaw as Record<string, unknown>)?.outputs || findMoldsRaw;
+        findMoldsParsed = parseFindMoldsResponse(fmOutputs);
+        colonyCount = findMoldsParsed.colonyCount;
+        console.log(`[MGI Scoring] FindMolds: count=${colonyCount}, detections=${findMoldsParsed.detections.length}, avgConf=${findMoldsParsed.avgConfidence.toFixed(3)}`);
       } catch (e) {
-        console.error('[MGI Scoring] Sporecount response parse error:', e);
+        console.error('[MGI Scoring] FindMolds response parse error:', e);
       }
-    } else if (sporecountResponse) {
-      console.error('[MGI Scoring] Sporecount API error:', sporecountResponse.status);
+    } else if (findMoldsResponse) {
+      console.error('[MGI Scoring] FindMolds API error:', findMoldsResponse.status);
     }
-
-    console.log('[MGI Scoring] Colony count:', colonyCount);
 
     if (mgiScore === null || isNaN(mgiScore) || mgiScore < 0 || mgiScore > 1) {
       console.error('[MGI Scoring] Invalid MGI score:', mgiScore);
@@ -195,7 +355,18 @@ Deno.serve(async (req: Request) => {
     const scoredAt = new Date().toISOString();
     const capturedAt = imageRecord.captured_at || scoredAt;
 
-    // --- QA PLAUSIBILITY GATE ---
+    let annotatedImageUrl: string | null = null;
+    if (findMoldsParsed?.annotatedImageBase64) {
+      annotatedImageUrl = await uploadAnnotatedImage(
+        supabaseClient,
+        image_id,
+        findMoldsParsed.annotatedImageBase64
+      );
+      if (annotatedImageUrl) {
+        console.log('[MGI Scoring] Annotated image stored:', annotatedImageUrl);
+      }
+    }
+
     let isPlausible = true;
     let qaResult: PlausibilityResult | null = null;
 
@@ -224,8 +395,19 @@ Deno.serve(async (req: Request) => {
       console.error('[MGI Scoring] Plausibility check exception (proceeding as plausible):', e);
     }
 
+    const findMoldsFields: Record<string, unknown> = {
+      colony_count: colonyCount,
+      find_molds_response: findMoldsRaw,
+      colony_detections: findMoldsParsed?.detections || null,
+      avg_colony_confidence: findMoldsParsed?.avgConfidence || null,
+      colony_image_width: findMoldsParsed?.imageWidth || null,
+      colony_image_height: findMoldsParsed?.imageHeight || null,
+    };
+    if (annotatedImageUrl) {
+      findMoldsFields.annotated_image_url = annotatedImageUrl;
+    }
+
     if (isPlausible) {
-      // --- PLAUSIBLE: write score as-is, proceed with alerts ---
       const updatePayload: Record<string, unknown> = {
         mgi_score: mgiScore,
         scored_at: scoredAt,
@@ -233,7 +415,7 @@ Deno.serve(async (req: Request) => {
         roboflow_response: roboflowData,
         mgi_qa_status: 'accepted',
         mgi_confidence: qaResult?.confidence ?? 1.0,
-        colony_count: colonyCount,
+        ...findMoldsFields,
       };
 
       const { error: updateError } = await supabaseClient
@@ -242,6 +424,18 @@ Deno.serve(async (req: Request) => {
         .eq('image_id', image_id);
 
       if (updateError) throw updateError;
+
+      let trackResult = null;
+      if (findMoldsParsed && findMoldsParsed.detections.length > 0) {
+        trackResult = await storeDetectionsAndMatch(
+          supabaseClient,
+          image_id,
+          imageRecord.device_id,
+          imageRecord.company_id,
+          capturedAt,
+          findMoldsParsed.detections
+        );
+      }
 
       console.log('[MGI Scoring] Score accepted, running alert checks...');
 
@@ -267,7 +461,6 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // --- TREND CONFIRMATION: check if this accepted score resolves pending reviews ---
       let trendResolved: Record<string, unknown> | null = null;
       try {
         const { data: trendData, error: trendErr } = await supabaseClient.rpc(
@@ -290,6 +483,9 @@ Deno.serve(async (req: Request) => {
           image_id,
           mgi_score: mgiScore,
           colony_count: colonyCount,
+          detection_count: findMoldsParsed?.detections.length ?? 0,
+          track_result: trackResult,
+          annotated_image_url: annotatedImageUrl,
           qa_status: 'accepted',
           trend_confirmation: trendResolved,
         }),
@@ -297,7 +493,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // --- NOT PLAUSIBLE: auto-correct, queue for review, SKIP alerts ---
     const adjustedScore = qaResult!.adjusted_score ?? 0;
     const priority = determinePriority(qaResult!);
 
@@ -314,7 +509,7 @@ Deno.serve(async (req: Request) => {
       mgi_confidence: qaResult!.confidence,
       mgi_qa_method: qaResult!.method,
       mgi_qa_details: qaResult as unknown as Record<string, unknown>,
-      colony_count: colonyCount,
+      ...findMoldsFields,
     };
 
     const { error: updateError } = await supabaseClient
@@ -324,7 +519,17 @@ Deno.serve(async (req: Request) => {
 
     if (updateError) throw updateError;
 
-    // Insert into review queue
+    if (findMoldsParsed && findMoldsParsed.detections.length > 0) {
+      await storeDetectionsAndMatch(
+        supabaseClient,
+        image_id,
+        imageRecord.device_id,
+        imageRecord.company_id,
+        capturedAt,
+        findMoldsParsed.detections
+      );
+    }
+
     const { data: reviewRecord, error: reviewError } = await supabaseClient
       .from('mgi_review_queue')
       .insert({
@@ -350,7 +555,6 @@ Deno.serve(async (req: Request) => {
       console.error('[MGI Scoring] Failed to create review queue entry:', reviewError.message);
     }
 
-    // Insert admin notification
     if (reviewRecord?.review_id) {
       const { data: deviceInfo } = await supabaseClient
         .from('devices')
@@ -380,7 +584,6 @@ Deno.serve(async (req: Request) => {
       } else {
         console.log('[MGI Scoring] Admin notification created for review:', reviewRecord.review_id);
 
-        // Invoke notify_admin_review edge function asynchronously
         try {
           const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
           const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -407,6 +610,8 @@ Deno.serve(async (req: Request) => {
         mgi_score: adjustedScore,
         mgi_original_score: mgiScore,
         colony_count: colonyCount,
+        detection_count: findMoldsParsed?.detections.length ?? 0,
+        annotated_image_url: annotatedImageUrl,
         qa_status: 'pending_review',
         review_id: reviewRecord?.review_id,
       }),

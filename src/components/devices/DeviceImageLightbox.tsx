@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Download, Share2, Maximize, ChevronLeft, ChevronRight, Thermometer, Droplets, Battery, Activity, TrendingUp, TrendingDown, Clock, AlertTriangle, Microscope, Loader2 } from 'lucide-react';
+import { X, Download, Share2, Maximize, ChevronLeft, ChevronRight, Thermometer, Droplets, Battery, Activity, TrendingUp, TrendingDown, Clock, AlertTriangle, Microscope, Loader2, Layers } from 'lucide-react';
 import Modal from '../common/Modal';
 import MgiOverlayBadge from '../common/MgiOverlayBadge';
 import Button from '../common/Button';
@@ -21,6 +21,7 @@ interface DeviceImageData {
   mgi_qa_status?: string | null;
   colony_count?: number | null;
   colony_count_velocity?: number | null;
+  annotated_image_url?: string | null;
   temperature?: number | null;
   humidity?: number | null;
   battery_voltage?: number | null;
@@ -78,6 +79,8 @@ const DeviceImageLightbox = ({
   const [imageOpacity, setImageOpacity] = useState(1);
   const [countingColonies, setCountingColonies] = useState(false);
   const [localColonyCounts, setLocalColonyCounts] = useState<Record<string, number>>({});
+  const [showAnnotated, setShowAnnotated] = useState(false);
+  const [localAnnotatedUrls, setLocalAnnotatedUrls] = useState<Record<string, string>>({});
 
   const hasMultipleImages = images.length > 1;
 
@@ -214,6 +217,13 @@ const DeviceImageLightbox = ({
         [currentImage.image_id]: result.colony_count,
       }));
 
+      if (result.annotated_image_url) {
+        setLocalAnnotatedUrls(prev => ({
+          ...prev,
+          [currentImage.image_id]: result.annotated_image_url,
+        }));
+      }
+
       toast.success(`Colony count: ${result.colony_count}`);
       onImageUpdated?.(currentImage.image_id);
     } catch (error) {
@@ -231,6 +241,10 @@ const DeviceImageLightbox = ({
   const displayColonyCount = localColonyCounts[currentImage.image_id] !== undefined
     ? localColonyCounts[currentImage.image_id]
     : currentImage.colony_count;
+
+  const annotatedUrl = localAnnotatedUrls[currentImage.image_id] || currentImage.annotated_image_url;
+  const hasAnnotatedImage = !!annotatedUrl;
+  const displayImageUrl = showAnnotated && hasAnnotatedImage ? annotatedUrl! : currentImage.image_url;
 
   return (
     <Modal
@@ -283,21 +297,36 @@ const DeviceImageLightbox = ({
                 </button>
               </div>
 
-              <Button
-                size="sm"
-                variant="outline"
-                icon={<Maximize size={14} />}
-                onClick={() => window.open(currentImage.image_url, '_blank')}
-                className="!py-1 !px-2 bg-white bg-opacity-80"
-              >
-                Full Size
-              </Button>
+              <div className="flex items-center gap-1">
+                {hasAnnotatedImage && (
+                  <button
+                    onClick={() => setShowAnnotated(!showAnnotated)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      showAnnotated
+                        ? 'bg-teal-600 text-white'
+                        : 'bg-white bg-opacity-80 text-gray-700 hover:bg-opacity-100'
+                    }`}
+                  >
+                    <Layers size={13} />
+                    {showAnnotated ? 'Annotated' : 'Original'}
+                  </button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  icon={<Maximize size={14} />}
+                  onClick={() => window.open(displayImageUrl, '_blank')}
+                  className="!py-1 !px-2 bg-white bg-opacity-80"
+                >
+                  Full Size
+                </Button>
+              </div>
             </div>
 
             {/* Image Display */}
             <div className="h-[420px] flex items-center justify-center overflow-auto">
               <img
-                src={currentImage.image_url}
+                src={displayImageUrl}
                 alt={`${deviceInfo.device_code} - Image ${localIndex + 1}`}
                 style={{
                   transform: `scale(${zoom / 100})`,
@@ -307,6 +336,12 @@ const DeviceImageLightbox = ({
                 className="object-contain max-w-full max-h-full"
               />
             </div>
+
+            {showAnnotated && hasAnnotatedImage && (
+              <div className="absolute top-12 left-3 z-10 px-2 py-1 bg-teal-600 text-white text-xs font-bold rounded shadow">
+                Annotated View
+              </div>
+            )}
 
             <MgiOverlayBadge mgiScore={currentImage.mgi_score} size="main" className="top-12" />
 
