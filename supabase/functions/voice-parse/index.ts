@@ -125,13 +125,8 @@ Deno.serve(async (req: Request) => {
       .replace("{ALERTS}", alertsText)
       .replace("{PAGE_CONTEXT}", context?.page_context || "unknown");
 
-    const { data: secret } = await supabase
-      .from("app_secrets")
-      .select("value")
-      .eq("key", "ANTHROPIC_API_KEY")
-      .maybeSingle();
-
-    if (!secret?.value) {
+    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!anthropicKey) {
       return new Response(
         JSON.stringify({ error: "Anthropic API key not configured" }),
         {
@@ -147,7 +142,7 @@ Deno.serve(async (req: Request) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": secret.value,
+          "x-api-key": anthropicKey,
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({

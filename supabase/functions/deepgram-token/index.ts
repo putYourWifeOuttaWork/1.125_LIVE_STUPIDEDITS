@@ -52,13 +52,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data: secret } = await supabase
-      .from("app_secrets")
-      .select("value")
-      .eq("key", "DEEPGRAM_API_KEY")
-      .maybeSingle();
-
-    if (!secret?.value) {
+    const deepgramKey = Deno.env.get("DEEPGRAM_API_KEY");
+    if (!deepgramKey) {
       return new Response(
         JSON.stringify({ error: "Deepgram API key not configured" }),
         {
@@ -68,7 +63,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    return new Response(JSON.stringify({ key: secret.value }), {
+    return new Response(JSON.stringify({ key: deepgramKey }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
