@@ -407,9 +407,15 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
                       </span>
                     )}
                     <div className="mt-1.5 flex items-center gap-1">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                        {image.colony_count} {image.colony_count === 1 ? 'colony' : 'colonies'}
-                      </span>
+                      {image.colony_count != null ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                          {image.colony_count} {image.colony_count === 1 ? 'colony' : 'colonies'}
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] text-gray-400 bg-gray-50 border border-gray-200 italic">
+                          Not scored
+                        </span>
+                      )}
                     </div>
                     {(image.temperature != null || image.humidity != null) && (
                       <div className="mt-2 flex gap-3 text-xs text-gray-600">
@@ -478,7 +484,11 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <p className="text-blue-600">Colony Count</p>
-                    <p className="text-2xl font-bold text-blue-900">{selectedImage.colony_count}</p>
+                    {selectedImage.colony_count != null ? (
+                      <p className="text-2xl font-bold text-blue-900">{selectedImage.colony_count}</p>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic mt-1">Not scored</p>
+                    )}
                   </div>
                   {selectedImage.colony_count_velocity != null && (
                     <div>

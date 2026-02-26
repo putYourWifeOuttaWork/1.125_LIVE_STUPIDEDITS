@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Download, Share2, Maximize, ChevronLeft, ChevronRight, Thermometer, Droplets, Battery, Activity, TrendingUp, TrendingDown, Clock, AlertTriangle } from 'lucide-react';
+import { X, Download, Share2, Maximize, ChevronLeft, ChevronRight, Thermometer, Droplets, Battery, Activity, TrendingUp, TrendingDown, Clock, AlertTriangle, Microscope, Loader2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import MgiOverlayBadge from '../common/MgiOverlayBadge';
 import Button from '../common/Button';
 import ImageTimelineControls from '../common/ImageTimelineControls';
 import { useImageAutoPlay } from '../../hooks/useImageAutoPlay';
+import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 
@@ -18,6 +19,8 @@ interface DeviceImageData {
   mgi_speed?: number | null;
   mgi_original_score?: number | null;
   mgi_qa_status?: string | null;
+  colony_count?: number | null;
+  colony_count_velocity?: number | null;
   temperature?: number | null;
   humidity?: number | null;
   battery_voltage?: number | null;
@@ -34,6 +37,7 @@ interface DeviceImageLightboxProps {
     device_name?: string;
   };
   onNavigate?: (newIndex: number) => void;
+  onImageUpdated?: (imageId: string) => void;
 }
 
 // Note: Temperature values in database are already in Fahrenheit
@@ -66,11 +70,14 @@ const DeviceImageLightbox = ({
   images,
   currentIndex,
   deviceInfo,
-  onNavigate
+  onNavigate,
+  onImageUpdated
 }: DeviceImageLightboxProps) => {
   const [zoom, setZoom] = useState(100);
   const [localIndex, setLocalIndex] = useState(currentIndex);
   const [imageOpacity, setImageOpacity] = useState(1);
+  const [countingColonies, setCountingColonies] = useState(false);
+  const [localColonyCounts, setLocalColonyCounts] = useState<Record<string, number>>({});
 
   const hasMultipleImages = images.length > 1;
 
@@ -176,9 +183,54 @@ const DeviceImageLightbox = ({
       });
   };
 
+  const handleCountColonies = async () => {
+    if (!currentImage?.image_url || !currentImage?.image_id) return;
+    setCountingColonies(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/count_colonies`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image_id: currentImage.image_id,
+          image_url: currentImage.image_url,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Colony counting failed');
+      }
+
+      setLocalColonyCounts(prev => ({
+        ...prev,
+        [currentImage.image_id]: result.colony_count,
+      }));
+
+      toast.success(`Colony count: ${result.colony_count}`);
+      onImageUpdated?.(currentImage.image_id);
+    } catch (error) {
+      console.error('Colony counting error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to count colonies');
+    } finally {
+      setCountingColonies(false);
+    }
+  };
+
   if (!currentImage) {
     return null;
   }
+
+  const displayColonyCount = localColonyCounts[currentImage.image_id] !== undefined
+    ? localColonyCounts[currentImage.image_id]
+    : currentImage.colony_count;
 
   return (
     <Modal
@@ -305,6 +357,16 @@ const DeviceImageLightbox = ({
                 >
                   Share
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  icon={countingColonies ? <Loader2 size={14} className="animate-spin" /> : <Microscope size={14} />}
+                  onClick={handleCountColonies}
+                  disabled={countingColonies}
+                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                >
+                  {countingColonies ? 'Counting...' : 'Count Colonies'}
+                </Button>
               </div>
 
               <div className="text-xs text-gray-400">
@@ -421,6 +483,30 @@ const DeviceImageLightbox = ({
                       ? `${currentImage.mgi_velocity >= 0 ? '+' : ''}${(currentImage.mgi_velocity * 100).toFixed(1)}%`
                       : 'N/A'}
                   </span>
+                </div>
+
+                {/* Colony Count */}
+                <div className="flex items-center justify-between text-sm bg-white bg-opacity-70 rounded px-3 py-2">
+                  <span className="flex items-center text-gray-600">
+                    <Microscope className="w-4 h-4 mr-2 text-blue-500" />
+                    Colony Count
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {displayColonyCount != null ? (
+                      <>
+                        <span className="font-bold text-blue-800">
+                          {displayColonyCount}
+                        </span>
+                        {currentImage.colony_count_velocity != null && currentImage.colony_count_velocity !== 0 && (
+                          <span className={`text-xs font-medium ${currentImage.colony_count_velocity > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {currentImage.colony_count_velocity > 0 ? '+' : ''}{currentImage.colony_count_velocity}/session
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-400 text-xs italic">Not scored</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Temperature with Color Coding */}

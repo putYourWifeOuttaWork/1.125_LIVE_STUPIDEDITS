@@ -3054,6 +3054,20 @@ const SiteDeviceSessionDetailPage = () => {
                                 </div>
                               )}
 
+                              {/* Colony Count */}
+                              <div className="pt-2 border-t border-gray-100">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">Colony Count</span>
+                                  {image.colony_count != null ? (
+                                    <span className="px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-800 border border-blue-200 text-[10px]">
+                                      {image.colony_count}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400 italic text-[10px]">Not scored</span>
+                                  )}
+                                </div>
+                              </div>
+
                               {/* Environmental Data */}
                               {(image.temperature != null || image.humidity != null || image.battery_voltage != null) && (
                                 <div className="pt-2 border-t border-gray-100 space-y-1">
@@ -3127,6 +3141,9 @@ const SiteDeviceSessionDetailPage = () => {
           deviceInfo={lightboxState.deviceInfo}
           onNavigate={(newIndex) => {
             setLightboxState(prev => prev ? { ...prev, currentIndex: newIndex } : null);
+          }}
+          onImageUpdated={() => {
+            fetchDevicesData();
           }}
         />
       )}
