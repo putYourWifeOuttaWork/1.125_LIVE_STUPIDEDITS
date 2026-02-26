@@ -24,7 +24,9 @@ export type MetricType =
   | 'battery_voltage'
   | 'alert_count'
   | 'wake_reliability'
-  | 'image_success_rate';
+  | 'image_success_rate'
+  | 'colony_count'
+  | 'colony_count_velocity';
 
 export interface ReportConfiguration {
   reportType: ReportType;
@@ -141,6 +143,7 @@ export interface DeviceMetricData {
   max_mgi_score: number | null;
   mgi_velocity: number | null;
   mgi_speed: number | null;
+  avg_colony_count: number | null;
   avg_battery_voltage: number | null;
   min_battery_voltage: number | null;
   max_battery_voltage: number | null;
@@ -200,6 +203,8 @@ export interface DrillDownRecord {
   mgi_score: number | null;
   mgi_velocity: number | null;
   mgi_speed: number | null;
+  colony_count: number | null;
+  colony_count_velocity: number | null;
   battery_voltage: number | null;
   vtt_mold_index: number | null;
   image_url: string | null;
@@ -315,6 +320,8 @@ export const METRIC_LABELS: Record<MetricType, string> = {
   alert_count: 'Alert Count',
   wake_reliability: 'Wake Reliability',
   image_success_rate: 'Image Success Rate',
+  colony_count: 'Colony Count',
+  colony_count_velocity: 'Colony Growth Rate',
 };
 
 export const METRIC_UNITS: Record<MetricType, string> = {
@@ -334,6 +341,8 @@ export const METRIC_UNITS: Record<MetricType, string> = {
   alert_count: '',
   wake_reliability: '%',
   image_success_rate: '%',
+  colony_count: '',
+  colony_count_velocity: '/session',
 };
 
 export const METRIC_DISPLAY_SCALE: Partial<Record<MetricType, number>> = {
@@ -349,6 +358,7 @@ export const METRIC_BAR_PREFERRED: Set<MetricType> = new Set([
   'mgi_speed',
   'vtt_mold_index',
   'alert_count',
+  'colony_count',
 ]);
 
 export type MetricScaleGroup = 'percent' | 'ambient' | 'pressure' | 'resistance' | 'voltage' | 'rate' | 'count' | 'score_rate' | 'deviation' | 'zscore' | 'vtt_risk';
@@ -367,6 +377,8 @@ export const METRIC_SCALE_HINTS: Record<MetricType, MetricScaleGroup> = {
   gas_resistance_zscore: 'zscore',
   battery_voltage: 'voltage',
   alert_count: 'count',
+  colony_count: 'count',
+  colony_count_velocity: 'count',
   vtt_mold_index: 'vtt_risk',
   mgi_velocity: 'score_rate',
   mgi_speed: 'score_rate',

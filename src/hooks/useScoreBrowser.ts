@@ -11,6 +11,7 @@ export interface ScoredImage {
   mgi_original_score: number | null;
   mgi_qa_status: string | null;
   mgi_qa_method: string | null;
+  colony_count: number | null;
   captured_at: string;
   temperature: number | null;
   humidity: number | null;
@@ -55,7 +56,7 @@ export function useScoredImages(filters: ScoreBrowserFilters) {
       let query = supabase
         .from('device_images')
         .select(
-          'image_id, device_id, image_url, mgi_score, mgi_velocity, mgi_original_score, mgi_qa_status, mgi_qa_method, captured_at, temperature, humidity, company_id, site_id, program_id',
+          'image_id, device_id, image_url, mgi_score, mgi_velocity, mgi_original_score, mgi_qa_status, mgi_qa_method, colony_count, captured_at, temperature, humidity, company_id, site_id, program_id',
           { count: 'exact' }
         )
         .not('mgi_score', 'is', null)

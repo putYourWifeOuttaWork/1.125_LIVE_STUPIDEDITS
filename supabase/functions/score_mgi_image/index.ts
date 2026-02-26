@@ -16,6 +16,8 @@ interface ScoreRequest {
 
 interface RoboflowResult {
   MGI: string;
+  colony_count?: number | string;
+  colony_detections?: Array<{ confidence: number; [key: string]: unknown }>;
 }
 
 interface PlausibilityResult {
@@ -93,6 +95,9 @@ Deno.serve(async (req: Request) => {
     console.log('[MGI Scoring] Roboflow response:', JSON.stringify(roboflowData));
 
     let mgiScore: number | null = null;
+    let colonyCount: number | null = null;
+    let colonyCountConfidence: number | null = null;
+    let colonyDetections: Array<{ confidence: number; [key: string]: unknown }> | null = null;
     const outputs = roboflowData.outputs || roboflowData;
 
     if (Array.isArray(outputs) && outputs.length > 0) {
@@ -100,7 +105,29 @@ Deno.serve(async (req: Request) => {
       if (firstResult.MGI !== undefined) {
         mgiScore = parseFloat(firstResult.MGI);
       }
+
+      if (firstResult.colony_count !== undefined) {
+        const parsed = typeof firstResult.colony_count === 'string'
+          ? parseInt(firstResult.colony_count, 10)
+          : Math.round(Number(firstResult.colony_count));
+        if (!isNaN(parsed) && parsed >= 0) {
+          colonyCount = parsed;
+        }
+      }
+
+      if (Array.isArray(firstResult.colony_detections) && firstResult.colony_detections.length > 0) {
+        colonyDetections = firstResult.colony_detections;
+        const confidences = colonyDetections.map(d => d.confidence).filter(c => typeof c === 'number');
+        if (confidences.length > 0) {
+          colonyCountConfidence = confidences.reduce((s, c) => s + c, 0) / confidences.length;
+        }
+        if (colonyCount === null) {
+          colonyCount = colonyDetections.length;
+        }
+      }
     }
+
+    console.log('[MGI Scoring] Colony count:', colonyCount, 'Confidence:', colonyCountConfidence);
 
     if (mgiScore === null || isNaN(mgiScore) || mgiScore < 0 || mgiScore > 1) {
       console.error('[MGI Scoring] Invalid MGI score:', mgiScore);
@@ -168,16 +195,21 @@ Deno.serve(async (req: Request) => {
 
     if (isPlausible) {
       // --- PLAUSIBLE: write score as-is, proceed with alerts ---
+      const updatePayload: Record<string, unknown> = {
+        mgi_score: mgiScore,
+        scored_at: scoredAt,
+        mgi_scoring_status: 'complete',
+        roboflow_response: roboflowData,
+        mgi_qa_status: 'accepted',
+        mgi_confidence: qaResult?.confidence ?? 1.0,
+      };
+      if (colonyCount !== null) updatePayload.colony_count = colonyCount;
+      if (colonyCountConfidence !== null) updatePayload.colony_count_confidence = colonyCountConfidence;
+      if (colonyDetections !== null) updatePayload.colony_detections = colonyDetections;
+
       const { error: updateError } = await supabaseClient
         .from('device_images')
-        .update({
-          mgi_score: mgiScore,
-          scored_at: scoredAt,
-          mgi_scoring_status: 'complete',
-          roboflow_response: roboflowData,
-          mgi_qa_status: 'accepted',
-          mgi_confidence: qaResult?.confidence ?? 1.0,
-        })
+        .update(updatePayload)
         .eq('image_id', image_id);
 
       if (updateError) throw updateError;
@@ -228,6 +260,7 @@ Deno.serve(async (req: Request) => {
           success: true,
           image_id,
           mgi_score: mgiScore,
+          colony_count: colonyCount,
           qa_status: 'accepted',
           trend_confirmation: trendResolved,
         }),
@@ -241,20 +274,25 @@ Deno.serve(async (req: Request) => {
 
     console.log('[MGI Scoring] Score flagged as outlier. Original:', mgiScore, 'Adjusted:', adjustedScore, 'Priority:', priority);
 
+    const flaggedPayload: Record<string, unknown> = {
+      mgi_score: adjustedScore,
+      mgi_original_score: mgiScore,
+      mgi_adjusted_score: adjustedScore,
+      scored_at: scoredAt,
+      mgi_scoring_status: 'complete',
+      roboflow_response: roboflowData,
+      mgi_qa_status: 'pending_review',
+      mgi_confidence: qaResult!.confidence,
+      mgi_qa_method: qaResult!.method,
+      mgi_qa_details: qaResult as unknown as Record<string, unknown>,
+    };
+    if (colonyCount !== null) flaggedPayload.colony_count = colonyCount;
+    if (colonyCountConfidence !== null) flaggedPayload.colony_count_confidence = colonyCountConfidence;
+    if (colonyDetections !== null) flaggedPayload.colony_detections = colonyDetections;
+
     const { error: updateError } = await supabaseClient
       .from('device_images')
-      .update({
-        mgi_score: adjustedScore,
-        mgi_original_score: mgiScore,
-        mgi_adjusted_score: adjustedScore,
-        scored_at: scoredAt,
-        mgi_scoring_status: 'complete',
-        roboflow_response: roboflowData,
-        mgi_qa_status: 'pending_review',
-        mgi_confidence: qaResult!.confidence,
-        mgi_qa_method: qaResult!.method,
-        mgi_qa_details: qaResult as unknown as Record<string, unknown>,
-      })
+      .update(flaggedPayload)
       .eq('image_id', image_id);
 
     if (updateError) throw updateError;
@@ -341,6 +379,7 @@ Deno.serve(async (req: Request) => {
         image_id,
         mgi_score: adjustedScore,
         mgi_original_score: mgiScore,
+        colony_count: colonyCount,
         qa_status: 'pending_review',
         review_id: reviewRecord?.review_id,
       }),

@@ -66,6 +66,8 @@ const METRIC_RECORD_FIELDS: Partial<Record<MetricType, keyof DrillDownRecord>> =
   mgi_speed: 'mgi_speed',
   vtt_mold_index: 'vtt_mold_index',
   battery_voltage: 'battery_voltage',
+  colony_count: 'colony_count',
+  colony_count_velocity: 'colony_count_velocity',
 };
 
 const RANGE_DISPLAY_METRICS: Set<MetricType> = new Set([
@@ -87,6 +89,8 @@ const METRIC_COL_LABELS: Partial<Record<MetricType, string>> = {
   mgi_speed: 'MGI Spd.',
   vtt_mold_index: 'VTT Risk',
   battery_voltage: 'Battery',
+  colony_count: 'Colonies',
+  colony_count_velocity: 'Growth Rate',
 };
 
 const DEFAULT_METRICS: ReportMetric[] = [

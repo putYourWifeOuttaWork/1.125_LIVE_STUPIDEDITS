@@ -295,6 +295,28 @@ export default function DrillDownImageModal({
                   </p>
                 </div>
               </div>
+              {currentRecord.colony_count != null && (
+                <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                      <Activity className="w-3 h-3" />
+                      <span>Colony Count</span>
+                    </div>
+                    <p className="text-sm font-bold text-blue-800">{currentRecord.colony_count}</p>
+                  </div>
+                  {currentRecord.colony_count_velocity != null && (
+                    <div>
+                      <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                        <Activity className="w-3 h-3" />
+                        <span>Growth Rate</span>
+                      </div>
+                      <p className="text-sm font-bold text-gray-900">
+                        {currentRecord.colony_count_velocity > 0 ? '+' : ''}{currentRecord.colony_count_velocity}/session
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 

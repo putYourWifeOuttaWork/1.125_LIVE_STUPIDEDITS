@@ -134,6 +134,7 @@ export default function ScoreBrowserTable({
               <th className="px-3 py-2.5">Site</th>
               <th className="px-3 py-2.5 text-right">Score</th>
               <th className="px-3 py-2.5 text-right">Velocity</th>
+              <th className="px-3 py-2.5 text-right">Colonies</th>
               <th className="px-3 py-2.5">QA Status</th>
               <th className="px-3 py-2.5">Captured</th>
               <th className="px-3 py-2.5 w-8" />
@@ -208,6 +209,11 @@ export default function ScoreBrowserTable({
                   <td className="px-3 py-2 text-right">
                     <span className="font-mono text-xs text-gray-600">
                       {formatVelocity(img.mgi_velocity)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <span className="font-mono text-xs text-gray-700">
+                      {img.colony_count != null ? img.colony_count : '--'}
                     </span>
                   </td>
                   <td className="px-3 py-2">

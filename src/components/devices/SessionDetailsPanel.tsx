@@ -32,6 +32,7 @@ interface SessionMetrics {
   avgTemperature: number | null;
   avgHumidity: number | null;
   avgMgiScore: number | null;
+  avgColonyCount: number | null;
   deviceHealthDistribution: {
     healthy: number;
     warning: number;
@@ -65,7 +66,7 @@ export default function SessionDetailsPanel({
       // Fetch devices for this site
       const { data: devicesData, error: devicesError } = await supabase
         .from('devices')
-        .select('device_id, battery_health_percent, latest_mgi_score, is_active')
+        .select('device_id, battery_health_percent, latest_mgi_score, latest_colony_count, is_active')
         .eq('site_id', selectedSession.site_id);
 
       if (devicesError) throw devicesError;
@@ -105,6 +106,14 @@ export default function SessionDetailsPanel({
         ? mgiScores.reduce((sum, score) => sum + score, 0) / mgiScores.length
         : null;
 
+      // Calculate colony count average
+      const colonyCounts = (devicesData || [])
+        .map(d => d.latest_colony_count)
+        .filter((c): c is number => c !== null && c !== undefined);
+      const avgColony = colonyCounts.length > 0
+        ? colonyCounts.reduce((sum, c) => sum + c, 0) / colonyCounts.length
+        : null;
+
       // Calculate device health distribution
       const healthDistribution = {
         healthy: 0,
@@ -131,6 +140,7 @@ export default function SessionDetailsPanel({
         avgTemperature: avgTemp,
         avgHumidity: avgHum,
         avgMgiScore: avgMgi,
+        avgColonyCount: avgColony,
         deviceHealthDistribution: healthDistribution,
       });
     } catch (error) {
@@ -308,6 +318,21 @@ export default function SessionDetailsPanel({
                 </span>
               </div>
               <p className="text-xs text-gray-600 font-medium">Avg MGI Score</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Colony Count Card */}
+        {metrics && metrics.avgColonyCount !== null && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <Activity className="w-5 h-5 text-blue-600" />
+                <span className="text-2xl font-bold text-gray-900">
+                  {metrics.avgColonyCount.toFixed(0)}
+                </span>
+              </div>
+              <p className="text-xs text-gray-600 font-medium">Avg Colony Count</p>
             </CardContent>
           </Card>
         )}
