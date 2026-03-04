@@ -20,6 +20,29 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
   const [filterStartDate, setFilterStartDate] = useState(() => subDays(new Date(), 30).toISOString().split('T')[0]);
   const [filterEndDate, setFilterEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
+  const failedImages = images.filter(img => img.status === 'failed' && img.can_retry);
+  const pendingImages = images.filter(img => img.status === 'pending' || img.status === 'receiving');
+  const completeImages = images.filter(img => img.status === 'complete');
+
+  const filteredCompleteImages = useMemo(() => {
+    const rangeStart = startOfDay(parseISO(filterStartDate));
+    const rangeEnd = endOfDay(parseISO(filterEndDate));
+    return completeImages.filter(img => {
+      const captured = new Date(img.captured_at || img.received_at);
+      return !isBefore(captured, rangeStart) && !isAfter(captured, rangeEnd);
+    });
+  }, [completeImages, filterStartDate, filterEndDate]);
+
+  const downloadableImages = useMemo(() =>
+    filteredCompleteImages
+      .filter(img => img.image_url)
+      .map(img => ({
+        url: img.image_url,
+        filename: `${img.image_name || img.image_id}.jpg`,
+      })),
+    [filteredCompleteImages]
+  );
+
   const handleRetryAll = async () => {
     setRetrying(true);
     try {
@@ -44,7 +67,7 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
   const handleClearStale = async () => {
     if (window.confirm('Clear all images stuck in receiving/pending status for more than 1 hour?')) {
       try {
-        await clearStaleImages(1); // 1 hour threshold
+        await clearStaleImages(1);
       } catch (error) {
         // Error handled by mutation
       }
@@ -54,29 +77,6 @@ const DeviceImagesPanel = ({ deviceId }: DeviceImagesPanelProps) => {
   if (isLoading) {
     return <LoadingScreen />;
   }
-
-  const failedImages = images.filter(img => img.status === 'failed' && img.can_retry);
-  const pendingImages = images.filter(img => img.status === 'pending' || img.status === 'receiving');
-  const completeImages = images.filter(img => img.status === 'complete');
-
-  const filteredCompleteImages = useMemo(() => {
-    const rangeStart = startOfDay(parseISO(filterStartDate));
-    const rangeEnd = endOfDay(parseISO(filterEndDate));
-    return completeImages.filter(img => {
-      const captured = new Date(img.captured_at || img.received_at);
-      return !isBefore(captured, rangeStart) && !isAfter(captured, rangeEnd);
-    });
-  }, [completeImages, filterStartDate, filterEndDate]);
-
-  const downloadableImages = useMemo(() =>
-    filteredCompleteImages
-      .filter(img => img.image_url)
-      .map(img => ({
-        url: img.image_url,
-        filename: `${img.image_name || img.image_id}.jpg`,
-      })),
-    [filteredCompleteImages]
-  );
 
   const getStatusIcon = (status: string) => {
     switch (status) {
